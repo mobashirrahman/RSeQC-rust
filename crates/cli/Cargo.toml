@@ -46,6 +46,11 @@ path = "src/bin/read_quality.rs"
 name = "read_duplication"
 path = "src/bin/read_duplication.rs"
 
+[[bin]]
+# Same naming note as above: packaging aliases this to `clipping_profile.py`.
+name = "clipping_profile"
+path = "src/bin/clipping_profile.rs"
+
 [dependencies]
 rseqc-core = { path = "../core" }
 rseqc-formats = { path = "../formats" }

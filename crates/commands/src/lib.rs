@@ -4,6 +4,7 @@
 
 pub mod bam2fq;
 pub mod bam_stat;
+pub mod clipping_profile;
 pub mod divide_bam;
 pub mod read_duplication;
 pub mod read_gc;

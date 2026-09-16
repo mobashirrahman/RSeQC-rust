@@ -100,3 +100,18 @@ divergences:
     classification: upstream-bug
     decision: Preserved exactly, same rationale as DIV-0008.
     status: accepted
+
+  - id: DIV-0010
+    command_or_api: clipping_profile.py
+    description: >
+      Same last-record-length pattern as DIV-0008/DIV-0009, one further
+      twist: upstream's `read_pos = list(range(0,len(cigar_str)))` uses
+      whichever record's expanded CIGAR string was computed LAST among all
+      records that pass the mapq/unmapped/qc-fail (and, in paired mode,
+      is_paired) filters -- including records that end up contributing
+      nothing to the histogram because they have no clip/insertion
+      operation at all (the `if type not in cigar_str: continue` skip
+      happens after `cigar_str` is (re)assigned each iteration).
+    classification: upstream-bug
+    decision: Preserved exactly, same rationale as DIV-0008.
+    status: accepted
