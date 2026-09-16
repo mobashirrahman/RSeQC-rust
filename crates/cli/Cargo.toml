@@ -91,6 +91,11 @@ path = "src/bin/inner_distance.rs"
 name = "junction_annotation"
 path = "src/bin/junction_annotation.rs"
 
+[[bin]]
+# Same naming note as above: packaging aliases this to `split_bam.py`.
+name = "split_bam"
+path = "src/bin/split_bam.rs"
+
 [dependencies]
 rseqc-core = { path = "../core" }
 rseqc-formats = { path = "../formats" }
