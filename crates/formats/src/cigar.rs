@@ -23,6 +23,37 @@ pub fn reference_span(start: usize, cigar: impl IntoIterator<Item = Op>) -> (usi
     (start, start + span_size)
 }
 
+/// Intron (skipped-region) blocks for a CIGAR string, as 0-based
+/// `[start, end)` reference coordinates. Ported from `bam_cigar.
+/// fetch_intron`. **Differs from [`fetch_exon_blocks`] in its soft-clip
+/// handling**: here `S` does NOT advance the coordinate (upstream's `elif
+/// c==4: continue`), whereas `fetch_exon_blocks` treats `S` the same as
+/// `D`/`N` (advances, no block). This asymmetry is upstream's own
+/// (undocumented) inconsistency between the two functions, preserved
+/// deliberately rather than unified.
+pub fn fetch_intron_blocks(start: usize, cigar: impl IntoIterator<Item = Op>) -> Vec<(usize, usize)> {
+    let mut chrom_st = start;
+    let mut blocks = Vec::new();
+
+    for op in cigar {
+        match op.kind() {
+            Kind::Match | Kind::Deletion => {
+                chrom_st += op.len();
+            }
+            Kind::Skip => {
+                blocks.push((chrom_st, chrom_st + op.len()));
+                chrom_st += op.len();
+            }
+            Kind::Insertion | Kind::SoftClip | Kind::HardClip | Kind::Pad | Kind::SequenceMatch | Kind::SequenceMismatch => {
+                // No advance -- matches upstream's `continue` branches,
+                // including the fetch_exon_blocks-inconsistent soft-clip case.
+            }
+        }
+    }
+
+    blocks
+}
+
 /// Exon (aligned-match) blocks for a CIGAR string, as 0-based
 /// `[start, end)` reference coordinates. Ported from `bam_cigar.fetch_exon`.
 ///
@@ -247,5 +278,26 @@ mod tests {
             Op::new(Kind::SoftClip, 3),
         ];
         assert_eq!(reference_span(100, cigar), (100, 123));
+    }
+
+    #[test]
+    fn fetch_intron_blocks_records_skip_ops() {
+        // 10M5N8M: intron block at [10,15).
+        let cigar = vec![Op::new(Kind::Match, 10), Op::new(Kind::Skip, 5), Op::new(Kind::Match, 8)];
+        assert_eq!(fetch_intron_blocks(0, cigar), vec![(10, 15)]);
+    }
+
+    #[test]
+    fn fetch_intron_blocks_soft_clip_does_not_advance_unlike_fetch_exon() {
+        // 3S10M5N8M: soft-clip contributes no advance here (differs from
+        // fetch_exon_blocks, where S does advance), so the intron still
+        // starts at 10 (after the 10M), not 13.
+        let cigar = vec![
+            Op::new(Kind::SoftClip, 3),
+            Op::new(Kind::Match, 10),
+            Op::new(Kind::Skip, 5),
+            Op::new(Kind::Match, 8),
+        ];
+        assert_eq!(fetch_intron_blocks(0, cigar), vec![(10, 15)]);
     }
 }

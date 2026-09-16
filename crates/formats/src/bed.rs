@@ -89,6 +89,65 @@ pub fn get_cds_exon(reader: impl BufRead) -> io::Result<Vec<Bed3>> {
     Ok(out)
 }
 
+/// Ports `ParseBED.getExon`. Fail-fast, same as `get_cds_exon` (upstream's
+/// `getExon` also reads `f[6]`/`f[7]` -- unused in the loop body, but
+/// still required to be parseable, so a comment/malformed line still
+/// crashes even though the values themselves go unused).
+pub fn get_exon(reader: impl BufRead) -> io::Result<Vec<Bed3>> {
+    let mut out = Vec::new();
+    for line in reader.lines() {
+        let line = line?;
+        let fields: Vec<&str> = line.split_whitespace().collect();
+        let f = parse_bed12_fields(&fields)
+            .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
+        let exon_ends: Vec<i64> = f.exon_starts.iter().zip(f.block_sizes.iter()).map(|(&s, &sz)| s + sz).collect();
+        for (&base, &end) in f.exon_starts.iter().zip(exon_ends.iter()) {
+            out.push((f.chrom.clone(), base, end));
+        }
+    }
+    Ok(out)
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct TranscriptRange {
+    pub chrom: String,
+    pub tx_start: i64,
+    pub tx_end: i64,
+    pub strand: String,
+    /// `"geneName:chrom:txStart-txEnd"`, matching upstream's composite
+    /// name string (used as the `Interval`'s `value` by callers).
+    pub name: String,
+}
+
+/// Ports `ParseBED.getTranscriptRanges`. Skips comments AND gracefully
+/// skips other malformed lines (upstream's `try/except`), same robustness
+/// tier as [`get_intron`]. Returns `(ranges, skipped_line_count)`.
+pub fn get_transcript_ranges(reader: impl BufRead) -> io::Result<(Vec<TranscriptRange>, u64)> {
+    let mut out = Vec::new();
+    let mut skipped = 0u64;
+    for line in reader.lines() {
+        let line = line?;
+        if is_comment_or_header(&line) {
+            continue;
+        }
+        let fields: Vec<&str> = line.split_whitespace().collect();
+        let parsed = (|| -> Option<TranscriptRange> {
+            let chrom = fields.first()?.to_string();
+            let tx_start: i64 = fields.get(1)?.parse().ok()?;
+            let tx_end: i64 = fields.get(2)?.parse().ok()?;
+            let gene_name = fields.get(3)?.to_string();
+            let strand = fields.get(5)?.to_string();
+            let name = format!("{gene_name}:{chrom}:{tx_start}-{tx_end}");
+            Some(TranscriptRange { chrom, tx_start, tx_end, strand, name })
+        })();
+        match parsed {
+            Some(tr) => out.push(tr),
+            None => skipped += 1,
+        }
+    }
+    Ok((out, skipped))
+}
+
 /// Ports `ParseBED.getUTR(utr=3|5)`. `utr` selects which end: `3` or `5`
 /// (upstream's default `35` extracting both isn't used by any ported
 /// command yet, so it's not implemented here -- add it if/when needed).
@@ -205,6 +264,31 @@ mod tests {
     fn cds_exon_errors_on_comment_line() {
         let err = get_cds_exon("# comment\n".as_bytes()).unwrap_err();
         assert_eq!(err.kind(), io::ErrorKind::InvalidData);
+    }
+
+    #[test]
+    fn exon_returns_unclipped_blocks() {
+        let out = get_exon(SAMPLE.as_bytes()).unwrap();
+        assert_eq!(out, vec![("chr1".to_string(), 100, 200), ("chr1".to_string(), 400, 500)]);
+    }
+
+    #[test]
+    fn exon_errors_on_comment_line() {
+        let err = get_exon("# comment\n".as_bytes()).unwrap_err();
+        assert_eq!(err.kind(), io::ErrorKind::InvalidData);
+    }
+
+    #[test]
+    fn transcript_ranges_builds_composite_name_and_skips_malformed() {
+        let text = format!("{SAMPLE}bad line\n");
+        let (ranges, skipped) = get_transcript_ranges(text.as_bytes()).unwrap();
+        assert_eq!(ranges.len(), 1);
+        assert_eq!(ranges[0].chrom, "chr1");
+        assert_eq!(ranges[0].tx_start, 100);
+        assert_eq!(ranges[0].tx_end, 500);
+        assert_eq!(ranges[0].strand, "+");
+        assert_eq!(ranges[0].name, "geneA:chr1:100-500");
+        assert_eq!(skipped, 1);
     }
 
     #[test]

@@ -80,6 +80,49 @@ pub fn subtract_bed3(a: &[Bed3], b: &[Bed3]) -> Vec<Bed3> {
     out
 }
 
+/// A pre-merged (per chromosome, non-overlapping, sorted) region set,
+/// queryable for how many bases of a given span it covers -- e.g. for
+/// `inner_distance.py`'s "how much of the mate gap falls within an exon"
+/// check, which upstream computes via a real per-base bitset AND
+/// (`inner_distance_bitsets.iand(exon_bitsets[chrom])`) over the gap span.
+/// This gets the same count via binary search over merged intervals
+/// instead of materializing a bitset.
+pub struct MergedRegions {
+    by_chrom: HashMap<String, Vec<(i64, i64)>>,
+}
+
+impl MergedRegions {
+    pub fn new(intervals: &[Bed3]) -> Self {
+        Self { by_chrom: merged_by_chrom(intervals) }
+    }
+
+    /// Total number of bases in `[query_start, query_end)` (per `chrom`)
+    /// covered by any stored interval.
+    pub fn overlap_length(&self, chrom: &str, query_start: i64, query_end: i64) -> i64 {
+        let Some(ivs) = self.by_chrom.get(chrom) else { return 0 };
+        if query_start >= query_end {
+            return 0;
+        }
+        let mut total = 0i64;
+        // Merged intervals are sorted and non-overlapping, so end values
+        // are monotonically non-decreasing too; find the first interval
+        // whose end is past query_start (the first one that could
+        // possibly overlap), then walk forward until past the query.
+        let start_idx = ivs.partition_point(|&(_, e)| e <= query_start);
+        for &(s, e) in &ivs[start_idx..] {
+            if s >= query_end {
+                break;
+            }
+            let lo = s.max(query_start);
+            let hi = e.min(query_end);
+            if lo < hi {
+                total += hi - lo;
+            }
+        }
+        total
+    }
+}
+
 fn group_by_chrom(intervals: &[Bed3]) -> HashMap<String, Vec<(i64, i64)>> {
     let mut by_chrom: HashMap<String, Vec<(i64, i64)>> = HashMap::new();
     for (chrom, s, e) in intervals {
@@ -196,5 +239,25 @@ mod tests {
         let a = vec![bed("chr1", 10, 20)];
         let b = vec![bed("chr2", 0, 100)];
         assert_eq!(subtract_bed3(&a, &b), vec![bed("chr1", 10, 20)]);
+    }
+
+    #[test]
+    fn merged_regions_overlap_length_sums_multiple_intervals_in_span() {
+        let regions = MergedRegions::new(&[bed("chr1", 0, 10), bed("chr1", 20, 30), bed("chr1", 50, 60)]);
+        // Query [5,55): overlaps [5,10)=5, [20,30)=10, [50,55)=5 -> 20 total.
+        assert_eq!(regions.overlap_length("chr1", 5, 55), 20);
+    }
+
+    #[test]
+    fn merged_regions_overlap_length_zero_outside_any_interval() {
+        let regions = MergedRegions::new(&[bed("chr1", 0, 10)]);
+        assert_eq!(regions.overlap_length("chr1", 20, 30), 0);
+        assert_eq!(regions.overlap_length("chr2", 0, 10), 0);
+    }
+
+    #[test]
+    fn merged_regions_overlap_length_full_containment() {
+        let regions = MergedRegions::new(&[bed("chr1", 0, 100)]);
+        assert_eq!(regions.overlap_length("chr1", 10, 20), 10);
     }
 }
