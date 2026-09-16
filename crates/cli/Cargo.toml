@@ -76,6 +76,11 @@ path = "src/bin/infer_experiment.rs"
 name = "RNA_fragment_size"
 path = "src/bin/rna_fragment_size.rs"
 
+[[bin]]
+# Same naming note as above: packaging aliases this to `read_distribution.py`.
+name = "read_distribution"
+path = "src/bin/read_distribution.rs"
+
 [dependencies]
 rseqc-core = { path = "../core" }
 rseqc-formats = { path = "../formats" }
