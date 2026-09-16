@@ -35,6 +35,8 @@ use noodles_bam as bam;
 use noodles_sam::{self as sam, alignment::record::cigar::op::Kind};
 use rseqc_formats::interval::{Bed3, MergedRegions};
 
+use crate::python_fmt::python_str_float;
+
 /// One BAM record's relevant fields for region-fetch/pileup queries,
 /// pre-filtered at build time on the three flags every upstream
 /// fetch()-consuming function checks (`is_qcfail`/`is_unmapped`/
@@ -416,21 +418,6 @@ pub fn compute_tin(
     };
 
     (records, summary)
-}
-
-/// Renders a Python `str(float)`-equivalent string: Rust's default `f64`
-/// `Display` already produces the shortest round-tripping decimal (like
-/// Python's `repr`/`str` since 3.1) for non-integral values, but drops
-/// the trailing `.0` for whole numbers that Python always keeps.
-pub fn python_str_float(x: f64) -> String {
-    if x.is_nan() {
-        return "nan".to_string();
-    }
-    if x.is_infinite() {
-        return if x > 0.0 { "inf".to_string() } else { "-inf".to_string() };
-    }
-    let s = format!("{x}");
-    if s.contains('.') || s.contains('e') || s.contains('E') { s } else { format!("{s}.0") }
 }
 
 /// Ports the `.tin.xls` output: a header line followed by one row per

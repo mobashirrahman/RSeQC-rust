@@ -4,9 +4,11 @@
 
 pub mod bam2fq;
 pub mod bam_stat;
+pub mod fpkm_count;
 pub mod clipping_profile;
 pub mod deletion_profile;
 pub mod mismatch_profile;
+pub mod python_fmt;
 pub mod infer_experiment;
 pub mod inner_distance;
 pub mod junction_annotation;
