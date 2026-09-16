@@ -98,7 +98,6 @@ where
 mod tests {
     use super::*;
     use noodles_sam::{
-        alignment::io::Write as _,
         alignment::record::{MappingQuality, cigar::Op, cigar::op::Kind},
         alignment::record_buf::Cigar,
         header::record::value::{Map, map::ReferenceSequence},

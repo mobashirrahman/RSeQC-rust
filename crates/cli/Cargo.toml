@@ -21,6 +21,11 @@ path = "src/bin/split_paired_bam.rs"
 name = "bam2fq"
 path = "src/bin/bam2fq.rs"
 
+[[bin]]
+# Same naming note as above: packaging aliases this to `divide_bam.py`.
+name = "divide_bam"
+path = "src/bin/divide_bam.rs"
+
 [dependencies]
 rseqc-core = { path = "../core" }
 rseqc-formats = { path = "../formats" }
@@ -28,3 +33,4 @@ rseqc-commands = { path = "../commands" }
 clap = { version = "4", features = ["derive"] }
 noodles-bam = "0.95.0"
 noodles-sam = "0.90.0"
+rand = "0.8"
