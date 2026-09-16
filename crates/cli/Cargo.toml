@@ -56,6 +56,11 @@ path = "src/bin/clipping_profile.rs"
 name = "insertion_profile"
 path = "src/bin/insertion_profile.rs"
 
+[[bin]]
+# Same naming note as above: packaging aliases this to `deletion_profile.py`.
+name = "deletion_profile"
+path = "src/bin/deletion_profile.rs"
+
 [dependencies]
 rseqc-core = { path = "../core" }
 rseqc-formats = { path = "../formats" }
