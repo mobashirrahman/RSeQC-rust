@@ -8,6 +8,7 @@ use std::path::Path;
 
 use noodles_sam as sam;
 
+pub mod bed;
 pub mod cigar;
 pub mod interval;
 
