@@ -73,6 +73,35 @@ pub fn expand_cigar_to_read_ops(cigar: impl IntoIterator<Item = Op>) -> Vec<u8> 
     out
 }
 
+/// Deletion positions within a read, as `(read_position, deletion_size)`
+/// pairs, read-position 0-based. Ported from `bam_cigar.fetch_deletion_range`.
+///
+/// Only M/S/I (op codes 0/4/1) advance the read-position counter (they
+/// consume the read); a `D` op records `(current_position, its_length)`
+/// WITHOUT advancing the counter further (a deletion doesn't consume read
+/// bases); N/H/P and, matching the same upstream limitation as
+/// [`fetch_exon_blocks`] and [`expand_cigar_to_read_ops`], `=`/`X` do
+/// neither (upstream's `else: continue` -- codes 7/8 predate wide `=`/`X`
+/// usage and are silently not treated as read-consuming here either).
+pub fn fetch_deletion_range(cigar: impl IntoIterator<Item = Op>) -> Vec<(usize, usize)> {
+    let mut read_pos = 0usize;
+    let mut bounds = Vec::new();
+
+    for op in cigar {
+        match op.kind() {
+            Kind::Match | Kind::SoftClip | Kind::Insertion => {
+                read_pos += op.len();
+            }
+            Kind::Deletion => {
+                bounds.push((read_pos, op.len()));
+            }
+            Kind::Skip | Kind::HardClip | Kind::Pad | Kind::SequenceMatch | Kind::SequenceMismatch => {}
+        }
+    }
+
+    bounds
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -148,5 +177,47 @@ mod tests {
             Op::new(Kind::SequenceMismatch, 1),
         ];
         assert_eq!(expand_cigar_to_read_ops(cigar), b"II==X".to_vec());
+    }
+
+    #[test]
+    fn deletion_range_records_position_without_advancing() {
+        // 5M2D3M: deletion recorded at read-position 5 (after the first
+        // 5M), and the following 3M starts at position 5 too (the 2D does
+        // not consume read bases).
+        let cigar = vec![
+            Op::new(Kind::Match, 5),
+            Op::new(Kind::Deletion, 2),
+            Op::new(Kind::Match, 3),
+        ];
+        assert_eq!(fetch_deletion_range(cigar), vec![(5, 2)]);
+    }
+
+    #[test]
+    fn deletion_range_soft_clip_and_insertion_also_advance() {
+        // 2S3M1I1D4M: read-position advances through S/M/I (2+3+1=6),
+        // then the 1D is recorded at position 6.
+        let cigar = vec![
+            Op::new(Kind::SoftClip, 2),
+            Op::new(Kind::Match, 3),
+            Op::new(Kind::Insertion, 1),
+            Op::new(Kind::Deletion, 1),
+            Op::new(Kind::Match, 4),
+        ];
+        assert_eq!(fetch_deletion_range(cigar), vec![(6, 1)]);
+    }
+
+    #[test]
+    fn deletion_range_multiple_deletions_and_skip_does_not_advance() {
+        // 2M1D2M3N1D2M: skip (N) doesn't advance read-position, so the
+        // second deletion is recorded at position 4 (2+2), not 7.
+        let cigar = vec![
+            Op::new(Kind::Match, 2),
+            Op::new(Kind::Deletion, 1),
+            Op::new(Kind::Match, 2),
+            Op::new(Kind::Skip, 3),
+            Op::new(Kind::Deletion, 1),
+            Op::new(Kind::Match, 2),
+        ];
+        assert_eq!(fetch_deletion_range(cigar), vec![(2, 1), (4, 1)]);
     }
 }
