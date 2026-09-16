@@ -96,6 +96,11 @@ path = "src/bin/junction_annotation.rs"
 name = "split_bam"
 path = "src/bin/split_bam.rs"
 
+[[bin]]
+# Same naming note as above: packaging aliases this to `junction_saturation.py`.
+name = "junction_saturation"
+path = "src/bin/junction_saturation.rs"
+
 [dependencies]
 rseqc-core = { path = "../core" }
 rseqc-formats = { path = "../formats" }

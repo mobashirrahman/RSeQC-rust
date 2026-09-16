@@ -10,6 +10,7 @@ pub mod mismatch_profile;
 pub mod infer_experiment;
 pub mod inner_distance;
 pub mod junction_annotation;
+pub mod junction_saturation;
 pub mod insertion_profile;
 pub mod divide_bam;
 pub mod read_duplication;
