@@ -1,0 +1,28 @@
+# Frozen oracle baseline (PORTING_PLAN.md Step 1, deliverable of gate G0).
+# Do not mutate in place; a new baseline gets a new file/profile.
+
+source:
+  repo: https://github.com/liguowang/RSeQC.git
+  commit: 59a24c5a0c4b0c86b7ac3f5babf92e4eb69c2f24
+  commit_date: "2026-07-27T10:04:43-05:00"
+  package_version_declared: "5.0.5"  # from pyproject.toml; not independently verified against published PyPI sdist yet
+  checkout_path_in_repo: oracle/upstream-src/   # gitignored working copy of scripts/ + src/, for investigator/coder reads
+  source_tree_sha256_scripts_and_src: c13af649e85e5599ab9c9c17546353fe29cb390f76b8b74911db96a2463834f5
+    # sha256 of `tar -cf - -C oracle/upstream-src .` on this host; recompute and compare after any refresh
+
+primary_baseline: github   # decision per PORTING_PLAN.md Step 1.3; PyPI 5.0.5 sdist cross-check not yet performed
+
+host_used_for_lock:
+  os: Linux 6.14.0-37-generic (Ubuntu 24.04-based)
+  arch: x86_64
+  python: "3.13.13"
+  note: >
+    Upstream's own environment (pysam/bx-python/numpy/pyBigWig/logomaker/pandas/matplotlib/
+    Rscript/wigToBigWig pins) is NOT yet built. This lock only pins the source identity;
+    Step 2 (executable reference environment) still needs the dependency version matrix,
+    container digest, locale, and timezone before oracle runs are trustworthy.
+
+open_items:
+  - Independently inspect the matching PyPI 5.0.5 release and confirm it matches this commit's contents.
+  - Pin exact Python/pysam/bx-python/numpy/pyBigWig/logomaker/pandas/matplotlib versions.
+  - Resolve README (GPL-3.0-or-later) vs LICENSE (GPLv3) vs classifier (GPLv2) inconsistency before release metadata is chosen.
