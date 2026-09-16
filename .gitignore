@@ -1,2 +1,5 @@
 .env
 .opencode/node_modules/
+oracle/upstream-src/
+/target/
+/.claude/scheduled_tasks.lock

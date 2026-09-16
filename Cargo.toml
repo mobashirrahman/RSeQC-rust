@@ -1,0 +1,20 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/core",
+    "crates/formats",
+    "crates/commands",
+    "crates/render",
+    "crates/cli",
+    "crates/python",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+license = "GPL-3.0-or-later"
+repository = "https://github.com/TBD/rseqc-rust"
+
+[profile.release]
+lto = true
+codegen-units = 1

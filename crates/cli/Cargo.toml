@@ -1,0 +1,18 @@
+[package]
+name = "rseqc-cli"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[[bin]]
+# Cargo bin names can't contain '.'; the packaging step (PORTING_PLAN Step 10)
+# creates a `bam_stat.py` symlink/copy of this binary for PATH invocation
+# under the original upstream name.
+name = "bam_stat"
+path = "src/main.rs"
+
+[dependencies]
+rseqc-core = { path = "../core" }
+rseqc-formats = { path = "../formats" }
+rseqc-commands = { path = "../commands" }
+clap = { version = "4", features = ["derive"] }

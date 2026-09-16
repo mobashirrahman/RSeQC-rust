@@ -1,0 +1,8 @@
+[package]
+name = "rseqc-render"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+rseqc-core = { path = "../core" }
