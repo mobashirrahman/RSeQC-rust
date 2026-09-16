@@ -71,6 +71,11 @@ path = "src/bin/mismatch_profile.rs"
 name = "infer_experiment"
 path = "src/bin/infer_experiment.rs"
 
+[[bin]]
+# Same naming note as above: packaging aliases this to `RNA_fragment_size.py`.
+name = "RNA_fragment_size"
+path = "src/bin/rna_fragment_size.rs"
+
 [dependencies]
 rseqc-core = { path = "../core" }
 rseqc-formats = { path = "../formats" }

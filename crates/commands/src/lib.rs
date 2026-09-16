@@ -14,4 +14,5 @@ pub mod read_duplication;
 pub mod read_gc;
 pub mod read_nvc;
 pub mod read_quality;
+pub mod rna_fragment_size;
 pub mod split_paired_bam;
