@@ -115,3 +115,33 @@ divergences:
     classification: upstream-bug
     decision: Preserved exactly, same rationale as DIV-0008.
     status: accepted
+
+  - id: DIV-0011
+    command_or_api: tin.py
+    description: >
+      Upstream's genebody_coverage() calls pysam.AlignmentFile.pileup()
+      with no explicit flag_filter/min_base_quality/ignore_overlaps
+      arguments, so pysam's own defaults silently apply:
+      flag_filter=BAM_FUNMAP|BAM_FSECONDARY|BAM_FQCFAIL|BAM_FDUP (excludes
+      duplicate-flagged reads from coverage, unlike check_min_reads/
+      estimate_bg_noise which use fetch() with no such filter and so DO
+      count duplicates -- a real asymmetry, replicated in the Rust port);
+      min_base_quality=13 (bases below phred 13 excluded from coverage --
+      replicated); and ignore_overlaps=True (overlapping paired-end mates
+      at a shared reference position are deduplicated, counting only the
+      higher-quality base once -- NOT replicated in the Rust port, which
+      double-counts such positions). Also, query_length used by
+      estimate_bg_noise is taken from the read's SEQ length rather than
+      reproducing pysam's CIGAR-based inference fallback for a missing SEQ
+      ("*"), a case expected to be rare in practice.
+    classification: unimplemented-pysam-default
+    decision: >
+      flag_filter and min_base_quality defaults are replicated exactly
+      since they are simple, well-defined per-read/per-base checks.
+      ignore_overlaps mate-pair deduplication is NOT implemented -- it
+      requires pairing reads by QNAME and position, a substantially larger
+      undertaking than the rest of this command, and getting it subtly
+      wrong would be worse than a disclosed gap. TIN scores on paired-end
+      BAMs with an appreciable insert-size overlap will run somewhat high
+      relative to upstream until this is implemented.
+    status: accepted

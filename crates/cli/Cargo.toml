@@ -101,6 +101,11 @@ path = "src/bin/split_bam.rs"
 name = "junction_saturation"
 path = "src/bin/junction_saturation.rs"
 
+[[bin]]
+# Same naming note as above: packaging aliases this to `tin.py`.
+name = "tin"
+path = "src/bin/tin.rs"
+
 [dependencies]
 rseqc-core = { path = "../core" }
 rseqc-formats = { path = "../formats" }
