@@ -27,6 +27,11 @@ name = "divide_bam"
 path = "src/bin/divide_bam.rs"
 
 [[bin]]
+# Same naming note as above: packaging aliases this to `read_GC.py`.
+name = "read_GC"
+path = "src/bin/read_GC.rs"
+
+[[bin]]
 # Same naming note as above: packaging aliases this to `read_NVC.py`.
 name = "read_NVC"
 path = "src/bin/read_NVC.rs"
