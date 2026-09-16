@@ -1,0 +1,22 @@
+# exit=0
+usage: read_GC.py [-h] -i INPUT_FILE -o OUTPUT_PREFIX [-q INT] [--skip-plot]
+                  [--rscript PATH] [--version]
+
+Calculate the GC-content distribution of aligned reads that satisfy the requested mapping-quality threshold.
+
+options:
+  -h, --help            show this help message and exit
+  -i, --input-file INPUT_FILE
+                        Input alignment file in BAM or SAM format.
+  -o, --out-prefix OUTPUT_PREFIX
+                        Prefix for generated output files.
+  -q, --mapq INT        Minimum mapping quality for an alignment to be treated
+                        as uniquely mapped. Default: 30
+  --skip-plot           Generate GC-profile data but do not execute the R
+                        plotting script.
+  --rscript PATH        Rscript executable to use. Default: Rscript
+  --version             show program's version number and exit
+
+Example
+-------
+read_GC.py -i sample.bam -o sample -q 30

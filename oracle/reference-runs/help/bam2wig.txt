@@ -1,0 +1,33 @@
+# exit=0
+usage: bam2wig.py [-h] -i INPUT_FILE -s CHROM_SIZE -o OUT_PREFIX [-t FLOAT]
+                  [-u] [-d STRAND_RULE] [-q INT] [--version]
+
+Convert a sorted, indexed BAM file into WIG coverage files. SAM input is not
+supported.
+
+options:
+  -h, --help            show this help message and exit
+  -i, --input-file INPUT_FILE
+                        Coordinate-sorted BAM file. The BAM index must be
+                        available as <file>.bai or alongside the BAM as
+                        <stem>.bai.
+  -s, --chrom-size, --chromSize CHROM_SIZE
+                        Two-column chromosome-size file containing chromosome
+                        name and length. Names must match those in the BAM
+                        file.
+  -o, --out-prefix OUT_PREFIX
+                        Output prefix. Unstranded data produce one WIG file;
+                        stranded data produce forward and reverse WIG files.
+  -t, --wigsum FLOAT    Target total WIG sum used for normalization. For
+                        example, 1,000,000,000 corresponds to the coverage
+                        from ten million 100-nt reads. Omit to disable
+                        normalization.
+  -u, --skip-multi-hits
+                        Exclude non-unique alignments.
+  -d, --strand STRAND_RULE
+                        Strand rule, for example '1++,1--,2+-,2-+'. Use
+                        infer_experiment.py if the library protocol is
+                        unknown.
+  -q, --mapq INT        Minimum mapping quality used to identify uniquely
+                        mapped reads. Default: 30
+  --version             show program's version number and exit

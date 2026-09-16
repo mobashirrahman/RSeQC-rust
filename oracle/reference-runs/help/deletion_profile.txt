@@ -1,0 +1,24 @@
+# exit=0
+usage: deletion_profile.py [-h] -i INPUT_BAM -l INT -o OUTPUT_PREFIX [-n INT]
+                           [-q INT] [--skip-plot] [--rscript PATH] [--version]
+
+Calculate the distribution of deleted nucleotides across aligned reads.
+
+options:
+  -h, --help            show this help message and exit
+  -i, --input INPUT_BAM
+                        Input BAM file.
+  -l, --read-align-length INT
+                        Aligned read length, usually the original read length.
+                        For example, CIGAR strings 101M, 68M140N33M, and
+                        53M1D48M all correspond to an aligned read length of
+                        101.
+  -o, --out-prefix OUTPUT_PREFIX
+                        Prefix for generated output files.
+  -n, --read-num INT    Maximum number of aligned reads containing deletions
+                        to use. Default: 1000000
+  -q, --mapq INT        Minimum mapping quality. Default: 30
+  --skip-plot           Generate profile data but do not run the R plotting
+                        script.
+  --rscript PATH        Rscript executable to use. Default: Rscript
+  --version             show program's version number and exit

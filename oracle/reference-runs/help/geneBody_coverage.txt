@@ -1,0 +1,30 @@
+# exit=0
+usage: geneBody_coverage.py [-h] -i INPUT_FILES -r REF_GENE_MODEL [-l INT]
+                            [-f {pdf,png,jpeg}] -o OUTPUT_PREFIX [--skip-plot]
+                            [--rscript PATH] [--version]
+
+Calculate RNA-seq read coverage across the gene body. Notes ----- 1. Input BAM
+files must be coordinate-sorted and indexed. 2. SAM input is not supported. 3.
+Transcripts shorter than ``--minimum-length`` are skipped. 4. The minimum
+allowed transcript length is 100 bp. The coverage, percentile, normalization,
+and skewness algorithms are preserved from the original implementation.
+
+options:
+  -h, --help            show this help message and exit
+  -i, --input INPUT_FILES
+                        A BAM file, comma-separated BAM files, a directory
+                        containing BAM files, or a text file listing BAM
+                        paths.
+  -r, --refgene REF_GENE_MODEL
+                        Reference gene model in BED12 format.
+  -l, --minimum-length, --minimum_length INT
+                        Minimum transcript length in bp. Values below 100 are
+                        not allowed. Default: 100
+  -f, --format {pdf,png,jpeg}
+                        Plot output format. Default: pdf
+  -o, --out-prefix OUTPUT_PREFIX
+                        Prefix for output files.
+  --skip-plot           Generate data and R code but do not execute the R
+                        script.
+  --rscript PATH        Rscript executable to use. Default: Rscript
+  --version             show program's version number and exit

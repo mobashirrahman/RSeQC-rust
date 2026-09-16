@@ -1,0 +1,31 @@
+# exit=0
+usage: read_hexamer.py [-h] -i INPUT_READS [-r REF_GENOME] [-g REF_GENE]
+                       [-o OUTPUT] [--skip-missing] [--version]
+
+Calculate normalized hexamer frequencies for one or more read files, with optional reference-genome and reference-transcriptome comparisons.
+
+options:
+  -h, --help            show this help message and exit
+  -i, --input INPUT_READS
+                        Comma-separated FASTA/FASTQ read files, for example
+                        'reads_1.fq,reads_2.fa'.
+  -r, --refgenome REF_GENOME
+                        Optional reference-genome FASTA file.
+  -g, --refgene REF_GENE
+                        Optional reference mRNA/transcript FASTA file.
+  -o, --output OUTPUT   Write the frequency table to this file instead of
+                        standard output.
+  --skip-missing        Skip missing read files with a warning. By default,
+                        any missing input file is treated as an error.
+  --version             show program's version number and exit
+
+Example
+-------
+read_hexamer.py     -i reads_1.fastq,reads_2.fastq     -r genome.fa     -g transcripts.fa
+
+Notes
+-----
+* Input sequence files may be in FASTA or FASTQ format.
+* Multiple read files are supplied as a comma-separated list.
+* Hexamers containing N are omitted from the output.
+* Output is written to standard output.

@@ -1,0 +1,25 @@
+# exit=0
+usage: FPKM-UQ.py [-h] --bam BAM_FILE --gtf GTF_FILE --info INFO_FILE
+                  -o OUT_PREFIX [--log2] [--htseq-count PATH]
+                  [--print-htseq-command] [--version]
+
+Calculate raw counts, FPKM, and upper-quartile normalized FPKM. The FPKM and
+FPKM-UQ calculations intentionally preserve the original RSeQC/TCGA-compatible
+algorithm.
+
+options:
+  -h, --help            show this help message and exit
+  --bam BAM_FILE        Coordinate-sorted BAM file. For TCGA-compatible
+                        results, use alignments produced by the corresponding
+                        TCGA RNA-seq workflow.
+  --gtf GTF_FILE        Gene model in GTF format.
+  --info INFO_FILE      Gene information file containing exon lengths and gene
+                        types.
+  -o, --output OUT_PREFIX
+                        Prefix for output files.
+  --log2                Report log2(FPKM + 1) and log2(FPKM-UQ + 1).
+  --htseq-count PATH    htseq-count executable to use. Default: htseq-count
+  --print-htseq-command
+                        Print the htseq-count command and exit without running
+                        it.
+  --version             show program's version number and exit

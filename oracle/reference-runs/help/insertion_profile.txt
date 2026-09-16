@@ -1,0 +1,33 @@
+# exit=0
+usage: insertion_profile.py [-h] -i INPUT_FILE -o OUT_PREFIX [-q INT]
+                            -s {SE,PE} [--skip-plot] [--rscript PATH]
+                            [--version]
+
+Calculate the positional distribution of inserted nucleotides from CIGAR insertion (I) operations in a SAM/BAM alignment file.
+
+options:
+  -h, --help            show this help message and exit
+  -i, --input-file INPUT_FILE
+                        Input alignment file in BAM or SAM format.
+  -o, --out-prefix OUT_PREFIX
+                        Prefix for generated output files.
+  -q, --mapq INT        Minimum mapping quality for an alignment to be
+                        considered uniquely mapped. Default: 30
+  -s, --sequencing {SE,PE}
+                        Sequencing layout: SE for single-end or PE for paired-
+                        end.
+  --skip-plot           Generate profile files but do not execute the R
+                        plotting script.
+  --rscript PATH        Rscript executable to use. Default: Rscript
+  --version             show program's version number and exit
+
+Examples
+--------
+Single-end data:
+    insertion_profile.py -i sample.bam -o sample -s SE
+
+Paired-end data:
+    insertion_profile.py -i sample.bam -o sample -s PE
+
+Generate profile data without running R:
+    insertion_profile.py -i sample.bam -o sample -s PE --skip-plot

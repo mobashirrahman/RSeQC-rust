@@ -1,0 +1,12 @@
+# exit=0
+usage: bam_stat.py [-h] -i INPUT_FILE [-q INT] [--version]
+
+Summarize mapping statistics for a BAM or SAM alignment file.
+
+options:
+  -h, --help            show this help message and exit
+  -i, --input-file INPUT_FILE
+                        Alignment file in BAM or SAM format.
+  -q, --mapq INT        Minimum mapping quality (Phred-scaled) used to
+                        identify uniquely mapped reads. Default: 30
+  --version             show program's version number and exit

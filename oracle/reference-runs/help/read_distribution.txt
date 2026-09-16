@@ -1,0 +1,27 @@
+# exit=0
+usage: read_distribution.py [-h] -i INPUT_FILE -r REF_GENE_MODEL [--version]
+
+Report how aligned read blocks are distributed across CDS exons, UTRs, introns, and flanking intergenic regions.
+
+options:
+  -h, --help            show this help message and exit
+  -i, --input-file INPUT_FILE
+                        Input alignment file in BAM or SAM format.
+  -r, --refgene REF_GENE_MODEL
+                        Reference gene model in BED format.
+  --version             show program's version number and exit
+
+Assignment priority
+-------------------
+Each aligned block is assigned by its midpoint using this order:
+
+1. CDS exon
+2. 5' UTR
+3. 3' UTR
+4. Intron
+5. Upstream/downstream intergenic bins
+6. Unassigned
+
+Example
+-------
+read_distribution.py -i sample.bam -r genes.bed12

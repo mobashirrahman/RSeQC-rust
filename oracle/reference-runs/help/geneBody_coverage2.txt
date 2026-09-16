@@ -1,0 +1,23 @@
+# exit=0
+usage: geneBody_coverage2.py [-h] -i INPUT_FILE -r REF_GENE_MODEL
+                             -o OUTPUT_PREFIX [-t {pdf,png,bmp,jpeg,tiff}]
+                             [--skip-plot] [--rscript PATH] [--version]
+
+Calculate RNA-seq coverage across the gene body from a BigWig file. The
+transcript-coordinate construction, 100-point percentile sampling, and
+coverage aggregation algorithm are preserved from the original implementation.
+
+options:
+  -h, --help            show this help message and exit
+  -i, --input-file INPUT_FILE
+                        Coverage signal file in BigWig format.
+  -r, --refgene REF_GENE_MODEL
+                        Reference gene model in BED12 format.
+  -o, --out-prefix OUTPUT_PREFIX
+                        Prefix for generated output files.
+  -t, --graph-type {pdf,png,bmp,jpeg,tiff}
+                        Plot file type. Default: pdf
+  --skip-plot           Generate data and R code but do not execute the R
+                        script.
+  --rscript PATH        Rscript executable to use. Default: Rscript
+  --version             show program's version number and exit

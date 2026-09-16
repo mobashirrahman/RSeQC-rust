@@ -1,0 +1,32 @@
+# exit=0
+usage: read_quality.py [-h] -i INPUT_FILE -o OUTPUT_PREFIX [-r INT] [-q INT]
+                       [--skip-plot] [--rscript PATH] [--version]
+
+Calculate the Phred quality-score distribution at each read position. Input reads should have a fixed, consistent length.
+
+options:
+  -h, --help            show this help message and exit
+  -i, --input-file INPUT_FILE
+                        Input alignment file in BAM or SAM format.
+  -o, --out-prefix OUTPUT_PREFIX
+                        Prefix for generated output files.
+  -r, --reduce INT      Ignore quality-score observations occurring fewer than
+                        this number of times when preparing boxplot data.
+                        Default: 1
+  -q, --mapq INT        Minimum mapping quality for an alignment to be treated
+                        as uniquely mapped. Default: 30
+  --skip-plot           Generate quality-profile data but do not execute the R
+                        script.
+  --rscript PATH        Rscript executable to use. Default: Rscript
+  --version             show program's version number and exit
+
+Example
+-------
+read_quality.py -i sample.bam -o sample -r 1 -q 30
+
+Notes
+-----
+* --reduce affects only the generated boxplot data.
+* A value of 1 retains maximum precision.
+* Larger values reduce the size of vectors passed to R, using less memory
+  at the cost of reduced plotting precision.

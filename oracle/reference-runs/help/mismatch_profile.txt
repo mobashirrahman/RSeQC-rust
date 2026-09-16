@@ -1,0 +1,32 @@
+# exit=0
+usage: mismatch_profile.py [-h] -i INPUT_BAM -l INT -o OUTPUT_PREFIX [-n INT]
+                           [-q INT] [--skip-plot] [--rscript PATH] [--version]
+
+Calculate the positional distribution of mismatches across aligned reads. The BAM file must contain MD tags.
+
+options:
+  -h, --help            show this help message and exit
+  -i, --input INPUT_BAM
+                        Input BAM file.
+  -l, --read-align-length INT
+                        Aligned read length, usually the original read length.
+  -o, --out-prefix OUTPUT_PREFIX
+                        Prefix for generated output files.
+  -n, --read-num INT    Maximum number of aligned reads with mismatches to
+                        sample. Default: 1000000
+  -q, --mapq INT        Minimum mapping quality. Default: 30
+  --skip-plot           Generate profile files but do not execute the R
+                        plotting script.
+  --rscript PATH        Rscript executable to use. Default: Rscript
+  --version             show program's version number and exit
+
+Example
+-------
+mismatch_profile.py -i sample.bam -l 101 -o sample -n 1000000 -q 30
+
+Notes
+-----
+* --read-align-length is usually the original read length.
+* CIGAR strings such as 101M, 68M140N33M, and 53M1D48M all correspond
+  to a read alignment length of 101.
+* The BAM file must contain MD tags.

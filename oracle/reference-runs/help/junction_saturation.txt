@@ -1,0 +1,44 @@
+# exit=0
+usage: junction_saturation.py [-h] -i INPUT_FILE -o OUT_PREFIX -r REFGENE_BED
+                              [-l INT] [-u INT] [-s INT] [-m INT] [-v INT]
+                              [-q INT] [--skip-plot] [--rscript PATH]
+                              [--version]
+
+Estimate splice-junction saturation by repeatedly subsampling alignments and measuring the number of discovered junctions.
+
+options:
+  -h, --help            show this help message and exit
+  -i, --input-file INPUT_FILE
+                        Input alignment file in BAM or SAM format.
+  -o, --out-prefix OUT_PREFIX
+                        Prefix for generated output files.
+  -r, --refgene REFGENE_BED
+                        Reference gene model in BED format, used to classify
+                        known splice junctions.
+  -l, --percentile-floor INT
+                        Starting sampling percentile. Default: 5
+  -u, --percentile-ceiling INT
+                        Ending sampling percentile. Default: 100
+  -s, --percentile-step INT
+                        Sampling percentile step. Smaller values perform more
+                        subsampling iterations. Default: 5
+  -m, --min-intron INT  Minimum intron length in bp. Default: 50
+  -v, --min-coverage INT
+                        Minimum number of supporting reads required to call a
+                        junction. Default: 1
+  -q, --mapq INT        Minimum mapping quality for an alignment to be
+                        considered uniquely mapped. Default: 30
+  --skip-plot           Generate saturation data but do not execute the R
+                        plotting script.
+  --rscript PATH        Rscript executable to use. Default: Rscript
+  --version             show program's version number and exit
+
+Interpretation
+--------------
+As sequencing depth approaches saturation, progressively fewer new splice
+junctions should be discovered.
+
+Example
+-------
+junction_saturation.py -i sample.bam -r genes.bed12 -o sample -l 5 -u 100 \
+    -s 5 -m 50 -v 1 -q 30

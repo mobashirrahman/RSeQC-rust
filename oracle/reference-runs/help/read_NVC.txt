@@ -1,0 +1,27 @@
+# exit=0
+usage: read_NVC.py [-h] -i INPUT_FILE -o OUTPUT_PREFIX [-x] [-q INT]
+                   [--skip-plot] [--rscript PATH] [--version]
+
+Calculate nucleotide frequency at each read position from 5' to 3' and generate data for a nucleotide-versus-cycle plot.
+
+options:
+  -h, --help            show this help message and exit
+  -i, --input-file INPUT_FILE
+                        Input alignment file in BAM or SAM format.
+  -o, --out-prefix OUTPUT_PREFIX
+                        Prefix for generated output files.
+  -x, --nx              Include ambiguous nucleotides N and X in the NVC
+                        output.
+  -q, --mapq INT        Minimum mapping quality for an alignment to be treated
+                        as uniquely mapped. Default: 30
+  --skip-plot           Generate NVC data but do not execute the R plotting
+                        script.
+  --rscript PATH        Rscript executable to use. Default: Rscript
+  --version             show program's version number and exit
+
+Example
+-------
+read_NVC.py -i sample.bam -o sample -q 30
+
+Include ambiguous bases N and X:
+    read_NVC.py -i sample.bam -o sample -x

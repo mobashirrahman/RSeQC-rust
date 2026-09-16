@@ -1,0 +1,28 @@
+# exit=0
+usage: FPKM_count.py [-h] -i INPUT_FILE -o OUT_PREFIX -r REFGENE_BED
+                     [-d STRAND_RULE] [-u] [-e] [-q INT] [-s FLOAT]
+                     [--version]
+
+Calculate fragment counts, FPM, and FPKM for BED12 transcript models. The
+counting rules intentionally match the original RSeQC implementation.
+
+options:
+  -h, --help            show this help message and exit
+  -i, --input-file INPUT_FILE
+                        Alignment file in BAM format. SAM is not supported.
+  -o, --out-prefix OUT_PREFIX
+                        Prefix for output files.
+  -r, --refgene REFGENE_BED
+                        Reference gene model in BED12 format.
+  -d, --strand STRAND_RULE
+                        Strand rule, for example '1++,1--,2+-,2-+'. Omit for
+                        unstranded RNA-seq.
+  -u, --skip-multi-hits
+                        Skip alignments with mapping quality below --mapq.
+  -e, --only-exonic     Use exonic fragments rather than all fragments for
+                        normalization.
+  -q, --mapq INT        Minimum mapping quality. Default: 30
+  -s, --single-read FLOAT
+                        Weight for pairs with only one mapped end: 0, 0.5, or
+                        1. Default: 1.0
+  --version             show program's version number and exit

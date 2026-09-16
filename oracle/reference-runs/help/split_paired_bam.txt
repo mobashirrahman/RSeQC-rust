@@ -1,0 +1,41 @@
+# exit=0
+usage: split_paired_bam.py [-h] -i INPUT_FILE -o OUTPUT_PREFIX
+                           [--index-output] [--overwrite] [--verbose]
+                           [--version]
+
+Split a paired-end BAM into separate single-end BAM files for read 1, read 2, and unmapped records.
+
+options:
+  -h, --help            show this help message and exit
+  -i, --input-file INPUT_FILE
+                        Input paired-end BAM file.
+  -o, --out-prefix OUTPUT_PREFIX
+                        Prefix for the R1, R2, and unmapped BAM files.
+  --index-output        Create BAI indexes for the output BAM files.
+  --overwrite           Allow existing output BAM and index files to be
+                        replaced.
+  --verbose             Enable detailed progress logging.
+  --version             show program's version number and exit
+
+Outputs
+-------
+PREFIX.R1.bam
+    Mapped records marked as read 1.
+
+PREFIX.R2.bam
+    Other mapped records, historically including read-2 records.
+
+PREFIX.unmap.bam
+    Unmapped records written without modification.
+
+Example
+-------
+split_paired_bam.py     -i sample.bam     -o sample_split     --index-output
+
+Notes
+-----
+* Mapped records are rewritten as unpaired single-end alignments.
+* Reference position, CIGAR, MAPQ, sequence, qualities, and auxiliary tags
+  are retained.
+* Mate-reference, mate-position, template-length, and paired-end flags are
+  intentionally removed from mapped output records.

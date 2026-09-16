@@ -1,0 +1,45 @@
+# exit=0
+usage: infer_experiment.py [-h] -i INPUT_FILE -r REFGENE_BED [-s INT] [-q INT]
+                           [--version]
+
+Infer RNA-seq library layout and strandedness from a SAM/BAM file.
+
+options:
+  -h, --help            show this help message and exit
+  -i, --input-file INPUT_FILE
+                        Input alignment file in SAM or BAM format.
+  -r, --refgene REFGENE_BED
+                        Reference gene model in BED format.
+  -s, --sample-size INT
+                        Number of alignments sampled from the SAM/BAM file.
+                        Default: 200000
+  -q, --mapq INT        Minimum mapping quality for an alignment to be
+                        considered uniquely mapped. Default: 30
+  --version             show program's version number and exit
+
+Examples
+--------
+Pair-end strand-specific
+  1++,1--,2+-,2-+ (dUTP))
+     * read1 mapped to '+' strand indicates parental gene on '+' strand
+     * read1 mapped to '-' strand indicates parental gene on '-' strand
+     * read2 mapped to '+' strand indicates parental gene on '-' strand
+     * read2 mapped to '-' strand indicates parental gene on '+' strand
+     
+  1+-,1-+,2++,2-- (Illumina TruSeq):
+     * read1 mapped to '+' strand indicates parental gene on '-' strand
+     * read1 mapped to '-' strand indicates parental gene on '+' strand
+     * read2 mapped to '+' strand indicates parental gene on '+' strand
+     * read2 mapped to '-' strand indicates parental gene on '-' strand
+     
+Single-end:
+  ++,--     (same strand)
+     * read mapped to '+' strand indicates parental gene on '+' strand
+     * read mapped to '-' strand indicates parental gene on '-' strand
+  +-,-+     (opposite strand)
+     * read mapped to '+' strand indicates parental gene on '-' strand
+     * read mapped to '-' strand indicates parental gene on '+' strand
+Notes
+-----
+* A sample size of at least 200,000 alignments is recommended.
+* Reads should be aligned as non-strand-specific before running this tool.

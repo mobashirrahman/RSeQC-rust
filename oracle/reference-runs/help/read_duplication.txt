@@ -1,0 +1,32 @@
+# exit=0
+usage: read_duplication.py [-h] -i INPUT_FILE -o OUTPUT_PREFIX [-u INT]
+                           [-q INT] [--skip-plot] [--rscript PATH] [--version]
+
+Estimate read duplication using both sequence identity and alignment position.
+
+options:
+  -h, --help            show this help message and exit
+  -i, --input-file INPUT_FILE
+                        Input alignment file in BAM or SAM format.
+  -o, --out-prefix OUTPUT_PREFIX
+                        Prefix for generated output files.
+  -u, --up-limit INT    Upper occurrence limit used only for plotting.
+                        Default: 500
+  -q, --mapq INT        Minimum mapping quality for an alignment to be treated
+                        as uniquely mapped. Default: 30
+  --skip-plot           Generate duplication data but do not execute the R
+                        plot script.
+  --rscript PATH        Rscript executable to use. Default: Rscript
+  --version             show program's version number and exit
+
+Definitions
+-----------
+Sequence-based duplication
+    Reads with identical sequences are considered duplicates.
+
+Mapping-based duplication
+    Reads mapped to the same genomic location are considered duplicates.
+
+Example
+-------
+read_duplication.py     -i sample.bam     -o sample     -u 500     -q 30

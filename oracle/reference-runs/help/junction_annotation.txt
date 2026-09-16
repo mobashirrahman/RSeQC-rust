@@ -1,0 +1,36 @@
+# exit=0
+usage: junction_annotation.py [-h] -i INPUT_FILE -r REF_GENE_MODEL
+                              -o OUTPUT_PREFIX [-m INT] [-q INT] [--skip-plot]
+                              [--rscript PATH] [--skip-bed] [--skip-interact]
+                              [--version]
+
+Annotate RNA splicings at both read and consolidated junction levels using a gene model in BED format.
+
+options:
+  -h, --help            show this help message and exit
+  -i, --input-file INPUT_FILE
+                        Input alignment file in BAM or SAM format.
+  -r, --refgene REF_GENE_MODEL
+                        Reference gene model in BED format. A pooled
+                        annotation is recommended for junction classification.
+  -o, --out-prefix OUTPUT_PREFIX
+                        Prefix for generated output files.
+  -m, --min-intron INT  Minimum intron length in bp. Default: 50
+  -q, --mapq INT        Minimum mapping quality for an alignment to be
+                        considered uniquely mapped. Default: 30
+  --skip-plot           Generate annotation files but do not execute the R
+                        plotting script.
+  --rscript PATH        Rscript executable to use. Default: Rscript
+  --skip-bed            Do not generate the BED12 junction file.
+  --skip-interact       Do not generate the UCSC Interact junction file.
+  --version             show program's version number and exit
+
+Notes
+-----
+* A long read may contain multiple splice junctions.
+* Multiple reads spanning the same intron are consolidated into one junction.
+* The BED and Interact files are generated from <prefix>.junction.xls.
+
+Example
+-------
+junction_annotation.py -i sample.bam -r genes.bed12 -o sample -m 50 -q 30

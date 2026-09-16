@@ -1,0 +1,51 @@
+# exit=0
+usage: sc_bamStat.py [-h] -i BAM_FILE [--cb-tag TAG] [--re-tag TAG]
+                     [--tx-tag TAG] [--an-tag TAG] [--umi-tag TAG]
+                     [--xf-tag TAG] [--chrM-id NAME] [--verbose] [--version]
+
+Report single-cell RNA-seq mapping statistics from a tagged BAM file, such as a BAM produced by Cell Ranger.
+
+options:
+  -h, --help            show this help message and exit
+  -i, --infile BAM_FILE
+                        Input BAM file.
+  --cb-tag TAG          BAM tag containing the error-corrected cellular
+                        barcode. Default: CB
+  --re-tag TAG          BAM tag containing the alignment region type. Default:
+                        RE
+  --tx-tag TAG          BAM tag marking alignments on the transcript sense
+                        strand. Default: TX
+  --an-tag TAG          BAM tag marking alignments on the transcript antisense
+                        strand. Default: AN
+  --umi-tag TAG         BAM tag containing the error-corrected UMI. Default:
+                        UB
+  --xf-tag TAG          BAM tag marking reads confidently assigned to a
+                        feature. Default: xf
+  --chrM-id NAME        Mitochondrial contig name in the BAM header. Default:
+                        chrM
+  --verbose             Enable detailed progress logging.
+  --version             show program's version number and exit
+
+Default BAM tags
+----------------
+CB
+    Error-corrected cellular barcode.
+
+UB
+    Error-corrected unique molecular identifier (UMI).
+
+RE
+    Alignment region type: E = exonic, N = intronic, I = intergenic.
+
+TX
+    Alignment is on the same strand as an annotated transcript.
+
+AN
+    Alignment is on the antisense strand of an annotated transcript.
+
+xf
+    Alignment is confidently assigned to a feature.
+
+Example
+-------
+sc_bamStat.py     -i possorted_genome_bam.bam     --chrM-id chrM

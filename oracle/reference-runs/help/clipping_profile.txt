@@ -1,0 +1,23 @@
+# exit=0
+usage: clipping_profile.py [-h] -i INPUT_FILE -o OUT_PREFIX [-q INT]
+                           -s {SE,PE} [--skip-plot] [--rscript PATH]
+                           [--version]
+
+Estimate the clipping profile of RNA-seq reads from a BAM or SAM file. The
+alignments must contain soft-clipping (``S``) CIGAR operations.
+
+options:
+  -h, --help            show this help message and exit
+  -i, --input-file INPUT_FILE
+                        Alignment file in BAM or SAM format.
+  -o, --out-prefix OUT_PREFIX
+                        Prefix for generated output files.
+  -q, --mapq INT        Minimum mapping quality for an alignment to be
+                        considered uniquely mapped. Default: 30
+  -s, --sequencing {SE,PE}
+                        Sequencing layout: SE for single-end or PE for paired-
+                        end.
+  --skip-plot           Generate the profile files but do not run the R
+                        plotting script.
+  --rscript PATH        Rscript executable to use. Default: Rscript
+  --version             show program's version number and exit

@@ -1,0 +1,17 @@
+# exit=0
+usage: bam2fq.py [-h] -i INPUT_FILE -o OUT_PREFIX [-s] [-c] [--version]
+
+Convert alignments in BAM or SAM format to FASTQ.
+
+options:
+  -h, --help            show this help message and exit
+  -i, --input-file INPUT_FILE
+                        Alignment file in BAM or SAM format.
+  -o, --out-prefix OUT_PREFIX
+                        Prefix for the output FASTQ file or files. It does not
+                        synchronize mates or guarantee that the R1 and R2
+                        FASTQ files contain matching records in the same
+                        order.
+  -s, --single-end      Treat the input as single-end sequencing data.
+  -c, --compress        Compress output FASTQ files with gzip.
+  --version             show program's version number and exit

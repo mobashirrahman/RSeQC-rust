@@ -1,0 +1,52 @@
+# exit=0
+usage: sc_seqQual.py [-h] -i IN_FILE -o OUT_FILE [-n INT] [--cell-width INT]
+                     [--cell-height INT] [--font-size INT]
+                     [--angle {0,45,90,270,315}] [--text-color COLOR]
+                     [--file-type {pdf,png,tiff,bmp,jpeg}] [--no-num]
+                     [--skip-heatmap] [--rscript PATH] [--install-r-deps]
+                     [--cran-mirror URL] [--verbose] [--version]
+
+Generate per-cycle Phred quality-count and quality-percentage matrices from a FASTQ file, then optionally render a heatmap.
+
+options:
+  -h, --help            show this help message and exit
+  -i, --infile IN_FILE  Input FASTQ file; compressed input is supported by
+                        qcmodule.fastq.
+  -o, --outfile OUT_FILE
+                        Prefix for generated matrix and heatmap files.
+  -n, --nseq-limit INT  Maximum number of sequences to process. Default: all
+  --cell-width INT      Heatmap cell width in points. Default: 12
+  --cell-height INT     Heatmap cell height in points. Default: 10
+  --font-size INT       Heatmap font size in points. Default: 6
+  --angle {0,45,90,270,315}
+                        Column-label angle. Default: 45
+  --text-color COLOR    Color of numbers displayed in heatmap cells. Default:
+                        black
+  --file-type {pdf,png,tiff,bmp,jpeg}
+                        Heatmap output format. Default: pdf
+  --no-num              Do not print numerical values inside heatmap cells.
+  --skip-heatmap        Generate quality matrices without rendering a heatmap.
+  --rscript PATH        Rscript executable used for dependency checks.
+                        Default: Rscript
+  --install-r-deps      Install the R package pheatmap when it is missing.
+  --cran-mirror URL     CRAN mirror used with --install-r-deps. Default:
+                        https://cloud.r-project.org
+  --verbose             Enable detailed progress logging.
+  --version             show program's version number and exit
+
+Examples
+--------
+Generate matrices and a PDF heatmap:
+    sc_seqQual.py         -i reads.fastq.gz         -o sample
+
+Generate matrices only:
+    sc_seqQual.py         -i reads.fastq.gz         -o sample         --skip-heatmap
+
+Install the required R package automatically:
+    sc_seqQual.py         -i reads.fastq.gz         -o sample         --install-r-deps
+
+Notes
+-----
+* Input must be FASTQ.
+* The percentage matrix is calculated independently for each read cycle.
+* Heatmap rendering requires R and the R package pheatmap.

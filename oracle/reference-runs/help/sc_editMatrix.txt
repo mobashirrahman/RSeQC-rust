@@ -1,0 +1,66 @@
+# exit=0
+usage: sc_editMatrix.py [-h] -i IN_FILE -o OUT_FILE [--limit INT]
+                        [--cr-tag TAG] [--cb-tag TAG] [--ur-tag TAG]
+                        [--ub-tag TAG] [--cell-width INT] [--cell-height INT]
+                        [--font-size INT] [--angle {0,45,90,270,315}]
+                        [--text-color COLOR]
+                        [--file-type {pdf,png,tiff,bmp,jpeg}] [--no-num]
+                        [--skip-heatmap] [--rscript PATH] [--install-r-deps]
+                        [--cran-mirror URL] [--verbose] [--version]
+
+Generate edit-count matrices and heatmaps for error-corrected cellular barcodes and UMIs in a tagged single-cell RNA-seq BAM file.
+
+options:
+  -h, --help            show this help message and exit
+  -i, --infile IN_FILE  Input BAM file.
+  -o, --outfile OUT_FILE
+                        Prefix for generated matrix and heatmap files.
+  --limit INT           Maximum number of alignments to process. Default: all
+  --cr-tag TAG          Sequencer-reported cellular-barcode tag. Default: CR
+  --cb-tag TAG          Error-corrected cellular-barcode tag. Default: CB
+  --ur-tag TAG          Sequencer-reported UMI tag. Default: UR
+  --ub-tag TAG          Error-corrected UMI tag. Default: UB
+  --cell-width INT      Heatmap cell width in points. Default: 15
+  --cell-height INT     Heatmap cell height in points. Default: 10
+  --font-size INT       Heatmap font size. Default: 8
+  --angle {0,45,90,270,315}
+                        Column-label angle. Default: 45
+  --text-color COLOR    Color of numeric labels in heatmap cells. Default:
+                        black
+  --file-type {pdf,png,tiff,bmp,jpeg}
+                        Heatmap output format. Default: pdf
+  --no-num              Do not print numeric values inside heatmap cells.
+  --skip-heatmap        Generate edit-count matrices without creating
+                        heatmaps.
+  --rscript PATH        Rscript executable used for dependency checks.
+                        Default: Rscript
+  --install-r-deps      Install the R package pheatmap when it is missing.
+  --cran-mirror URL     CRAN mirror used with --install-r-deps. Default:
+                        https://cloud.r-project.org
+  --verbose             Enable detailed progress logging.
+  --version             show program's version number and exit
+
+Default BAM tags
+----------------
+CR
+    Cellular barcode reported by the sequencer.
+
+CB
+    Error-corrected cellular barcode.
+
+UR
+    UMI reported by the sequencer.
+
+UB
+    Error-corrected UMI.
+
+Examples
+--------
+Generate matrices and heatmaps:
+    sc_editMatrix.py -i possorted_genome_bam.bam -o sample
+
+Generate matrices only:
+    sc_editMatrix.py -i possorted_genome_bam.bam -o sample --skip-heatmap
+
+Install the required R package automatically:
+    sc_editMatrix.py         -i possorted_genome_bam.bam         -o sample         --install-r-deps

@@ -1,0 +1,43 @@
+# exit=0
+usage: split_bam.py [-h] -i INPUT_FILE -r GENE_LIST -o OUTPUT_PREFIX
+                    [--index-output] [--overwrite] [--verbose] [--version]
+
+Split alignments into exon-overlapping, non-overlapping, and junk BAM files using exon regions from a BED gene model.
+
+options:
+  -h, --help            show this help message and exit
+  -i, --input-file INPUT_FILE
+                        Input BAM file.
+  -r, --genelist GENE_LIST
+                        Reference gene list in BED format.
+  -o, --out-prefix OUTPUT_PREFIX
+                        Prefix for the three output BAM files.
+  --index-output        Create BAI indexes for the output BAM files after
+                        splitting.
+  --overwrite           Allow existing output BAM and index files to be
+                        replaced.
+  --verbose             Enable detailed progress logging.
+  --version             show program's version number and exit
+
+Classification
+--------------
+in.bam
+    A mapped alignment whose read start, or mapped mate start, overlaps an
+    exon from the supplied BED gene model.
+
+ex.bam
+    A mapped alignment whose tested start positions do not overlap an exon.
+
+junk.bam
+    An unmapped or QC-failed alignment.
+
+Example
+-------
+split_bam.py     -i sample.bam     -r genes.bed12     -o sample_split     --index-output
+
+Notes
+-----
+* The classification intentionally uses read-start and mate-start positions,
+  matching the historical implementation.
+* Secondary and duplicate alignments are not filtered.
+* Output BAMs preserve the input BAM header.

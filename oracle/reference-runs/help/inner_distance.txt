@@ -1,0 +1,40 @@
+# exit=0
+usage: inner_distance.py [-h] -i INPUT_FILE -o OUT_PREFIX -r REF_GENE [-k INT]
+                         [-l INT] [-u INT] [-s INT] [-q INT] [--skip-plot]
+                         [--rscript PATH] [--version]
+
+Estimate the inner distance (insert size) between paired-end RNA-seq reads using a BED gene model.
+
+options:
+  -h, --help            show this help message and exit
+  -i, --input-file INPUT_FILE
+                        Input alignment file in BAM or SAM format.
+  -o, --out-prefix OUT_PREFIX
+                        Prefix for generated output files.
+  -r, --refgene REF_GENE
+                        Reference gene model in BED12 format.
+  -k, --sample-size INT
+                        Number of read pairs sampled to estimate inner
+                        distance. Default: 1000000
+  -l, --lower-bound INT
+                        Lower histogram bound in bp. Default: -250
+  -u, --upper-bound INT
+                        Upper histogram bound in bp. Default: 250
+  -s, --step INT        Histogram bin width in bp. Default: 5
+  -q, --mapq INT        Minimum mapping quality for an alignment to be
+                        considered uniquely mapped. Default: 30
+  --skip-plot           Generate result files but do not execute the R
+                        plotting script.
+  --rscript PATH        Rscript executable to use. Default: Rscript
+  --version             show program's version number and exit
+
+Inner-distance definition
+-------------------------
+fragment size = read-1 length + inner distance + read-2 length
+
+The inner distance may be negative when paired reads overlap.
+
+Example
+-------
+inner_distance.py -i sample.bam -r genes.bed12 -o sample -k 1000000 -l -250 \
+    -u 250 -s 5

@@ -1,0 +1,32 @@
+# exit=0
+usage: RNA_fragment_size.py [-h] -i INPUT_FILE -r REFGENE_BED [-q INT]
+                            [-n INT] [-o OUTPUT] [--version]
+
+Calculate per-transcript RNA fragment-size statistics from paired-end alignments and a BED12 gene model.
+
+options:
+  -h, --help            show this help message and exit
+  -i, --input INPUT_FILE
+                        Input coordinate-sorted BAM file.
+  -r, --refgene REFGENE_BED
+                        Reference gene model in standard 12-column BED format.
+  -q, --mapq INT        Minimum mapping quality for an alignment to be treated
+                        as uniquely mapped. Default: 30
+  -n, --frag-num INT    Minimum number of fragments required to report
+                        statistics. Default: 3
+  -o, --output OUTPUT   Write the table to this file instead of standard
+                        output.
+  --version             show program's version number and exit
+
+Example
+-------
+RNA_fragment_size.py -i sample.bam -r genes.bed12 -q 30 -n 3
+
+Notes
+-----
+* The BAM file must be coordinate-sorted and indexed.
+* Only read 1 from paired-end alignments is used.
+* QC-failed, duplicate, secondary, mate-unmapped, and low-MAPQ alignments
+  are excluded.
+* Fragment sizes are calculated in transcript space using the original
+  exon-overlap method.

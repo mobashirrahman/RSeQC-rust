@@ -1,0 +1,44 @@
+# exit=0
+usage: tin.py [-h] -i INPUT_FILES -r REF_GENE_MODEL [-c INT] [-n INT] [-s]
+              [-o OUTPUT_DIR] [--verbose] [--version]
+
+Calculate transcript-level TIN scores and sample-level mean, median, and standard deviation from one or more sorted, indexed BAM files.
+
+options:
+  -h, --help            show this help message and exit
+  -i, --input INPUT_FILES
+                        BAM input specification; see the accepted forms below.
+  -r, --refgene REF_GENE_MODEL
+                        Reference gene model in standard BED12 format.
+  -c, --minCov INT      Minimum number of distinct read starts required.
+                        Default: 10
+  -n, --sample-size INT
+                        Number of approximately equally spaced transcript
+                        positions. Default: 100
+  -s, --subtract-background
+                        Subtract background estimated from intronic signal.
+  -o, --output-dir OUTPUT_DIR
+                        Directory for TIN output files. Default: current
+                        directory
+  --verbose             Enable detailed progress logging.
+  --version             show program's version number and exit
+
+Input forms accepted by --input
+-------------------------------
+* One BAM file
+* A comma-separated BAM list
+* A directory containing BAM files
+* A text file listing one BAM path per line
+
+Example
+-------
+tin.py     -i sample.bam     -r genes.bed12     -c 10     -n 100
+
+With intronic-background subtraction:
+    tin.py         -i sample.bam         -r genes.bed12         -s
+
+Notes
+-----
+* BAM files must be coordinate-sorted and indexed.
+* The BED file must contain 12 columns.
+* TIN is reported as 0 when coverage is insufficient.

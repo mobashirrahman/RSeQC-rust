@@ -1,0 +1,53 @@
+# exit=0
+usage: overlay_bigwig.py [-h] -i BIGWIG_FILE1 -j BIGWIG_FILE2
+                         -a {Add,Average,Division,Max,Min,Product,Subtract,geometricMean}
+                         -o OUTPUT_WIG [-c INT] [--overwrite] [--version]
+
+Combine two BigWig signal tracks position by position and write the result as a variableStep WIG file.
+
+options:
+  -h, --help            show this help message and exit
+  -i, --bwfile1 BIGWIG_FILE1
+                        First BigWig file.
+  -j, --bwfile2 BIGWIG_FILE2
+                        Second BigWig file. Both files should use the same
+                        reference genome.
+  -a, --action {Add,Average,Division,Max,Min,Product,Subtract,geometricMean}
+                        Arithmetic operation applied to corresponding signal
+                        values.
+  -o, --output OUTPUT_WIG
+                        Output variableStep WIG file.
+  -c, --chunk INT       Chromosome chunk size in bp. Smaller chunks use less
+                        memory. Default: 100000
+  --overwrite           Allow an existing output file to be replaced.
+  --version             show program's version number and exit
+
+Supported actions
+-----------------
+Add
+    Add corresponding values.
+
+Average
+    Calculate the arithmetic mean.
+
+Division
+    Divide BigWig 1 by BigWig 2 using the implementation in qcmodule.twoList.
+
+Max
+    Select the larger value.
+
+Min
+    Select the smaller value.
+
+Product
+    Multiply corresponding values.
+
+Subtract
+    Subtract BigWig 2 from BigWig 1.
+
+geometricMean
+    Calculate the geometric mean.
+
+Example
+-------
+overlay_bigwig.py -i sample1.bw -j sample2.bw -a Subtract -o difference.wig -c 100000

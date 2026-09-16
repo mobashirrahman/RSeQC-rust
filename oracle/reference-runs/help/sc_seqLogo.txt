@@ -1,0 +1,58 @@
+# exit=0
+usage: sc_seqLogo.py [-h] -i IN_FILE -o OUT_FILE [--iformat {fq,fa}]
+                     [--oformat {pdf,png,svg}] [-n INT] [--font-name NAME]
+                     [--stack-order {big_on_top,small_on_top,fixed}]
+                     [--flip-below] [--shade-below FLOAT] [--fade-below FLOAT]
+                     [--exclude-N] [--highlight-start INT]
+                     [--highlight-end INT] [--step-size INT] [--verbose]
+                     [--version]
+
+Generate a nucleotide count matrix and DNA sequence logo from fixed-length FASTA or FASTQ sequences.
+
+options:
+  -h, --help            show this help message and exit
+  -i, --infile IN_FILE  Input FASTA or FASTQ file. Compressed input is
+                        supported by qcmodule.fastq.
+  -o, --outfile OUT_FILE
+                        Prefix for the count matrix and sequence-logo files.
+  --iformat {fq,fa}     Input format. Default: fq
+  --oformat {pdf,png,svg}
+                        Sequence-logo output format. Default: pdf
+  -n, --nseq-limit INT  Maximum number of sequences to process. Default: all
+  --font-name NAME      Font used for logo characters. Valid names may be
+                        listed with logomaker.list_font_names(). Default: sans
+  --stack-order {big_on_top,small_on_top,fixed}
+                        Vertical ordering of nucleotides within each stack.
+                        Default: big_on_top
+  --flip-below          Flip characters drawn below the x-axis upside down.
+  --shade-below FLOAT   Shading applied to characters below the x-axis, from 0
+                        to 1. Default: 0.0
+  --fade-below FLOAT    Fading applied to characters below the x-axis, from 0
+                        to 1. Default: 0.0
+  --exclude-N, --excludeN
+                        Exclude sequences containing the ambiguous nucleotide
+                        N.
+  --highlight-start INT
+                        Zero-based first highlighted logo position.
+  --highlight-end INT   Zero-based last highlighted logo position.
+  --step-size INT       Number of sequences processed per matrix-update batch.
+                        Default: 10000
+  --verbose             Enable detailed progress logging.
+  --version             show program's version number and exit
+
+Examples
+--------
+Generate a PDF logo from FASTQ:
+    sc_seqLogo.py         -i barcodes.fastq.gz         -o barcodes         --iformat fq         --oformat pdf
+
+Generate an SVG logo from FASTA and remove sequences containing N:
+    sc_seqLogo.py         -i barcodes.fa         -o barcodes         --iformat fa         --oformat svg         --exclude-N
+
+Highlight positions 4 through 8:
+    sc_seqLogo.py         -i barcodes.fastq         -o barcodes         --highlight-start 4         --highlight-end 8
+
+Notes
+-----
+* All input sequences must have the same length.
+* Input may be plain text or compressed using gzip, compress, or bzip2.
+* Highlight positions are zero-based.

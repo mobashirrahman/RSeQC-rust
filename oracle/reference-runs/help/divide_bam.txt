@@ -1,0 +1,19 @@
+# exit=0
+usage: divide_bam.py [-h] -i INPUT_FILE -n INT -o OUT_PREFIX [-s] [--seed INT]
+                     [--index] [--version]
+
+Randomly divide a BAM file into approximately equal subsets. All records
+sharing the same query name are assigned to the same output file, so paired
+mates remain together. Output files are named ``<prefix>_<index>.bam``.
+
+options:
+  -h, --help            show this help message and exit
+  -i, --input-file INPUT_FILE
+                        Input BAM file.
+  -n, --subset-num INT  Number of output BAM subsets.
+  -o, --out-prefix OUT_PREFIX
+                        Output prefix. Files are named <prefix>_<index>.bam.
+  -s, --skip-unmap      Exclude unmapped alignments.
+  --seed INT            Random seed for reproducible assignment.
+  --index               Create a BAM index for each output file after writing.
+  --version             show program's version number and exit
