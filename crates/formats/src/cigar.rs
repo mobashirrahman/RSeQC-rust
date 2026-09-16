@@ -46,6 +46,33 @@ pub fn fetch_exon_blocks(start: usize, cigar: impl IntoIterator<Item = Op>) -> V
     blocks
 }
 
+/// Expands a CIGAR into a "long string" of per-read-base operation codes,
+/// one byte per read base consumed. Ported from `bam_cigar.list2longstr`:
+/// only M/I/S/=/X (op codes 0/1/4/7/8, all of which consume the read)
+/// contribute bytes; D/N/H/P (codes 2/3/5/6, which don't consume the read)
+/// contribute nothing and are skipped entirely -- not even a placeholder.
+/// Sum of lengths of the M/I/S/=/X operations equals the returned length,
+/// matching upstream's own docstring.
+pub fn expand_cigar_to_read_ops(cigar: impl IntoIterator<Item = Op>) -> Vec<u8> {
+    let mut out = Vec::new();
+
+    for op in cigar {
+        let byte = match op.kind() {
+            Kind::Match => Some(b'M'),
+            Kind::Insertion => Some(b'I'),
+            Kind::SoftClip => Some(b'S'),
+            Kind::SequenceMatch => Some(b'='),
+            Kind::SequenceMismatch => Some(b'X'),
+            Kind::Deletion | Kind::Skip | Kind::HardClip | Kind::Pad => None,
+        };
+        if let Some(byte) = byte {
+            out.extend(std::iter::repeat_n(byte, op.len()));
+        }
+    }
+
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -88,5 +115,38 @@ mod tests {
         ];
         let blocks = fetch_exon_blocks(50, cigar);
         assert_eq!(blocks, vec![(50, 53)]);
+    }
+
+    #[test]
+    fn expand_cigar_matches_docstring_example() {
+        // [(0, 9), (4, 1)] ==> "MMMMMMMMMS", from bam_cigar.list2longstr's
+        // own docstring.
+        let cigar = vec![Op::new(Kind::Match, 9), Op::new(Kind::SoftClip, 1)];
+        assert_eq!(expand_cigar_to_read_ops(cigar), b"MMMMMMMMMS".to_vec());
+    }
+
+    #[test]
+    fn expand_cigar_skips_deletion_skip_hardclip_pad_entirely() {
+        // 3M 2D 4N 2H 1P 2M: only the M ops (and I/S/=/X, not present here)
+        // contribute bytes; D/N/H/P vanish completely, not even a placeholder.
+        let cigar = vec![
+            Op::new(Kind::Match, 3),
+            Op::new(Kind::Deletion, 2),
+            Op::new(Kind::Skip, 4),
+            Op::new(Kind::HardClip, 2),
+            Op::new(Kind::Pad, 1),
+            Op::new(Kind::Match, 2),
+        ];
+        assert_eq!(expand_cigar_to_read_ops(cigar), b"MMMMM".to_vec());
+    }
+
+    #[test]
+    fn expand_cigar_includes_insertion_and_sequence_match_mismatch() {
+        let cigar = vec![
+            Op::new(Kind::Insertion, 2),
+            Op::new(Kind::SequenceMatch, 2),
+            Op::new(Kind::SequenceMismatch, 1),
+        ];
+        assert_eq!(expand_cigar_to_read_ops(cigar), b"II==X".to_vec());
     }
 }
