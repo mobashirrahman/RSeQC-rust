@@ -26,6 +26,11 @@ path = "src/bin/bam2fq.rs"
 name = "divide_bam"
 path = "src/bin/divide_bam.rs"
 
+[[bin]]
+# Same naming note as above: packaging aliases this to `read_NVC.py`.
+name = "read_NVC"
+path = "src/bin/read_NVC.rs"
+
 [dependencies]
 rseqc-core = { path = "../core" }
 rseqc-formats = { path = "../formats" }

@@ -5,4 +5,5 @@
 pub mod bam2fq;
 pub mod bam_stat;
 pub mod divide_bam;
+pub mod read_nvc;
 pub mod split_paired_bam;
