@@ -86,6 +86,11 @@ path = "src/bin/read_distribution.rs"
 name = "inner_distance"
 path = "src/bin/inner_distance.rs"
 
+[[bin]]
+# Same naming note as above: packaging aliases this to `junction_annotation.py`.
+name = "junction_annotation"
+path = "src/bin/junction_annotation.rs"
+
 [dependencies]
 rseqc-core = { path = "../core" }
 rseqc-formats = { path = "../formats" }
