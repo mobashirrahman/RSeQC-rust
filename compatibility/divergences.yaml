@@ -1,0 +1,38 @@
+# Known-divergence ledger (PORTING_PLAN.md Step 1.7).
+# Every entry needs: id, command_or_api, description, classification
+# (candidate-bug | upstream-bug | reference-env-failure | permitted-serialization-difference |
+#  stochastic-variation | explicit-compatibility-exception), decision, status.
+# Nothing here is auto-resolved; the coordinator reviews classification changes.
+
+divergences:
+  - id: DIV-0001
+    command_or_api: bam_stat.py
+    description: >
+      Upstream's splice-read detection (qcmodule.SAM.ParseBAM.stat) calls
+      bam_cigar.fetch_intron('chr1', pos, cigar) with a hardcoded 'chr1'
+      placeholder chromosome name that is not actually used to detect introns
+      from the CIGAR string (the chrom argument is unused in the intron-count
+      decision). The Rust port checks for a CIGAR 'N' (Skip) operation
+      directly instead of reusing that call shape.
+    classification: permitted-serialization-difference
+    decision: Port checks CIGAR Skip op directly; behavior-equivalent, not byte-equivalent to the upstream call signature (which is not observable from the CLI/output anyway).
+    status: accepted
+
+  - id: DIV-0002
+    command_or_api: bam_stat.py
+    description: >
+      Vertical-slice Rust port (Step 5) supports BAM input only. Upstream's
+      help text advertises "BAM or SAM" (plain-text SAM input via pysam).
+    classification: explicit-compatibility-exception
+    decision: SAM-text input is a disclosed gap until a follow-up task adds it; do not claim full bam_stat.py compatibility until closed.
+    status: open
+
+  - id: DIV-0003
+    command_or_api: package-wide
+    description: >
+      Upstream's own license metadata is internally inconsistent: README
+      states GPL-3.0-or-later, LICENSE file contains GPLv3 text, and a
+      packaging classifier says GPLv2.
+    classification: upstream-bug
+    decision: Resolve before choosing this project's own release license metadata (PORTING_PLAN.md Step 1.7 / Step 11.2); not yet resolved.
+    status: open
