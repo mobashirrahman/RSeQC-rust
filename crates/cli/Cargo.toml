@@ -16,6 +16,11 @@ path = "src/main.rs"
 name = "split_paired_bam"
 path = "src/bin/split_paired_bam.rs"
 
+[[bin]]
+# Same naming note as above: packaging aliases this to `bam2fq.py`.
+name = "bam2fq"
+path = "src/bin/bam2fq.rs"
+
 [dependencies]
 rseqc-core = { path = "../core" }
 rseqc-formats = { path = "../formats" }
