@@ -61,6 +61,11 @@ path = "src/bin/insertion_profile.rs"
 name = "deletion_profile"
 path = "src/bin/deletion_profile.rs"
 
+[[bin]]
+# Same naming note as above: packaging aliases this to `mismatch_profile.py`.
+name = "mismatch_profile"
+path = "src/bin/mismatch_profile.rs"
+
 [dependencies]
 rseqc-core = { path = "../core" }
 rseqc-formats = { path = "../formats" }
