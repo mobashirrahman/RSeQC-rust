@@ -51,6 +51,11 @@ path = "src/bin/read_duplication.rs"
 name = "clipping_profile"
 path = "src/bin/clipping_profile.rs"
 
+[[bin]]
+# Same naming note as above: packaging aliases this to `insertion_profile.py`.
+name = "insertion_profile"
+path = "src/bin/insertion_profile.rs"
+
 [dependencies]
 rseqc-core = { path = "../core" }
 rseqc-formats = { path = "../formats" }
