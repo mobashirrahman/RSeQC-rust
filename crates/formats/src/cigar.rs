@@ -8,6 +8,21 @@
 
 use noodles_sam::alignment::record::cigar::{Op, op::Kind};
 
+/// Reference-genome `[start, end)` span covered by a CIGAR (0-based).
+/// Ported from `bam_cigar.map_bounds`: M/D/N ops advance the span size,
+/// I/S/H/P/=/X do not (matches upstream's `else: continue`, including the
+/// same "no advance for '='/'X'" limitation noted on
+/// [`fetch_exon_blocks`]). Equivalent to pysam's `reference_end`.
+pub fn reference_span(start: usize, cigar: impl IntoIterator<Item = Op>) -> (usize, usize) {
+    let mut span_size = 0usize;
+    for op in cigar {
+        if matches!(op.kind(), Kind::Match | Kind::Deletion | Kind::Skip) {
+            span_size += op.len();
+        }
+    }
+    (start, start + span_size)
+}
+
 /// Exon (aligned-match) blocks for a CIGAR string, as 0-based
 /// `[start, end)` reference coordinates. Ported from `bam_cigar.fetch_exon`.
 ///
@@ -219,5 +234,18 @@ mod tests {
             Op::new(Kind::Match, 2),
         ];
         assert_eq!(fetch_deletion_range(cigar), vec![(2, 1), (4, 1)]);
+    }
+
+    #[test]
+    fn reference_span_sums_match_deletion_skip_only() {
+        // 10M5N8M2I3S: M/N/M advance (10+5+8=23), I/S do not.
+        let cigar = vec![
+            Op::new(Kind::Match, 10),
+            Op::new(Kind::Skip, 5),
+            Op::new(Kind::Match, 8),
+            Op::new(Kind::Insertion, 2),
+            Op::new(Kind::SoftClip, 3),
+        ];
+        assert_eq!(reference_span(100, cigar), (100, 123));
     }
 }
