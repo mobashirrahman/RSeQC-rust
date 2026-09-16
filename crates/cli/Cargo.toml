@@ -81,6 +81,11 @@ path = "src/bin/rna_fragment_size.rs"
 name = "read_distribution"
 path = "src/bin/read_distribution.rs"
 
+[[bin]]
+# Same naming note as above: packaging aliases this to `inner_distance.py`.
+name = "inner_distance"
+path = "src/bin/inner_distance.rs"
+
 [dependencies]
 rseqc-core = { path = "../core" }
 rseqc-formats = { path = "../formats" }
