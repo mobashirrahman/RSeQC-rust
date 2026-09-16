@@ -11,8 +11,15 @@ license.workspace = true
 name = "bam_stat"
 path = "src/main.rs"
 
+[[bin]]
+# Same naming note as above: packaging aliases this to `split_paired_bam.py`.
+name = "split_paired_bam"
+path = "src/bin/split_paired_bam.rs"
+
 [dependencies]
 rseqc-core = { path = "../core" }
 rseqc-formats = { path = "../formats" }
 rseqc-commands = { path = "../commands" }
 clap = { version = "4", features = ["derive"] }
+noodles-bam = "0.95.0"
+noodles-sam = "0.90.0"

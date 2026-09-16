@@ -6,13 +6,19 @@ use std::fs::File;
 use std::io;
 use std::path::Path;
 
-/// Opens a BAM file for sequential record reading, consuming the header
-/// (callers that need reference-sequence names should re-derive them from
-/// the returned reader via further calls, not stored here).
+use noodles_sam as sam;
+
+/// Opens a BAM file for sequential record reading, returning both the
+/// reader (positioned at the first record) and the parsed header (needed by
+/// callers that write records back out, e.g. via
+/// `RecordBuf::try_from_alignment_record` or `write_alignment_record`).
 pub fn open_bam(
     path: &Path,
-) -> io::Result<noodles_bam::io::Reader<noodles_bgzf::io::Reader<File>>> {
+) -> io::Result<(
+    noodles_bam::io::Reader<noodles_bgzf::io::Reader<File>>,
+    sam::Header,
+)> {
     let mut reader = File::open(path).map(noodles_bam::io::Reader::new)?;
-    reader.read_header()?;
-    Ok(reader)
+    let header = reader.read_header()?;
+    Ok((reader, header))
 }

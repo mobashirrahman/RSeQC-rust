@@ -7,5 +7,6 @@ license.workspace = true
 [dependencies]
 noodles-bam = "0.95.0"
 noodles-bgzf = "0.51.0"
+noodles-sam = "0.90.0"
 rseqc-core = { path = "../core" }
 thiserror = "2"

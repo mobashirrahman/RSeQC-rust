@@ -35,7 +35,7 @@ fn main() -> std::process::ExitCode {
 }
 
 fn run(args: &Args) -> std::io::Result<()> {
-    let mut reader = rseqc_formats::open_bam(&args.input_file)?;
+    let (mut reader, _header) = rseqc_formats::open_bam(&args.input_file)?;
     let counts = compute_stats(reader.records(), args.mapq)?;
     print_report(&counts);
     Ok(())
