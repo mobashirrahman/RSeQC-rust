@@ -9,6 +9,7 @@ use std::path::Path;
 use noodles_sam as sam;
 
 pub mod cigar;
+pub mod interval;
 
 /// Opens a BAM file for sequential record reading, returning both the
 /// reader (positioned at the first record) and the parsed header (needed by
