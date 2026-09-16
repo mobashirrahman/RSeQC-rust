@@ -7,4 +7,5 @@ pub mod bam_stat;
 pub mod divide_bam;
 pub mod read_gc;
 pub mod read_nvc;
+pub mod read_quality;
 pub mod split_paired_bam;
