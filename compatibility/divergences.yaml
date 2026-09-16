@@ -89,3 +89,14 @@ divergences:
     classification: upstream-bug
     decision: Preserved exactly in the Rust port (compatibility mode) rather than silently "fixed" to use max length, per PORTING_PLAN.md Step 1.7 ("do not silently 'correct' an algorithm in compatibility mode"). A corrected behavior may be offered later as an explicit separate mode.
     status: accepted
+
+  - id: DIV-0009
+    command_or_api: read_quality.py
+    description: >
+      Same pattern as DIV-0008: upstream's readsQual_boxplot() iterates
+      `range(0, read_len)` to build the output R script, where `read_len` is
+      whatever the LAST processed record's length happened to be, not the
+      max across the file.
+    classification: upstream-bug
+    decision: Preserved exactly, same rationale as DIV-0008.
+    status: accepted
