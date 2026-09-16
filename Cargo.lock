@@ -501,6 +501,7 @@ name = "rseqc-commands"
 version = "0.1.0"
 dependencies = [
  "noodles-bam",
+ "noodles-core",
  "noodles-sam",
  "rand",
  "rseqc-core",

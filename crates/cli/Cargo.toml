@@ -41,6 +41,11 @@ path = "src/bin/read_NVC.rs"
 name = "read_quality"
 path = "src/bin/read_quality.rs"
 
+[[bin]]
+# Same naming note as above: packaging aliases this to `read_duplication.py`.
+name = "read_duplication"
+path = "src/bin/read_duplication.rs"
+
 [dependencies]
 rseqc-core = { path = "../core" }
 rseqc-formats = { path = "../formats" }
