@@ -7,6 +7,7 @@ pub mod bam_stat;
 pub mod clipping_profile;
 pub mod deletion_profile;
 pub mod mismatch_profile;
+pub mod infer_experiment;
 pub mod insertion_profile;
 pub mod divide_bam;
 pub mod read_duplication;

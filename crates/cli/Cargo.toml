@@ -66,6 +66,11 @@ path = "src/bin/deletion_profile.rs"
 name = "mismatch_profile"
 path = "src/bin/mismatch_profile.rs"
 
+[[bin]]
+# Same naming note as above: packaging aliases this to `infer_experiment.py`.
+name = "infer_experiment"
+path = "src/bin/infer_experiment.rs"
+
 [dependencies]
 rseqc-core = { path = "../core" }
 rseqc-formats = { path = "../formats" }
