@@ -7,3 +7,5 @@ license.workspace = true
 [dependencies]
 rseqc-core = { path = "../core" }
 rseqc-formats = { path = "../formats" }
+noodles-bam = "0.95.0"
+noodles-sam = "0.90.0"
