@@ -36,3 +36,56 @@ divergences:
     classification: upstream-bug
     decision: Resolve before choosing this project's own release license metadata (PORTING_PLAN.md Step 1.7 / Step 11.2); not yet resolved.
     status: open
+
+  - id: DIV-0004
+    command_or_api: bam_stat.py, split_paired_bam.py, bam2fq.py, divide_bam.py
+    description: >
+      All four commands ported so far are BAM-only; upstream's help text for
+      each advertises "BAM or SAM" (plain-text SAM input via pysam).
+    classification: explicit-compatibility-exception
+    decision: SAM-text input is a disclosed gap across all ported commands until a follow-up adds a shared SAM-text reader in crates/formats; do not claim full compatibility for any of them until closed.
+    status: open
+
+  - id: DIV-0005
+    command_or_api: read_NVC.py and other plotting commands
+    description: >
+      Native plot rendering and R-script generation (crates/render) has not
+      been started. Commands that upstream pairs with an R plot (e.g.
+      read_NVC.py's .NVC_plot.r / .NVC_plot.pdf) currently produce only the
+      underlying data table.
+    classification: explicit-compatibility-exception
+    decision: Plotting is required for full compatibility per PORTING_PLAN.md Step 6 ("no TODO:plotting command is counted as finished") -- ported commands with a data-only Rust implementation are NOT yet complete ports, just usable data-generation slices, until crates/render exists and is wired in.
+    status: open
+
+  - id: DIV-0006
+    command_or_api: split_paired_bam.py, divide_bam.py
+    description: >
+      Upstream optionally creates a .bai index for each output BAM
+      (split_paired_bam.py's --index-output, divide_bam.py's --index). Not
+      implemented in the Rust port yet.
+    classification: explicit-compatibility-exception
+    decision: Disclosed follow-up; BAM index writing needs its own format-library evaluation, not yet done.
+    status: open
+
+  - id: DIV-0007
+    command_or_api: bam2fq.py
+    description: >
+      Upstream's -c/--compress flag gzips the output FASTQ file(s) after
+      writing. Not implemented in the Rust port yet.
+    classification: explicit-compatibility-exception
+    decision: Disclosed follow-up (likely via the `flate2` crate); not a scientific-correctness gap, low priority.
+    status: open
+
+  - id: DIV-0008
+    command_or_api: read_NVC.py
+    description: >
+      Upstream's readsNVC() data table has as many rows as the LENGTH OF THE
+      LAST RECORD PROCESSED in file order (the `RNA_read` variable retains
+      its final loop-iteration value after the read loop exits), not the
+      maximum read length seen across the file. If the last record is
+      shorter than earlier records, the table is silently truncated to that
+      shorter length -- almost certainly an unintentional upstream bug, but
+      it is directly observable in the output file's row count.
+    classification: upstream-bug
+    decision: Preserved exactly in the Rust port (compatibility mode) rather than silently "fixed" to use max length, per PORTING_PLAN.md Step 1.7 ("do not silently 'correct' an algorithm in compatibility mode"). A corrected behavior may be offered later as an explicit separate mode.
+    status: accepted
