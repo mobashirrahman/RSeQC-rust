@@ -3,10 +3,18 @@
 //! ported from `readsQual_boxplot()` in `oracle/upstream-src/src/qcmodule/SAM.py`
 //! (lines 3051-3117).
 //!
-//! Notable upstream behavior preserved exactly: unmapped reads, QC-fail reads,
-//! and low MAPQ reads are filtered out; quality scores are aggregated per position;
-//! the output table's row count equals the last processed read's length (not the
-//! max length seen across all records) - this is the same quirk as read_NVC.py.
+//! **Notable upstream quirk, confirmed by reading the literal source (do
+//! NOT "fix")**: `readsQual_boxplot`'s `is_unmapped`/`is_qcfail` checks
+//! are commented out in upstream (`#if aligned_read.is_unmapped:continue`).
+//! Only the MAPQ filter is actually live -- unmapped, QC-fail, duplicate,
+//! and secondary-alignment reads are ALL included as long as their MAPQ
+//! clears `q_cut`. (An earlier version of this port's doc comment and
+//! code incorrectly filtered unmapped/QC-fail reads anyway; found and
+//! fixed via `verification/run_diff.py`'s `read_quality_basic` case,
+//! which caught a real read-count mismatch against the actual upstream
+//! CLI.) Quality scores are aggregated per position; the output table's
+//! row count equals the last processed read's length (not the max
+//! length seen across all records) -- same quirk as read_NVC.py.
 
 use std::collections::HashMap;
 use std::io;
@@ -35,18 +43,10 @@ where
 
     for result in records {
         let record = result?;
-        
-        // Filter out unmapped reads
-        if record.flags().is_unmapped() {
-            continue;
-        }
-        
-        // Filter out QC fail reads
-        if record.flags().is_qc_fail() {
-            continue;
-        }
-        
-        // Filter out low MAPQ reads
+
+        // Only the MAPQ filter is actually live upstream -- see the
+        // module doc comment for why unmapped/QC-fail reads are NOT
+        // filtered here, unlike almost every other command in this port.
         let mapq = record.mapping_quality().map(|m| m.get()).unwrap_or(255);
         if mapq < q_cut {
             continue;
@@ -117,7 +117,7 @@ pub fn render_qual_r_script(hist: &QualityHistogram, shrink: u64, output_prefix:
     }
     
     // Output: single file "<prefix>.qual.r", written as (each on its own line, in order):
-    lines.push(format!("pdf(\"{}.qual.boxplot.pdf\")", output_prefix));
+    lines.push(format!("pdf('{}.qual.boxplot.pdf')", output_prefix));
     
     // Print position vectors in ascending order
     for i in 0..hist.read_len {
@@ -137,10 +137,14 @@ pub fn render_qual_r_script(hist: &QualityHistogram, shrink: u64, output_prefix:
     ));
     
     lines.push("dev.off()".to_string());
-    lines.push("".to_string()); // blank line
-    
+    // Upstream's `print('\n', file=FO)` writes the literal string "\n"
+    // PLUS print's own trailing newline -- that's TWO blank lines
+    // between the sections, not one.
+    lines.push("".to_string());
+    lines.push("".to_string());
+
     // Heatmap section
-    lines.push(format!("pdf(\"{}.qual.heatmap.pdf\")", output_prefix));
+    lines.push(format!("pdf('{}.qual.heatmap.pdf')", output_prefix));
     lines.push(format!("qual=c({})", q_list.join(",")));
     lines.push(format!("mat=matrix(qual,ncol={},byrow=F)", hist.read_len));
     lines.push("Lab.palette <- colorRampPalette(c(\"blue\", \"orange\", \"red3\",\"red2\",\"red1\",\"red\"), space = \"rgb\",interpolate=c('spline'))".to_string());
@@ -149,8 +153,10 @@ pub fn render_qual_r_script(hist: &QualityHistogram, shrink: u64, output_prefix:
         hist.q_min, hist.q_max
     ));
     lines.push("dev.off()".to_string());
-    
-    lines.join("\n")
+
+    // Trailing newline: upstream's plain `print(...)` calls each add
+    // their own trailing newline, including the final `dev.off()`.
+    format!("{}\n", lines.join("\n"))
 }
 
 #[cfg(test)]
@@ -191,6 +197,44 @@ mod tests {
         let mut reader = bam::io::Reader::new(buf.as_slice());
         reader.read_header().unwrap();
         reader.records().map(|r| r.unwrap()).collect()
+    }
+
+    #[test]
+    fn unmapped_and_qcfail_reads_are_not_filtered_when_mapq_clears_the_cutoff() {
+        // Regression test for a real bug found via verification/
+        // run_diff.py's read_quality_basic case: upstream's
+        // is_unmapped/is_qcfail checks in readsQual_boxplot are
+        // commented out (only the MAPQ filter is live), but an earlier
+        // version of this port filtered them anyway. Both reads here
+        // have MAPQ 40 (clears the default cutoff) despite being
+        // flagged unmapped/QC-fail, and must still be counted.
+        let header = test_header();
+
+        let unmapped = RecordBuf::builder()
+            .set_flags(Flags::UNMAPPED)
+            .set_mapping_quality(MappingQuality::new(40).unwrap())
+            .set_cigar(Cigar::from(vec![Op::new(CigarOpKind::Match, 2)]))
+            .set_sequence(sam::alignment::record_buf::Sequence::from(b"AA".to_vec()))
+            .set_quality_scores(sam::alignment::record_buf::QualityScores::from(vec![10, 20]))
+            .build();
+
+        let qcfail = RecordBuf::builder()
+            .set_flags(Flags::QC_FAIL)
+            .set_reference_sequence_id(0)
+            .set_mapping_quality(MappingQuality::new(40).unwrap())
+            .set_cigar(Cigar::from(vec![Op::new(CigarOpKind::Match, 2)]))
+            .set_sequence(sam::alignment::record_buf::Sequence::from(b"AA".to_vec()))
+            .set_quality_scores(sam::alignment::record_buf::QualityScores::from(vec![15, 25]))
+            .build();
+
+        let bam_records = to_bam_records(&header, &[unmapped, qcfail]);
+        let hist = compute_quality(bam_records.into_iter().map(Ok), 30).unwrap();
+
+        assert_eq!(hist.read_len, 2);
+        assert_eq!(hist.quality[&0][&10], 1);
+        assert_eq!(hist.quality[&0][&15], 1);
+        assert_eq!(hist.quality[&1][&20], 1);
+        assert_eq!(hist.quality[&1][&25], 1);
     }
 
     #[test]
@@ -280,19 +324,25 @@ mod tests {
         };
 
         let output = render_qual_r_script(&hist, 1000, "test_output");
-        let expected = r#"pdf("test_output.qual.boxplot.pdf")
+        // Cross-checked byte-for-byte against a `python3 -c` run of the
+        // literal upstream print() sequence (single-quoted pdf(), and
+        // print('\n', file=FO)'s content-newline PLUS its own trailing
+        // newline giving two blank lines between the sections).
+        let expected = r#"pdf('test_output.qual.boxplot.pdf')
 p0<-rep(c(10,20),times=c(5,3)/1000)
 p1<-rep(c(15,25),times=c(2,4)/1000)
 boxplot(p0,p1,xlab="Position of Read(5'->3')",ylab="Phred Quality Score",outline=F)
 dev.off()
 
-pdf("test_output.qual.heatmap.pdf")
+
+pdf('test_output.qual.heatmap.pdf')
 qual=c(5,0,0,0,0,0,0,0,0,0,3,0,0,0,0,0,0,0,0,0,0,2,0,0,0,0,0,0,0,0,0,4)
 mat=matrix(qual,ncol=2,byrow=F)
 Lab.palette <- colorRampPalette(c("blue", "orange", "red3","red2","red1","red"), space = "rgb",interpolate=c('spline'))
 heatmap(mat,Rowv=NA,Colv=NA,xlab="Position of Read",ylab="Phred Quality Score",labRow=seq(from=10,to=25),col = Lab.palette(256),scale="none" )
-dev.off()"#;
-        
+dev.off()
+"#;
+
         assert_eq!(output, expected);
     }
 
@@ -312,17 +362,19 @@ dev.off()"#;
 
         // Should produce empty R script
         let output = render_qual_r_script(&hist, 1000, "test_output");
-        let expected = r#"pdf("test_output.qual.boxplot.pdf")
+        let expected = r#"pdf('test_output.qual.boxplot.pdf')
 boxplot(,xlab="Position of Read(5'->3')",ylab="Phred Quality Score",outline=F)
 dev.off()
 
-pdf("test_output.qual.heatmap.pdf")
+
+pdf('test_output.qual.heatmap.pdf')
 qual=c()
 mat=matrix(qual,ncol=0,byrow=F)
 Lab.palette <- colorRampPalette(c("blue", "orange", "red3","red2","red1","red"), space = "rgb",interpolate=c('spline'))
 heatmap(mat,Rowv=NA,Colv=NA,xlab="Position of Read",ylab="Phred Quality Score",labRow=seq(from=93,to=1),col = Lab.palette(256),scale="none" )
-dev.off()"#;
-        
+dev.off()
+"#;
+
         assert_eq!(output, expected);
     }
 }

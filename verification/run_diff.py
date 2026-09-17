@@ -55,6 +55,14 @@ class Case:
     # Relative file paths (relative to the run's own scratch directory)
     # to byte-compare between the two sides' output, e.g. ["out.NVC.xls"].
     compare_files: tuple[str, ...] = ()
+    # When True, each side's own scratch-directory absolute path is
+    # stripped from compare_files' content before comparing -- needed
+    # for R scripts that embed their own output path (e.g. `pdf('...')`),
+    # which legitimately differs between the two sides' separate scratch
+    # directories even when the actual data is identical. This is the
+    # "explicitly named normalization for paths" PORTING_PLAN.md's Step 4
+    # table allows, not a way to hide a real difference.
+    normalize_paths: bool = False
 
 
 @dataclasses.dataclass
@@ -152,6 +160,9 @@ def run_case(case: Case) -> bool:
                 continue
             py_bytes = py_file.read_bytes()
             rust_bytes = rust_file.read_bytes()
+            if case.normalize_paths:
+                py_bytes = py_bytes.replace(str(py_dir).encode(), b"<SCRATCH_DIR>")
+                rust_bytes = rust_bytes.replace(str(rust_dir).encode(), b"<SCRATCH_DIR>")
             if py_bytes == rust_bytes:
                 print(f"  file '{rel_path}' PASS (byte-identical, {len(py_bytes)} bytes)")
             else:
@@ -211,6 +222,40 @@ CASES: list[Case] = [
         rust_args=lambda scratch_dir: ["-i", _nvc_fixture_path(), "-o", str(scratch_dir / "out")],
         compare_stream="none",
         compare_files=("out.NVC.xls",),
+    ),
+    Case(
+        name="read_GC_basic",
+        ensure_fixture=ensure_bam_stat_fixture,
+        py_script="read_GC.py",
+        rust_bin="read_GC",
+        py_args=lambda scratch_dir: ["-i", _nvc_fixture_path(), "-o", str(scratch_dir / "out"), "--skip-plot"],
+        rust_args=lambda scratch_dir: ["-i", _nvc_fixture_path(), "-o", str(scratch_dir / "out")],
+        compare_stream="none",
+        compare_files=("out.GC.xls",),
+    ),
+    Case(
+        name="read_duplication_basic",
+        ensure_fixture=ensure_bam_stat_fixture,
+        py_script="read_duplication.py",
+        rust_bin="read_duplication",
+        py_args=lambda scratch_dir: ["-i", _nvc_fixture_path(), "-o", str(scratch_dir / "out"), "--skip-plot"],
+        rust_args=lambda scratch_dir: ["-i", _nvc_fixture_path(), "-o", str(scratch_dir / "out")],
+        compare_stream="none",
+        compare_files=("out.pos.DupRate.xls", "out.seq.DupRate.xls"),
+    ),
+    Case(
+        name="read_quality_basic",
+        ensure_fixture=ensure_bam_stat_fixture,
+        py_script="read_quality.py",
+        rust_bin="read_quality",
+        py_args=lambda scratch_dir: ["-i", _nvc_fixture_path(), "-o", str(scratch_dir / "out"), "--skip-plot"],
+        rust_args=lambda scratch_dir: ["-i", _nvc_fixture_path(), "-o", str(scratch_dir / "out")],
+        compare_stream="none",
+        # The .qual.r script embeds each side's own absolute scratch-
+        # directory path in its pdf('...') line -- normalize it away,
+        # see normalize_paths' docstring above.
+        compare_files=("out.qual.r",),
+        normalize_paths=True,
     ),
 ]
 
