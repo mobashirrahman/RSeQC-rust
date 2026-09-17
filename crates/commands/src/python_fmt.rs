@@ -18,17 +18,58 @@ pub fn python_round(x: f64) -> i64 {
     }
 }
 
-/// Renders a Python `str(float)`-equivalent string: Rust's default `f64`
-/// `Display` already produces the shortest round-tripping decimal (like
-/// Python's `repr`/`str` since 3.1) for non-integral values, but drops
-/// the trailing `.0` for whole numbers that Python always keeps (e.g.
-/// `5.0` prints as `"5"` in Rust, `"5.0"` in Python).
-///
-/// Known gap: Python's `str(float)` switches to scientific notation
-/// (`"1e+16"`) for magnitudes >= 1e16 or < 1e-4; Rust's `{}` never does,
-/// so this always renders the full decimal expansion instead. Not
-/// replicated -- values in that range are not expected from any current
-/// caller (TIN/FPKM/FPM scores stay well within ordinary magnitudes).
+fn fixed_from_scientific(value: &str) -> String {
+    let (sign, unsigned) = match value.strip_prefix('-') {
+        Some(v) => ("-", v),
+        None => ("", value.strip_prefix('+').unwrap_or(value)),
+    };
+    let Some((mantissa, exponent)) = unsigned.split_once(['e', 'E']) else {
+        return value.to_string();
+    };
+    let exponent: i32 = exponent.parse().unwrap_or(0);
+    let (whole, fraction) = mantissa.split_once('.').unwrap_or((mantissa, ""));
+    let digits = format!("{whole}{fraction}");
+    let decimal_position = whole.len() as i32 + exponent;
+    let body = if decimal_position <= 0 {
+        format!("0.{}{}", "0".repeat((-decimal_position) as usize), digits)
+    } else if decimal_position >= digits.len() as i32 {
+        format!("{}{}", digits, "0".repeat((decimal_position as usize).saturating_sub(digits.len())))
+    } else {
+        let position = decimal_position as usize;
+        format!("{}.{}", &digits[..position], &digits[position..])
+    };
+    format!("{sign}{body}")
+}
+
+fn scientific_from_fixed(value: &str) -> String {
+    let (sign, unsigned) = match value.strip_prefix('-') {
+        Some(v) => ("-", v),
+        None => ("", value.strip_prefix('+').unwrap_or(value)),
+    };
+    let (whole, fraction) = unsigned.split_once('.').unwrap_or((unsigned, ""));
+    let digits = format!("{whole}{fraction}");
+    let Some(first_nonzero) = digits.bytes().position(|b| b != b'0') else {
+        return "0".to_string();
+    };
+    let mut significant = digits[first_nonzero..].to_string();
+    while significant.ends_with('0') {
+        significant.pop();
+    }
+    let exponent = whole.len() as i32 - first_nonzero as i32 - 1;
+    let mut chars = significant.chars();
+    let first = chars.next().expect("non-zero significant digits");
+    let rest: String = chars.collect();
+    let mantissa = if rest.is_empty() { first.to_string() } else { format!("{first}.{rest}") };
+    let exponent_sign = if exponent < 0 { '-' } else { '+' };
+    let exponent_abs = exponent.unsigned_abs();
+    let exponent_digits = if exponent_abs < 10 { format!("0{exponent_abs}") } else { exponent_abs.to_string() };
+    format!("{sign}{mantissa}e{exponent_sign}{exponent_digits}")
+}
+
+/// Renders Python 3's `str(float)` representation, including its notation
+/// switch at `1e-4`/`1e16` and two-digit signed exponents. Rust's default
+/// Display supplies the shortest round-tripping decimal; the helpers above
+/// only normalize its notation and Python's required trailing `.0`.
 pub fn python_str_float(x: f64) -> String {
     if x.is_nan() {
         return "nan".to_string();
@@ -36,8 +77,19 @@ pub fn python_str_float(x: f64) -> String {
     if x.is_infinite() {
         return if x > 0.0 { "inf".to_string() } else { "-inf".to_string() };
     }
-    let s = format!("{x}");
-    if s.contains('.') || s.contains('e') || s.contains('E') { s } else { format!("{s}.0") }
+    if x == 0.0 {
+        return if x.is_sign_negative() { "-0.0".to_string() } else { "0.0".to_string() };
+    }
+    let raw = format!("{x}");
+    let scientific = x.abs() >= 1e16 || x.abs() < 1e-4;
+    let normalized = if scientific {
+        scientific_from_fixed(&fixed_from_scientific(&raw))
+    } else if raw.contains('e') || raw.contains('E') {
+        fixed_from_scientific(&raw)
+    } else {
+        raw
+    };
+    if scientific || normalized.contains('.') { normalized } else { format!("{normalized}.0") }
 }
 
 /// Formats `value` the way Python's `f"{value:.12g}"` does (C's
@@ -72,7 +124,7 @@ pub fn python_g12(value: f64) -> String {
 
     let sign_str = if neg { "-" } else { "" };
 
-    if exp >= -4 && exp < PRECISION {
+    if (-4..PRECISION).contains(&exp) {
         let decimals = (PRECISION - 1 - exp).max(0) as usize;
         let fixed = format!("{abs:.decimals$}");
         let trimmed = if fixed.contains('.') { fixed.trim_end_matches('0').trim_end_matches('.') } else { fixed.as_str() };
@@ -100,6 +152,16 @@ mod tests {
     fn non_integral_values_pass_through() {
         assert_eq!(python_str_float(42.75), "42.75");
         assert_eq!(python_str_float(58.651499544403826), "58.651499544403826");
+    }
+
+    #[test]
+    fn python_float_notation_switch_matches_cpython() {
+        assert_eq!(python_str_float(1e-5), "1e-05");
+        assert_eq!(python_str_float(1e-4), "0.0001");
+        assert_eq!(python_str_float(1e16), "1e+16");
+        assert_eq!(python_str_float(1e15), "1000000000000000.0");
+        assert_eq!(python_str_float(1.23456e-9), "1.23456e-09");
+        assert_eq!(python_str_float(1.23456e12), "1234560000000.0");
     }
 
     #[test]

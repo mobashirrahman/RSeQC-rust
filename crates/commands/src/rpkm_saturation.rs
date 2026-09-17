@@ -349,7 +349,7 @@ pub fn compute_saturation(
 /// Renders the `.eRPKM.xls` table text, including the literal
 /// space-after-key quirk described in the module docs.
 pub fn render_rpkm_xls(result: &SaturationResult) -> String {
-    render_table(result, |v| python_str_float(v))
+    render_table(result, python_str_float)
 }
 
 /// Renders the `.rawCount.xls` table text (plain integer counts).

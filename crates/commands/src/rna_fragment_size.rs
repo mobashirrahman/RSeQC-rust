@@ -31,6 +31,8 @@ use noodles_bam as bam;
 use noodles_sam as sam;
 use rseqc_formats::cigar::reference_span;
 
+use crate::python_fmt::python_str_float;
+
 struct ReadEntry {
     ref_start: i64,
     ref_end: i64,
@@ -246,7 +248,7 @@ fn mean_median_std(values: &[i64]) -> (f64, f64, f64) {
     let mut sorted: Vec<f64> = values.iter().map(|&v| v as f64).collect();
     sorted.sort_by(|a, b| a.partial_cmp(b).unwrap());
     let mid = sorted.len() / 2;
-    let median = if sorted.len() % 2 == 0 {
+    let median = if sorted.len().is_multiple_of(2) {
         (sorted[mid - 1] + sorted[mid]) / 2.0
     } else {
         sorted[mid]
@@ -261,7 +263,7 @@ fn mean_median_std(values: &[i64]) -> (f64, f64, f64) {
 pub fn format_result(s: &FragmentStats) -> String {
     let (mean_s, median_s, std_s) = match s.stats {
         None => ("0".to_string(), "0".to_string(), "0".to_string()),
-        Some((mean, median, std)) => (mean.to_string(), median.to_string(), std.to_string()),
+        Some((mean, median, std)) => (python_str_float(mean), python_str_float(median), python_str_float(std)),
     };
     format!(
         "{}\t{}\t{}\t{}\t{}\t{mean_s}\t{median_s}\t{std_s}",
@@ -340,7 +342,7 @@ mod tests {
             name: "geneA".into(),
             exon_ranges: vec![(1, 1000)],
         };
-        let reads = IndexedReads::build(Vec::<io::Result<bam::Record>>::new().into_iter(), &test_header()).unwrap();
+        let reads = IndexedReads::build(Vec::<io::Result<bam::Record>>::new(), &test_header()).unwrap();
         let stats = compute_fragment_sizes(&bed, &reads, 30, 3);
         assert_eq!(stats.count, 0);
         assert_eq!(format_result(&stats), "chr1\t0\t1000\tgeneA\t0\t0\t0\t0");
