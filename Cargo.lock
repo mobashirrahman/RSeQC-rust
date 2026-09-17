@@ -649,6 +649,7 @@ dependencies = [
  "bigtools",
  "noodles-bam",
  "noodles-bgzf",
+ "noodles-core",
  "noodles-sam",
  "rseqc-core",
  "thiserror 2.0.20",

@@ -1,9 +1,13 @@
 //! Port of `bam_stat.py`: summarize mapping statistics for a BAM file.
 //! Contract: see `compatibility/commands.yaml` entry `bam_stat.py`; algorithm
 //! ported from `ParseBAM.stat()` in `oracle/upstream-src/src/qcmodule/SAM.py`.
-//! Known divergences: see `compatibility/divergences.yaml` DIV-0001, DIV-0002
-//! (splice detection simplified to a direct CIGAR-Skip check; BAM only, no
-//! SAM-text support yet).
+//! Known divergences: see `compatibility/divergences.yaml` DIV-0001
+//! (splice detection simplified to a direct CIGAR-Skip check). DIV-0002
+//! (BAM-only, no SAM-text support) is CLOSED for this command -- the
+//! CLI opens input via `rseqc_formats::open_alignments`, which
+//! dispatches on the `.bam`/`.sam` extension and converts SAM-text
+//! records to genuine `bam::Record`s before they ever reach this
+//! module, so `compute_stats` itself needed no changes at all.
 
 use std::io;
 

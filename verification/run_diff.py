@@ -367,6 +367,18 @@ def ensure_bam_stat_fixture() -> None:
     subprocess.run([str(ORACLE_PYTHON), str(generator), str(fixture)], cwd=REPO_ROOT, check=True)
 
 
+def ensure_bam_stat_sam_fixture() -> None:
+    # Same alignments as bam_stat_basic.bam, re-encoded as plain-text SAM
+    # via pysam -- exercises open_alignments()'s SAM-text round-trip path
+    # (DIV-0002/0004) against the exact same data as the .bam case.
+    ensure_bam_stat_fixture()
+    fixture = REPO_ROOT / "verification" / "fixtures" / "bam_stat_basic.sam"
+    if fixture.is_file():
+        return
+    generator = REPO_ROOT / "verification" / "fixtures" / "make_bam_stat_sam_fixture.py"
+    subprocess.run([str(ORACLE_PYTHON), str(generator), str(fixture)], cwd=REPO_ROOT, check=True)
+
+
 def ensure_regression_fixtures() -> None:
     fixture_dir = REPO_ROOT / "verification" / "fixtures"
     required = (
@@ -391,6 +403,10 @@ def ensure_regression_fixtures() -> None:
 
 def _bam_stat_args(_scratch_dir: Path) -> list[str]:
     return ["-i", str(REPO_ROOT / "verification" / "fixtures" / "bam_stat_basic.bam")]
+
+
+def _bam_stat_sam_args(_scratch_dir: Path) -> list[str]:
+    return ["-i", str(REPO_ROOT / "verification" / "fixtures" / "bam_stat_basic.sam")]
 
 
 def _nvc_fixture_path() -> str:
@@ -504,6 +520,25 @@ CASES: list[Case] = [
         py_args=_bam_stat_args,
         rust_args=_bam_stat_args,
         compare_stream="stdout",
+        required_labels=("Total records", "Unmapped reads", "Read-1"),
+    ),
+    Case(
+        name="bam_stat_sam_text",
+        # DIV-0002/0004: SAM-text input support, closed for bam_stat.py via
+        # rseqc_formats::open_alignments (round-trips SAM-text records
+        # through an in-memory BAM byte buffer). Confirmed via live diff
+        # against real upstream that pysam's Samfile(path, 'rb') succeeds
+        # even for genuine plain-text SAM content (htslib auto-detects,
+        # ignoring the 'b' mode hint) -- so upstream ALSO prints "Load BAM
+        # file" for .sam input, not "Load SAM file"; comparing full stderr
+        # here (not just stdout) pins that behavior down.
+        ensure_fixture=ensure_bam_stat_sam_fixture,
+        py_script="bam_stat.py",
+        rust_bin="bam_stat",
+        py_args=_bam_stat_sam_args,
+        rust_args=_bam_stat_sam_args,
+        compare_stream="both",
+        stream_format="exact",
         required_labels=("Total records", "Unmapped reads", "Read-1"),
     ),
     Case(

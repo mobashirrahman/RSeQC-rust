@@ -16,3 +16,6 @@ thiserror = "2"
 # noodles-* crates: a mature format library for a real compressed,
 # indexed binary format, not something to hand-roll.
 bigtools = { version = "0.5", default-features = false, features = ["read"] }
+
+[dev-dependencies]
+noodles-core = "0.20.0"

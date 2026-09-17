@@ -13,8 +13,8 @@ use rseqc_commands::bam_stat::{BamStatCounts, compute_stats};
     about = "Summarize mapping statistics for a BAM or SAM alignment file."
 )]
 struct Args {
-    /// Input BAM file (SAM-text input is not yet supported; see
-    /// compatibility/divergences.yaml DIV-0002).
+    /// Input alignment file in BAM or plain-text SAM format (dispatched
+    /// by the `.bam`/`.sam` extension).
     #[arg(short = 'i', long = "input-file")]
     input_file: PathBuf,
 
@@ -35,8 +35,23 @@ fn main() -> std::process::ExitCode {
 }
 
 fn run(args: &Args) -> std::io::Result<()> {
-    let (mut reader, _header) = rseqc_formats::open_bam(&args.input_file)?;
-    let counts = compute_stats(reader.records(), args.mapq)?;
+    // Upstream: `if self.bam_format: print("Load BAM file ... ",
+    // end=' ') else: print("Load SAM file ... ", end=' ')` --
+    // `self.bam_format` comes from trying `pysam.Samfile(path, 'rb')`
+    // FIRST and only falling back to `'r'` (bam_format=False) if that
+    // raises. Confirmed via a live diff against real upstream: htslib's
+    // `'rb'` open is lenient about actual content and succeeds for a
+    // genuine plain-text SAM file too (it auto-detects format,
+    // effectively ignoring the 'b' mode hint) -- so `bam_format` is
+    // `True`, and "Load BAM file" prints, EVEN for `.sam` input. The
+    // "Load SAM file" branch is practically dead code for any valid
+    // input, not something this port needs a format check to trigger.
+    // The literal's own trailing space plus `end=' '` gives two spaces
+    // before "Done".
+    eprint!("Load BAM file ...  ");
+    let (_header, records) = rseqc_formats::open_alignments(&args.input_file)?;
+    let counts = compute_stats(records, args.mapq)?;
+    eprintln!("Done");
     print_report(&counts);
     Ok(())
 }

@@ -21,11 +21,24 @@ divergences:
   - id: DIV-0002
     command_or_api: bam_stat.py
     description: >
-      Vertical-slice Rust port (Step 5) supports BAM input only. Upstream's
-      help text advertises "BAM or SAM" (plain-text SAM input via pysam).
+      CLOSED 2026-09-17. bam_stat.py's CLI now opens input via
+      `rseqc_formats::open_alignments`, which dispatches on the `.bam`/
+      `.sam` extension (case-insensitive) and, for `.sam` input, round-trips
+      the parsed text records through an in-memory BAM byte buffer before
+      handing them to the existing `compute_stats` function -- which needed
+      zero changes. A live diff against real upstream also surfaced a
+      genuine behavioral subtlety worth recording: pysam's
+      `Samfile(path, 'rb')` succeeds even for authentic plain-text SAM
+      content (htslib auto-detects format and ignores the 'b' mode hint),
+      so upstream's own "Load SAM file ..." branch is practically dead code
+      -- upstream prints "Load BAM file ...  Done" for `.sam` input too, and
+      the port now matches that exactly rather than printing a
+      format-conditional message. Verified byte-identical stdout+stderr for
+      both `.bam` and `.sam` input; see `verification/run_diff.py` case
+      `bam_stat_sam_text`.
     classification: explicit-compatibility-exception
-    decision: SAM-text input is a disclosed gap until a follow-up task adds it; do not claim full bam_stat.py compatibility until closed.
-    status: open
+    decision: Closed for bam_stat.py. The same `open_alignments` function is available in crates/formats for migrating the remaining BAM-consuming commands (tracked as DIV-0004).
+    status: fixed-working-tree
 
   - id: DIV-0003
     command_or_api: package-wide
@@ -38,12 +51,30 @@ divergences:
     status: open
 
   - id: DIV-0004
-    command_or_api: bam_stat.py, split_paired_bam.py, bam2fq.py, divide_bam.py
+    command_or_api: >
+      All commands whose CLI still calls `rseqc_formats::open_bam` directly
+      (BAM-only): bam2fq.py, bam2wig.py, clipping_profile.py,
+      deletion_profile.py, divide_bam.py, fpkm_count.py,
+      geneBody_coverage.py, infer_experiment.py, inner_distance.py,
+      insertion_profile.py, junction_annotation.py, junction_saturation.py,
+      mismatch_profile.py, read_distribution.py, read_duplication.py,
+      read_GC.py, read_NVC.py, read_quality.py, RNA_fragment_size.py,
+      RPKM_saturation.py, sc_bamStat.py, sc_editMatrix.py, split_bam.py,
+      split_paired_bam.py, tin.py
     description: >
-      All four commands ported so far are BAM-only; upstream's help text for
-      each advertises "BAM or SAM" (plain-text SAM input via pysam).
+      This entry originally listed only 4 commands (bam_stat.py,
+      split_paired_bam.py, bam2fq.py, divide_bam.py) as the known BAM-only
+      set; found stale 2026-09-17 -- the true scope is every command whose
+      CLI opens input via `rseqc_formats::open_bam` (checked via
+      `grep -rl open_bam crates/cli/src/`), which is broader. Upstream's
+      help text for each advertises "BAM or SAM" (plain-text SAM input via
+      pysam). A shared `rseqc_formats::open_alignments` function now exists
+      (added closing DIV-0002 for bam_stat.py) that any of these commands
+      can adopt by swapping their `open_bam` call for `open_alignments` --
+      the existing `compute_*` functions need zero changes since they are
+      already generic over `IntoIterator<Item = io::Result<bam::Record>>`.
     classification: explicit-compatibility-exception
-    decision: SAM-text input is a disclosed gap across all ported commands until a follow-up adds a shared SAM-text reader in crates/formats; do not claim full compatibility for any of them until closed.
+    decision: SAM-text input is a disclosed gap for all commands listed above until each is migrated to open_alignments; see DIV-0002 for the closed bam_stat.py case and the migration pattern. Do not claim full compatibility for any listed command until closed.
     status: open
 
   - id: DIV-0005
