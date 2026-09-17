@@ -1756,6 +1756,33 @@ CASES: list[Case] = [
         compare_files=("out.wig",),
     ),
     Case(
+        name="bam2wig_with_wigsum",
+        # -t/--wigsum: exercises calWigSum's OWN independent per-
+        # chromosome scan (run before the main bamTowig phase), which
+        # duplicates the "Processing <chrom> ..." progress line -- a
+        # real code path the default-args case above deliberately
+        # doesn't exercise (see its own comment). Verified via live
+        # diff: all content matches except the final wigToBigWig-not-
+        # found line, which is inherently environment-dependent (shell
+        # error text vs. this port's own message) -- same reason
+        # bam2wig_basic uses compare_stream="none" rather than "stderr".
+        ensure_fixture=ensure_track_fixtures,
+        py_script="bam2wig.py",
+        rust_bin="bam2wig",
+        py_args=lambda scratch_dir: [
+            "-i", _track_fixture("track_reads.bam"),
+            "-s", _track_fixture("track_chrom.sizes"),
+            "-o", str(scratch_dir / "out"), "-t", "100",
+        ],
+        rust_args=lambda scratch_dir: [
+            "-i", _track_fixture("track_reads.bam"),
+            "-s", _track_fixture("track_chrom.sizes"),
+            "-o", str(scratch_dir / "out"), "-t", "100",
+        ],
+        compare_stream="none",
+        compare_files=("out.wig",),
+    ),
+    Case(
         name="normalize_bigwig_genome",
         # Found by this case: several stderr progress lines were
         # missing entirely ("Get chromosome sizes from BigWig header
