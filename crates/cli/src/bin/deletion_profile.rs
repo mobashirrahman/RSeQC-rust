@@ -5,6 +5,7 @@
 use std::fs::File;
 use std::io::Write as _;
 use std::path::PathBuf;
+use std::process::Command;
 
 use clap::Parser;
 use rseqc_commands::deletion_profile::{
@@ -37,6 +38,14 @@ struct Args {
     /// Minimum mapping quality for a read to be considered uniquely mapped.
     #[arg(short = 'q', long = "mapq", default_value_t = 30)]
     mapq: u8,
+
+    /// Generate the profile files but do not run the R plotting script.
+    #[arg(long = "skip-plot")]
+    skip_plot: bool,
+
+    /// Rscript executable to use.
+    #[arg(long = "rscript", default_value = "Rscript")]
+    rscript: String,
 }
 
 fn main() -> std::process::ExitCode {
@@ -73,8 +82,15 @@ fn run(args: &Args) -> std::io::Result<()> {
     let mut table = File::create(format!("{prefix}.deletion_profile.txt"))?;
     table.write_all(render_deletion_table(&profile).as_bytes())?;
 
-    let mut r = File::create(format!("{prefix}.deletion_profile.r"))?;
-    r.write_all(render_deletion_r_script(&profile, &prefix).as_bytes())?;
+    let r_path = format!("{prefix}.deletion_profile.r");
+    File::create(&r_path)?.write_all(render_deletion_r_script(&profile, &prefix).as_bytes())?;
+
+    if !args.skip_plot {
+        let status = Command::new(&args.rscript).arg(&r_path).status()?;
+        if !status.success() {
+            return Err(std::io::Error::other(format!("R plotting failed for {r_path}")));
+        }
+    }
 
     Ok(())
 }

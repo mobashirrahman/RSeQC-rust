@@ -903,27 +903,36 @@ CASES: list[Case] = [
         name="deletion_profile_no_deletions",
         # bam_stat_basic.bam's reads are all plain 20M (no deletions), so
         # this exercises the "0 qualifying reads" path -- still a real,
-        # oracle-verified case, not a dummy. stdout is intentionally not
-        # compared: deletion_profile.py has no --skip-plot flag, so the
-        # real upstream CLI always spawns Rscript and its console noise
-        # ("null device"/"1") leaks into stdout, an already-accepted
-        # architecture difference (this port never invokes Rscript).
+        # oracle-verified case, not a dummy. DIV-0005 fix: this command
+        # DOES have --skip-plot/--rscript upstream (an earlier version
+        # of this comment claimed otherwise -- wrong; the Rust port
+        # simply hadn't wired the flag up yet at the time). Now passed
+        # on both sides, so stdout is directly comparable again instead
+        # of needing to dodge Rscript's own "null device"/"1" console
+        # noise.
         ensure_fixture=ensure_bam_stat_fixture,
         py_script="deletion_profile.py",
         rust_bin="deletion_profile",
-        py_args=lambda scratch_dir: ["-i", _nvc_fixture_path(), "-l", "20", "-o", str(scratch_dir / "out")],
-        rust_args=lambda scratch_dir: ["-i", _nvc_fixture_path(), "-l", "20", "-o", str(scratch_dir / "out")],
-        compare_stream="none",
+        py_args=lambda scratch_dir: ["-i", _nvc_fixture_path(), "-l", "20", "-o", str(scratch_dir / "out"), "--skip-plot"],
+        rust_args=lambda scratch_dir: ["-i", _nvc_fixture_path(), "-l", "20", "-o", str(scratch_dir / "out"), "--skip-plot"],
+        compare_stream="stdout",
+        stream_format="exact",
         compare_files=("out.deletion_profile.txt", "out.deletion_profile.r"),
         normalize_paths=True,
     ),
     Case(
         name="mismatch_profile_no_mismatches",
+        # DIV-0005 fix: added --skip-plot/--rscript + real Rscript
+        # invocation for the has-mismatches path (this specific case
+        # stays on the "No mismatches found" early exit, which bypasses
+        # Rscript on BOTH sides via upstream's own bare `sys.exit()`
+        # inside mismatchProfile -- --skip-plot is passed anyway for
+        # consistency/robustness, not because this path needs it).
         ensure_fixture=ensure_bam_stat_fixture,
         py_script="mismatch_profile.py",
         rust_bin="mismatch_profile",
-        py_args=lambda scratch_dir: ["-i", _nvc_fixture_path(), "-l", "20", "-o", str(scratch_dir / "out")],
-        rust_args=lambda scratch_dir: ["-i", _nvc_fixture_path(), "-l", "20", "-o", str(scratch_dir / "out")],
+        py_args=lambda scratch_dir: ["-i", _nvc_fixture_path(), "-l", "20", "-o", str(scratch_dir / "out"), "--skip-plot"],
+        rust_args=lambda scratch_dir: ["-i", _nvc_fixture_path(), "-l", "20", "-o", str(scratch_dir / "out"), "--skip-plot"],
         compare_stream="stdout",
         stream_format="exact",
         compare_files=("out.mismatch_profile.xls", "out.mismatch_profile.r"),
