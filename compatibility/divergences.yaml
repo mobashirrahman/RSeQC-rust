@@ -57,10 +57,16 @@ divergences:
 
   - id: DIV-0004
     command_or_api: >
-      clipping_profile.py, infer_experiment.py, inner_distance.py,
-      insertion_profile.py, junction_annotation.py, junction_saturation.py,
-      read_distribution.py, read_duplication.py, read_GC.py, read_NVC.py,
-      read_quality.py, RPKM_saturation.py
+      Open (11): clipping_profile.py, infer_experiment.py,
+      inner_distance.py, insertion_profile.py, junction_annotation.py,
+      junction_saturation.py, read_distribution.py, read_duplication.py,
+      read_GC.py, read_quality.py, RPKM_saturation.py.
+      Closed (1, 2026-09-17): read_NVC.py -- migrated to
+      rseqc_formats::open_alignments; same "Read BAM file" (not "Read SAM
+      file") message even for .sam input as bam_stat.py/bam2fq.py, since
+      readsNVC() in qcmodule/SAM.py has the identical
+      `if self.bam_format: ... else: ...` dead-code-else pattern. See
+      verification/run_diff.py case read_NVC_sam_text.
     description: >
       A first pass at this entry (2026-09-17, superseded within the same
       day) wrongly listed every command whose CLI calls `rseqc_formats::

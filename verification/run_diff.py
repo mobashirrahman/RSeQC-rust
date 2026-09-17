@@ -569,6 +569,20 @@ CASES: list[Case] = [
         normalize_paths=True,
     ),
     Case(
+        name="read_NVC_sam_text",
+        # DIV-0002/0004: SAM-text input, closed for read_NVC.py via
+        # open_alignments.
+        ensure_fixture=ensure_bam_stat_sam_fixture,
+        py_script="read_NVC.py",
+        rust_bin="read_NVC",
+        py_args=lambda scratch_dir: ["-i", _bam_stat_sam_fixture_path(), "-o", str(scratch_dir / "out"), "--skip-plot"],
+        rust_args=lambda scratch_dir: ["-i", _bam_stat_sam_fixture_path(), "-o", str(scratch_dir / "out"), "--skip-plot"],
+        compare_stream="stderr",
+        stream_format="exact",
+        compare_files=("out.NVC.xls", "out.NVC_plot.r"),
+        normalize_paths=True,
+    ),
+    Case(
         name="read_NVC_with_nx",
         # Same fixture, -x/--nx branch: the R script's total/ym/yn
         # expressions and legend include the N/X count series too.
