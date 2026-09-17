@@ -28,6 +28,29 @@ pub fn open_bam(
     Ok((reader, header))
 }
 
+/// Builds and writes a `<path>.bai` index for an already-written,
+/// coordinate-sorted BAM file, matching upstream's `pysam.index(path)`
+/// (`split_paired_bam.py`'s `index_bam`, `divide_bam.py`'s
+/// `create_indexes`) -- closes DIV-0006 for any command that calls this
+/// after finishing a BAM write. Requires the BAM header to declare
+/// `SO:coordinate` (same requirement pysam/samtools enforce); on a
+/// non-coordinate-sorted input this returns an `InvalidData` error with a
+/// message deliberately worded like upstream's own
+/// "could not index ...; output BAM may not be coordinate-sorted" wrapper,
+/// since both sides reach the same practical conclusion (index-building
+/// only works on sorted data) even though the underlying library error
+/// text differs (noodles vs. htslib).
+pub fn write_bai_index(path: &Path) -> io::Result<()> {
+    let index = noodles_bam::fs::index(path).map_err(|err| {
+        io::Error::new(
+            io::ErrorKind::InvalidData,
+            format!("could not index {}; output BAM may not be coordinate-sorted: {err}", path.display()),
+        )
+    })?;
+    let bai_path = format!("{}.bai", path.display());
+    noodles_bam::bai::fs::write(bai_path, &index)
+}
+
 /// Opens either a BAM or plain-text SAM file for sequential record
 /// reading, dispatching on the `.bam`/`.sam` extension (case-
 /// insensitive) and returning a UNIFORM `(header, records)` pair
@@ -148,6 +171,69 @@ mod tests {
         assert_eq!(b.flags(), s.flags());
         assert_eq!(b.mapping_quality(), s.mapping_quality());
         assert_eq!(b.alignment_start().unwrap().unwrap(), s.alignment_start().unwrap().unwrap());
+
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn write_bai_index_produces_a_real_readable_index() {
+        use noodles_sam::alignment::io::Write as _;
+        use noodles_sam::header::record::value::map;
+        use noodles_sam::header::record::value::map::header::{sort_order::COORDINATE, tag::SORT_ORDER};
+
+        let header = sam::Header::builder()
+            .set_header(Map::<map::Header>::builder().insert(SORT_ORDER, COORDINATE).build().unwrap())
+            .add_reference_sequence("chr1", Map::<ReferenceSequence>::new(NonZeroUsize::new(1000).unwrap()))
+            .build();
+
+        let record = RecordBuf::builder()
+            .set_flags(Flags::empty())
+            .set_reference_sequence_id(0)
+            .set_alignment_start(noodles_core::Position::try_from(11).unwrap())
+            .set_cigar(Cigar::from(vec![Op::new(CigarOpKind::Match, 4)]))
+            .build();
+
+        let dir = std::env::temp_dir().join(format!("rseqc_formats_bai_test_{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let bam_path = dir.join("sorted.bam");
+        {
+            let mut w = noodles_bam::io::Writer::new(std::fs::File::create(&bam_path).unwrap());
+            w.write_header(&header).unwrap();
+            w.write_alignment_record(&header, &record).unwrap();
+        }
+
+        write_bai_index(&bam_path).unwrap();
+
+        let bai_path = dir.join("sorted.bam.bai");
+        assert!(bai_path.is_file());
+        let index = noodles_bam::bai::fs::read(&bai_path).unwrap();
+        assert_eq!(index.reference_sequences().len(), 1);
+
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn write_bai_index_rejects_unsorted_header() {
+        use noodles_sam::alignment::io::Write as _;
+
+        // No SO:coordinate tag set -- matches upstream's own "may not be
+        // coordinate-sorted" rejection, though via a different underlying
+        // check (noodles requires the header tag; htslib/pysam inspects
+        // actual record order). Both reach the same practical outcome.
+        let header = test_header();
+        let record = RecordBuf::builder().set_flags(Flags::UNMAPPED).build();
+
+        let dir = std::env::temp_dir().join(format!("rseqc_formats_bai_unsorted_test_{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let bam_path = dir.join("unsorted.bam");
+        {
+            let mut w = noodles_bam::io::Writer::new(std::fs::File::create(&bam_path).unwrap());
+            w.write_header(&header).unwrap();
+            w.write_alignment_record(&header, &record).unwrap();
+        }
+
+        let err = write_bai_index(&bam_path).unwrap_err();
+        assert_eq!(err.kind(), io::ErrorKind::InvalidData);
 
         std::fs::remove_dir_all(&dir).unwrap();
     }

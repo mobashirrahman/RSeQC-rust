@@ -2,8 +2,11 @@
 //! (see crates/cli/Cargo.toml); packaging (PORTING_PLAN Step 10) adds the
 //! `.py`-suffixed PATH alias.
 //!
-//! `--index` (BAM indexing) is not implemented yet — disclosed gap, see
-//! crates/commands/src/divide_bam.rs module docs.
+//! `--index` (DIV-0006, closed): writes a `.bai` index for each output
+//! BAM via `rseqc_formats::write_bai_index`, matching upstream's
+//! `pysam.index(path)` call in `create_indexes`. Unlike
+//! `split_paired_bam.py`, upstream's `create_indexes` has no logging
+//! calls at all, so no extra stderr output accompanies this.
 //!
 //! Upstream has no `--overwrite` flag for this command: it always refuses
 //! to run if any `<prefix>_<index>.bam` output already exists
@@ -49,6 +52,10 @@ struct Args {
     /// Random seed for reproducible division (optional).
     #[arg(long = "seed")]
     seed: Option<u64>,
+
+    /// Create a BAM index for each output file after writing.
+    #[arg(long = "index")]
+    index: bool,
 }
 
 fn main() -> std::process::ExitCode {
@@ -124,6 +131,12 @@ fn run(args: &Args) -> std::io::Result<()> {
 
     drop(outputs);
     drop(reader);
+
+    if args.index {
+        for path in &paths {
+            rseqc_formats::write_bai_index(std::path::Path::new(path))?;
+        }
+    }
 
     let (stdout, stderr) = render_report(&paths, &counts, args.skip_unmap);
     print!("{stdout}");

@@ -80,6 +80,15 @@ class Case:
     # even upstream's own output isn't reproducible run-to-run for that
     # reason -- only the decompressed content is a fair comparison.
     gzip_files: tuple[str, ...] = ()
+    # Files that must exist (non-empty) on BOTH sides but whose content is
+    # never byte-comparable in principle -- e.g. a `.bai` index, whose
+    # binning-index encoder detail differs between noodles and htslib even
+    # though both produce a functionally correct, real-htslib-readable
+    # index (verified separately via a live pysam.fetch() probe during
+    # development, not by this harness). Existence is still a genuine,
+    # bug-catching check: a command that silently failed to write the file
+    # at all would otherwise pass unnoticed.
+    expect_files: tuple[str, ...] = ()
     # Exit status expected from both implementations.  A positive
     # compatibility case must therefore not pass merely because both sides
     # failed in the same way.
@@ -325,6 +334,17 @@ def compare_results(case: Case, py_result: RunResult, rust_result: RunResult, py
             print(py_bytes.decode("utf-8", errors="replace"))
             print(f"  --- rust {rel_path} ---")
             print(rust_bytes.decode("utf-8", errors="replace"))
+            ok = False
+
+    for rel_path in case.expect_files:
+        py_file = py_dir / rel_path
+        rust_file = rust_dir / rel_path
+        py_size = py_file.stat().st_size if py_file.is_file() else None
+        rust_size = rust_file.stat().st_size if rust_file.is_file() else None
+        if py_size and rust_size:
+            print(f"  file '{rel_path}' PASS (exists on both sides, {py_size}/{rust_size} bytes)")
+        else:
+            print(f"  FAIL file '{rel_path}': python_size={py_size!r} rust_size={rust_size!r}")
             ok = False
     return ok
 
@@ -1305,6 +1325,38 @@ CASES: list[Case] = [
         ],
         compare_stream="stderr",
         stream_format="exact",
+    ),
+    Case(
+        name="divide_bam_index",
+        # DIV-0006: --index, closed. Uses regression_overlap_pair.bam
+        # (already known strictly coordinate-sortable/indexable by real
+        # htslib -- confirmed by its own pre-existing .bai) rather than
+        # bam_stat_basic.bam, which genuinely fails to index under real
+        # samtools/htslib: it has a NO_COOR (unmapped) read in the MIDDLE
+        # of the file rather than trailing at the end, violating BAM's
+        # coordinate-sort convention that htslib's indexer requires
+        # (confirmed via a live `pysam.index()` probe -- a pre-existing
+        # fixture limitation unrelated to this port's own code). .bai
+        # files are expect_files, not compare_files: noodles' and
+        # htslib's binning-index encoders produce different bytes for
+        # the same logical index (confirmed non-byte-comparable via a
+        # live diff), but both are independently verified real,
+        # functionally-correct, htslib-readable indexes via a
+        # pysam.fetch() probe during development.
+        ensure_fixture=ensure_regression_fixtures,
+        py_script="divide_bam.py",
+        rust_bin="divide_bam",
+        py_args=lambda scratch_dir: [
+            "-i", _regression_fixture("regression_overlap_pair.bam"),
+            "-n", "2", "-o", str(scratch_dir / "out"), "--seed", "42", "--index",
+        ],
+        rust_args=lambda scratch_dir: [
+            "-i", _regression_fixture("regression_overlap_pair.bam"),
+            "-n", "2", "-o", str(scratch_dir / "out"), "--seed", "42", "--index",
+        ],
+        compare_stream="stderr",
+        stream_format="exact",
+        expect_files=("out_0.bam.bai", "out_1.bam.bai"),
     ),
     Case(
         name="read_hexamer_basic",

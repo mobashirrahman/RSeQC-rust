@@ -3,9 +3,10 @@
 //! ported from `divide_bam()` in `oracle/upstream-src/scripts/divide_bam.py`
 //! (lines 110-174).
 //!
-//! Known gap: BAM index (`.bai`) generation for the outputs (upstream's
-//! `index_bam`) is not implemented here yet — disclosed follow-up, not
-//! silently dropped.
+//! `.bai` index generation (DIV-0006, closed) is implemented at the CLI
+//! layer via `rseqc_formats::write_bai_index`; this module's own
+//! `divide_bam` function is unaffected -- it only ever writes the plain
+//! BAM records.
 
 use std::io;
 

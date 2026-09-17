@@ -2,9 +2,18 @@
 //! contain '.' (see crates/cli/Cargo.toml); packaging (PORTING_PLAN Step 10)
 //! adds the `.py`-suffixed PATH alias.
 //!
-//! `--index-output` (BAI generation) remains rejected: no BAI writer exists
-//! yet, same disclosed gap as `split_bam.py`. `--verbose` (upstream's extra
-//! logging) is accepted but not yet wired to any extra output.
+//! `--index-output` (DIV-0006, closed): writes a `.bai` index for each
+//! output BAM via `rseqc_formats::write_bai_index`, matching upstream's
+//! `pysam.index("-f", path)` call in `index_bam`.
+//!
+//! Upstream's logging is unconditional at INFO level (`--verbose` only
+//! raises the threshold to DEBUG, which INFO messages already clear) --
+//! "Splitting <input>", one "Indexing <path>" per `--index-output` file,
+//! and "Done." all print regardless of `--verbose`, same as this port's
+//! `sc_bamStat.py` precedent. No timestamp prefix is emitted (upstream's
+//! own `%(asctime)s [%(levelname)s]` prefix can never be byte-reproduced
+//! regardless of content, so this port only emits the message text, not a
+//! fabricated timestamp -- same approach as `sc_bamStat.py`/DIV-0019).
 
 use std::fs::File;
 use std::path::{Path, PathBuf};
@@ -32,7 +41,7 @@ struct Args {
     #[arg(short = 'o', long = "out-prefix")]
     out_prefix: PathBuf,
 
-    /// Create BAI indexes for the output BAM files after splitting (currently unsupported).
+    /// Create BAI indexes for the output BAM files after splitting.
     #[arg(long = "index-output")]
     index_output: bool,
 
@@ -40,7 +49,10 @@ struct Args {
     #[arg(long = "overwrite")]
     overwrite: bool,
 
-    /// Enable detailed progress logging (currently a no-op).
+    /// Enable detailed progress logging (accepted; upstream's messages are
+    /// always emitted at INFO level regardless of this flag, matching its
+    /// `logging.basicConfig(level=DEBUG if verbose else INFO)` -- verbose
+    /// only lowers the threshold, it does not gate these specific lines).
     #[arg(long = "verbose")]
     verbose: bool,
 }
@@ -97,12 +109,8 @@ fn check_output_paths(paths: &[PathBuf], overwrite: bool) -> std::io::Result<()>
 }
 
 fn run(args: &Args) -> std::io::Result<()> {
-    if args.index_output {
-        return Err(std::io::Error::new(
-            std::io::ErrorKind::Unsupported,
-            "--index-output is not supported by this build (no BAI writer)",
-        ));
-    }
+    // Upstream: `logging.info("Splitting %s", input_file)` -- unconditional.
+    eprintln!("Splitting {}", args.input_file.display());
 
     let (reader, header) = rseqc_formats::open_bam(&args.input_file)?;
 
@@ -132,9 +140,23 @@ fn run(args: &Args) -> std::io::Result<()> {
         "{}",
         render_report(&r1_path.to_string_lossy(), &r2_path.to_string_lossy(), &unmap_path.to_string_lossy(), &counts)
     );
-    if args.verbose {
-        eprintln!("Done.");
+
+    if args.index_output {
+        for path in [&r1_path, &r2_path, &unmap_path] {
+            // Upstream: `logging.info("Indexing %s", path)` -- unconditional.
+            eprintln!("Indexing {}", path.display());
+            rseqc_formats::write_bai_index(path)?;
+        }
     }
+
+    // Upstream: `logging.info("Done.")` -- unconditional, not gated by
+    // --verbose (verbose only lowers the level threshold; this message
+    // is already at INFO, which always clears it). `args.verbose` itself
+    // has no other observable effect on this command's output: upstream
+    // never calls `logging.debug(...)` anywhere in this script, so the
+    // flag is genuinely inert beyond being accepted -- matching that
+    // exactly, not a gap.
+    eprintln!("Done.");
 
     Ok(())
 }

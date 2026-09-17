@@ -5,9 +5,10 @@
 //! `single_end_flag()` in `oracle/upstream-src/scripts/split_paired_bam.py`
 //! (lines 187-280).
 //!
-//! Known gap: BAM index (`.bai`) generation for the outputs (upstream's
-//! `index_bam`) is not implemented here yet — disclosed follow-up, not
-//! silently dropped.
+//! `.bai` index generation (DIV-0006, closed) is implemented at the CLI
+//! layer via `rseqc_formats::write_bai_index`; this module's own
+//! `split_paired_bam` function is unaffected -- it only ever writes the
+//! plain BAM records.
 
 use std::io;
 
