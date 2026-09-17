@@ -9,14 +9,15 @@
 use noodles_sam::alignment::record::cigar::{Op, op::Kind};
 
 /// Reference-genome `[start, end)` span covered by a CIGAR (0-based).
-/// Ported from `bam_cigar.map_bounds`: M/D/N ops advance the span size,
-/// I/S/H/P/=/X do not (matches upstream's `else: continue`, including the
-/// same "no advance for '='/'X'" limitation noted on
-/// [`fetch_exon_blocks`]). Equivalent to pysam's `reference_end`.
+/// This is the SAM reference-consuming operation set used by
+/// `pysam.AlignedSegment.reference_end`: M/D/N/=/X advance the span;
+/// I/S/H/P do not.  The helper is used for indexed-fetch emulation, where
+/// `=` and `X` must consume reference bases even though a few legacy RSeQC
+/// exon helpers intentionally preserve their own narrower op tables.
 pub fn reference_span(start: usize, cigar: impl IntoIterator<Item = Op>) -> (usize, usize) {
     let mut span_size = 0usize;
     for op in cigar {
-        if matches!(op.kind(), Kind::Match | Kind::Deletion | Kind::Skip) {
+        if matches!(op.kind(), Kind::Match | Kind::Deletion | Kind::Skip | Kind::SequenceMatch | Kind::SequenceMismatch) {
             span_size += op.len();
         }
     }
@@ -278,6 +279,16 @@ mod tests {
             Op::new(Kind::SoftClip, 3),
         ];
         assert_eq!(reference_span(100, cigar), (100, 123));
+    }
+
+    #[test]
+    fn reference_span_counts_sequence_match_and_mismatch() {
+        let cigar = vec![
+            Op::new(Kind::SequenceMatch, 7),
+            Op::new(Kind::SequenceMismatch, 3),
+            Op::new(Kind::Insertion, 2),
+        ];
+        assert_eq!(reference_span(100, cigar), (100, 110));
     }
 
     #[test]
