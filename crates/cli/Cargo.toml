@@ -122,6 +122,11 @@ path = "src/bin/rpkm_saturation.rs"
 name = "FPKM_UQ"
 path = "src/bin/fpkm_uq.rs"
 
+[[bin]]
+# Same naming note as above: packaging aliases this to `read_hexamer.py`.
+name = "read_hexamer"
+path = "src/bin/read_hexamer.rs"
+
 [dependencies]
 rseqc-core = { path = "../core" }
 rseqc-formats = { path = "../formats" }

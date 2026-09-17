@@ -4,20 +4,21 @@
 
 pub mod bam2fq;
 pub mod bam_stat;
+pub mod divide_bam;
 pub mod fpkm_count;
 pub mod fpkm_uq;
 pub mod clipping_profile;
 pub mod deletion_profile;
-pub mod mismatch_profile;
-pub mod python_fmt;
 pub mod infer_experiment;
 pub mod inner_distance;
+pub mod insertion_profile;
 pub mod junction_annotation;
 pub mod junction_saturation;
-pub mod insertion_profile;
-pub mod divide_bam;
+pub mod mismatch_profile;
+pub mod python_fmt;
 pub mod read_duplication;
 pub mod read_gc;
+pub mod read_hexamer;
 pub mod read_nvc;
 pub mod read_distribution;
 pub mod read_quality;
