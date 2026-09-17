@@ -1,18 +1,13 @@
 //! Port of `sc_seqLogo.py`'s count-matrix computation. Ports
 //! `qcmodule.fastq.fasta_iter`/`seq2countMat`.
 //!
-//! **DIV-0005 applies, and applies differently here than anywhere else
-//! in this port**: every other "plot" command deferred under DIV-0005
-//! still ships a complete, real artifact -- literal R-script TEXT that
-//! would produce the plot if `Rscript` were run against it. This
-//! command has no such escape hatch: upstream's `qcmodule.fastq.
-//! make_logo` calls the Python `logomaker` plotting library directly
-//! (matplotlib-based), not R, so there is no intermediate text artifact
-//! to generate in its place. The `.count_matrix.csv` output (this
-//! module's whole scope) is fully computed and correct; the
-//! `.logo.<format>` image is NOT produced by this port and requires
-//! real native rendering (`crates/render`, not started) to implement.
-//! Disclosed as DIV-0016 rather than silently skipped.
+//! **DIV-0016, PARTIALLY CLOSED**: `--oformat svg` now produces real
+//! sequence-logo images via `rseqc_render::seqlogo` (a from-scratch SVG
+//! renderer, not a `logomaker`/matplotlib port) -- see that module's
+//! own doc comment for exactly what is and isn't reproduced. `pdf`/
+//! `png` remain unimplemented (need real rasterization/font-embedding
+//! crates). The `.count_matrix.csv` output (this module's whole scope)
+//! is fully computed and correct regardless of `--oformat`.
 //!
 //! Compressed (`.gz`/`.Z`/`.z`/`.bz`/`.bz2`/`.bzip2`) input is supported
 //! at the CLI layer via `rseqc_formats::open_text_input`, same as

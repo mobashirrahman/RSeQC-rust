@@ -402,24 +402,66 @@ divergences:
   - id: DIV-0016
     command_or_api: sc_seqLogo.py
     description: >
-      Upstream's sequence-logo image (.logo.<format>) is rendered by
-      qcmodule.fastq.make_logo, which calls the Python logomaker library
-      directly (matplotlib-based), not R. Every other "plot" command in
-      this port defers native rendering under DIV-0005 while still
-      producing a complete, real artifact -- literal R-script text that
-      would generate the plot if Rscript were run against it. This
-      command has no such escape hatch: there is no R-script
-      intermediate for a logomaker-rendered plot. The .count_matrix.csv
-      output (a real, correct, independently useful deliverable) IS
-      fully computed and written; the .logo.<format> image is NOT
-      produced by this port at all.
+      PARTIALLY CLOSED 2026-09-17. Upstream's sequence-logo images
+      (.logo.<format> and .logo.mean_centered.<format> -- upstream's
+      make_logo() actually produces TWO files, not one) are rendered
+      by qcmodule.fastq.make_logo, which calls the Python logomaker
+      library directly (matplotlib-based), not R -- unlike every other
+      DIV-0005 "plot" command, there's no R-script intermediate to fall
+      back to.
+
+      `--oformat svg` now produces both real images via a new
+      `crates/render::seqlogo` module: a from-scratch SVG renderer (not
+      a logomaker port) that encodes the same DATA -- per-position
+      letter-stack height by relative frequency (plain logo) or by
+      each position's count minus its own mean (mean-centered logo,
+      with below-axis letters flipped), upstream's exact
+      {A:green, C:blue, G:orange, T:red, N:grey} color scheme,
+      stack_order, and highlighted position range -- not a byte-for-
+      byte or even pixel-similar reproduction of matplotlib's own
+      rendering (no independent renderer can match that). Known,
+      disclosed gaps: no real font-metrics library (glyphs are
+      approximate, scaled SVG <text>, not exact glyph outlines);
+      shade_below/fade_below are not honored (both default to 0.0 in
+      the CLI's own flags, so this only matters if a caller overrides
+      them); pdf/png remain entirely unimplemented (need real
+      rasterization/font-embedding crates).
+
+      A genuine upstream quirk was found and preserved exactly while
+      implementing this: the "Mean-centered logo saved to ..."
+      progress line names the file `<prefix>.logo_mean_centered.
+      <format>` (underscore) via make_logo()'s own log string, but the
+      REAL file plt.savefig(...) writes is
+      `<prefix>.logo.mean_centered.<format>` (dot-separated) -- the two
+      literally don't match in upstream's own source. Reproduced
+      exactly, not "corrected".
+
+      Verification is necessarily partial: the real logomaker+pandas
+      combination installed in this project's own oracle environment
+      crashes on EVERY invocation regardless of format (a genuine,
+      pre-existing version-incompatibility bug unrelated to this port
+      -- pandas now raises TypeError on an implicit int64->float
+      downcast logomaker's _center_matrix relies on), so there is no
+      working reference image to live-diff against for ANY format,
+      not just svg. What WAS verified via live diff: every stderr
+      progress line up to and including "Mean-centered logo saved to
+      ..." matches real upstream byte-for-byte (content, ignoring the
+      timestamp prefix), including the underscore/dot filename
+      mismatch quirk above; the .count_matrix.csv output (already
+      closed, unaffected by this work) remains byte-identical; both
+      produced .svg files are well-formed XML (parsed successfully
+      with Python's own xml.etree.ElementTree). No automated
+      run_diff.py case was added for the svg path specifically, since
+      the two sides now deliberately diverge in exit code (upstream
+      crashes, this port succeeds) for a reason outside this port's
+      control -- same reasoning as DIV-0006's split_paired_bam.py/
+      split_bam.py --index-output cases.
     classification: unimplemented-native-rendering
     decision: >
-      Same underlying gap as DIV-0005 (crates/render not started), but
-      called out separately because, unlike every other DIV-0005 case,
-      there is no partial/deferred artifact for this specific output --
-      only a disclosed absence. Implement crates/render before this
-      command can be considered complete.
+      svg output is implemented and functional; pdf/png remain
+      unimplemented pending real rasterization/font-embedding crates.
+      Not fully closed until pdf/png are also implemented, or a
+      decision is made that svg-only native rendering is sufficient.
     status: accepted
 
   - id: DIV-0017

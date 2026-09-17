@@ -176,6 +176,7 @@ path = "src/bin/sc_seqlogo.rs"
 rseqc-core = { path = "../core" }
 rseqc-formats = { path = "../formats" }
 rseqc-commands = { path = "../commands" }
+rseqc-render = { path = "../render" }
 clap = { version = "4", features = ["derive"] }
 noodles-bam = "0.95.0"
 noodles-sam = "0.90.0"

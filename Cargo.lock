@@ -667,6 +667,7 @@ dependencies = [
  "rseqc-commands",
  "rseqc-core",
  "rseqc-formats",
+ "rseqc-render",
 ]
 
 [[package]]
