@@ -3,6 +3,7 @@
 oracle/upstream-src/
 oracle/venv/
 /target/
+/dist/
 /.claude/scheduled_tasks.lock
 __pycache__/
 *.pyc
