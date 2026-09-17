@@ -462,6 +462,19 @@ def _track_fixture(name: str) -> str:
     return str(REPO_ROOT / "verification" / "fixtures" / "track" / name)
 
 
+def ensure_rpkm_saturation_fixture() -> None:
+    fixture_dir = REPO_ROOT / "verification" / "fixtures"
+    required = (
+        fixture_dir / "rpkm_saturation_basic.bam",
+        fixture_dir / "rpkm_saturation_basic.bam.bai",
+        fixture_dir / "rpkm_saturation_model.bed12",
+    )
+    if all(path.is_file() for path in required):
+        return
+    generator = fixture_dir / "make_rpkm_saturation_fixture.py"
+    subprocess.run([str(ORACLE_PYTHON), str(generator), str(fixture_dir / "rpkm_saturation_basic.bam")], cwd=REPO_ROOT, check=True)
+
+
 def ensure_track_fixtures() -> None:
     """BigWig/WIG-family fixtures (bam2wig.py, geneBody_coverage2.py,
     normalize_bigwig.py, overlay_bigwig.py). Regenerated via pyBigWig +
@@ -1218,6 +1231,52 @@ CASES: list[Case] = [
         ],
         compare_stream="none",
         compare_files=("out.wig",),
+    ),
+    Case(
+        name="rpkm_saturation_basic",
+        # Found by this case: (1) RPKM_saturation.rs's percentile-
+        # resampling population was rebuilt INDEPENDENTLY each
+        # iteration instead of being CUMULATIVE across iterations --
+        # upstream's `ranges`/`ranges_plus`/`ranges_minus` dicts are
+        # declared ONCE before the percentile loop and never cleared
+        # (same accumulation pattern as junction_saturation.py's
+        # `uniqSpliceSites`), so a later percentile's RPKM reflects ALL
+        # points sampled so far, not just that iteration's own slice.
+        # Getting this wrong produced a completely different, incorrect
+        # saturation curve -- a real scientific-correctness bug, not a
+        # formatting one. (2) "Load BAM file ... " used `eprintln!`
+        # (extra unwanted newline) instead of `eprint!`, and was missing
+        # its second space before "Done". (3) The entire per-percentile
+        # progress-message pipeline ("sampling N% (...) fragments ...",
+        # "assign reads to transcripts in <refbed> ...", a trailing
+        # blank line) was completely missing. (4) The CLI printed three
+        # "Created ..." lines upstream's main() never prints at all.
+        #
+        # This fixture (make_rpkm_saturation_fixture.py) deliberately
+        # has exactly ONE qualifying alignment (one exon block), so the
+        # WHOLE saturation table is independent of random.shuffle's
+        # order -- verified deterministic across multiple independent
+        # Rust reruns before relying on it here. A larger population
+        # would only guarantee the FINAL (100%) column is order-
+        # invariant (see the module's own doc comment), not the whole
+        # file, since the percentile ranges are cumulative.
+        ensure_fixture=ensure_rpkm_saturation_fixture,
+        py_script="RPKM_saturation.py",
+        rust_bin="RPKM_saturation",
+        py_args=lambda scratch_dir: [
+            "-i", _regression_fixture("rpkm_saturation_basic.bam"),
+            "-r", _regression_fixture("rpkm_saturation_model.bed12"),
+            "-o", str(scratch_dir / "out"), "--skip-plot",
+        ],
+        rust_args=lambda scratch_dir: [
+            "-i", _regression_fixture("rpkm_saturation_basic.bam"),
+            "-r", _regression_fixture("rpkm_saturation_model.bed12"),
+            "-o", str(scratch_dir / "out"), "--skip-plot",
+        ],
+        compare_stream="stderr",
+        stream_format="exact",
+        compare_files=("out.eRPKM.xls", "out.rawCount.xls", "out.saturation.r"),
+        normalize_paths=True,
     ),
 ]
 

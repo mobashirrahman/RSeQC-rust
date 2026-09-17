@@ -267,6 +267,21 @@ pub struct SaturationResult {
 /// Runs the cumulative percentile resampling loop, computing RPKM for
 /// every transcript at every percentile. Ports the main loop of
 /// `saturation_RPKM` (lines 4157-4227) exactly.
+///
+/// **Critical: the sampled point population is CUMULATIVE across
+/// percentile iterations, not rebuilt fresh each time.** Upstream's
+/// `ranges`/`ranges_plus`/`ranges_minus` dicts are declared ONCE before
+/// the `for pertl in tmp:` loop and are never cleared inside it -- each
+/// iteration's `[int(cUR_num*percent_st):int(cUR_num*percent_end)]`
+/// slice is ADDED on top of whatever earlier iterations already
+/// inserted (same accumulation pattern as `junction_saturation.py`'s
+/// `uniqSpliceSites`). Confirmed by reading the actual loop body, not
+/// inferred from the earlier percentile-list docs. Getting this wrong
+/// (rebuilding an independent per-percentile point set, as an earlier
+/// version of this port did) produces a completely different, WRONG,
+/// non-monotonic-looking saturation curve -- verified by an actual live
+/// diff against the real upstream CLI, not just reasoning about the
+/// source.
 pub fn compute_saturation(
     transcripts: &[TranscriptExons],
     lists: &BlockLists,
@@ -274,6 +289,7 @@ pub fn compute_saturation(
     sample_start: i64,
     sample_end: i64,
     sample_step: i64,
+    refbed_path: &str,
 ) -> io::Result<SaturationResult> {
     let mut percentiles = Vec::new();
     let mut p = sample_start;
@@ -286,6 +302,12 @@ pub fn compute_saturation(
     let mut result = SaturationResult::default();
     let mut seen_keys: HashSet<String> = HashSet::new();
 
+    // Cumulative point buffers, grown (never cleared) across iterations,
+    // matching upstream's persistent `ranges`/`ranges_plus`/`ranges_minus`.
+    let mut cumulative_plus: Vec<(String, i64)> = Vec::new();
+    let mut cumulative_minus: Vec<(String, i64)> = Vec::new();
+    let mut cumulative_all: Vec<(String, i64)> = Vec::new();
+
     for &pertl in &percentiles {
         let percent_st = (((pertl - sample_step) as f64) / 100.0).max(0.0);
         let percent_end = (pertl as f64) / 100.0;
@@ -295,17 +317,27 @@ pub fn compute_saturation(
         let (ranges_plus, ranges_minus, ranges) = if strand_rule_active {
             let lo_p = (lists.cur_plus as f64 * percent_st) as i64;
             let hi_p = (lists.cur_plus as f64 * percent_end) as i64;
+            eprintln!("sampling {pertl}% ({}) forward strand fragments ...", (lists.cur_plus as f64 * percent_end) as i64);
+            cumulative_plus.extend_from_slice(slice_range(&lists.block_list_plus, lo_p, hi_p));
+
             let lo_m = (lists.cur_minus as f64 * percent_st) as i64;
             let hi_m = (lists.cur_minus as f64 * percent_end) as i64;
-            let plus = PointCounts::new(slice_range(&lists.block_list_plus, lo_p, hi_p));
-            let minus = PointCounts::new(slice_range(&lists.block_list_minus, lo_m, hi_m));
+            eprintln!("sampling {pertl}% ({}) reverse strand fragments ...", (lists.cur_minus as f64 * percent_end) as i64);
+            cumulative_minus.extend_from_slice(slice_range(&lists.block_list_minus, lo_m, hi_m));
+
+            let plus = PointCounts::new(&cumulative_plus);
+            let minus = PointCounts::new(&cumulative_minus);
             (Some(plus), Some(minus), None)
         } else {
             let lo = (lists.cur_num as f64 * percent_st) as i64;
             let hi = (lists.cur_num as f64 * percent_end) as i64;
-            let all = PointCounts::new(slice_range(&lists.block_list, lo, hi));
+            eprintln!("sampling {pertl}% ({}) fragments ...", sample_size as i64);
+            cumulative_all.extend_from_slice(slice_range(&lists.block_list, lo, hi));
+            let all = PointCounts::new(&cumulative_all);
             (None, None, Some(all))
         };
+
+        eprintln!("assign reads to transcripts in {refbed_path} ...");
 
         for t in transcripts {
             let mut mrna_count = 0i64;
@@ -341,6 +373,9 @@ pub fn compute_saturation(
             result.rpkm_table.entry(t.key.clone()).or_default().push(mrna_rpkm);
             result.raw_table.entry(t.key.clone()).or_default().push(mrna_count);
         }
+        // Upstream: `print("", file=sys.stderr)` -- a bare blank line
+        // after each percentile's transcript-assignment pass.
+        eprintln!();
     }
 
     Ok(result)
@@ -527,7 +562,7 @@ chr1\t0\t300\ttx1\t0\t+\t0\t300\t0\t2\t100,100,\t0,200,
     #[test]
     fn compute_saturation_percentile_list_always_ends_with_literal_100() {
         let lists = BlockLists::default();
-        let result = compute_saturation(&[], &lists, false, 5, 50, 10).unwrap();
+        let result = compute_saturation(&[], &lists, false, 5, 50, 10, "refgene.bed").unwrap();
         assert_eq!(result.header, vec!["5%", "15%", "25%", "35%", "45%", "100%"]);
     }
 
@@ -551,13 +586,53 @@ chr1\t0\t300\ttx1\t0\t+\t0\t300\t0\t2\t100,100,\t0,200,
         // (100-100)/100.0 = 0.0, so the slice covers the FULL population
         // (lo=0,hi=cur_num) -- matches upstream's `percent_st =
         // (pertl-sample_step)/100.0` exactly.
-        let result = compute_saturation(&[t], &lists, false, 100, 100, 100).unwrap();
+        let result = compute_saturation(&[t], &lists, false, 100, 100, 100, "refgene.bed").unwrap();
         assert_eq!(result.header, vec!["100%"]);
         let raw = &result.raw_table["chr1\t50\t200\ttx1\t0\t+"];
         assert_eq!(raw, &vec![2]);
         // RPKM = 2 * 1e9 / (150 * (2*1.0)) = 2e9/300 = 6666666.666...
         let rpkm = result.rpkm_table["chr1\t50\t200\ttx1\t0\t+"][0];
         assert!((rpkm - (2_000_000_000.0 / 300.0)).abs() < 1e-6);
+    }
+
+    #[test]
+    fn compute_saturation_point_population_is_cumulative_across_percentiles() {
+        // Critical regression guard: upstream's `ranges` dict is built
+        // ONCE before the percentile loop and never cleared, so each
+        // iteration's mRNA_count reflects ALL points sampled so far, not
+        // just that iteration's own slice. With 4 points and 2 evenly
+        // spaced percentiles (50%, 100%), the FIRST iteration's slice is
+        // points[0..2] and the SECOND iteration's slice is points[2..4]
+        // -- but because the population is cumulative, the second
+        // iteration's mRNA_count must be 4 (all points), not 2 (just its
+        // own slice). Getting this wrong was a real, previously-shipped
+        // bug found via a live diff against the real upstream CLI.
+        let lists = BlockLists {
+            block_list: vec![
+                ("CHR1".to_string(), 60),
+                ("CHR1".to_string(), 70),
+                ("CHR1".to_string(), 80),
+                ("CHR1".to_string(), 90),
+            ],
+            cur_num: 4,
+            ..Default::default()
+        };
+        let t = TranscriptExons {
+            key: "chr1\t50\t200\ttx1\t0\t+".to_string(),
+            gene_name: "tx1".to_string(),
+            chrom_upper: "CHR1".to_string(),
+            strand: "+".to_string(),
+            exon_starts: vec![50],
+            exon_ends: vec![200],
+            mrna_len: 150,
+        };
+        // percentiles: range(50,100,50) -> [50], plus literal 100 -> [50,100].
+        let result = compute_saturation(&[t], &lists, false, 50, 100, 50, "refgene.bed").unwrap();
+        assert_eq!(result.header, vec!["50%", "100%"]);
+        let raw = &result.raw_table["chr1\t50\t200\ttx1\t0\t+"];
+        // 50%: slice [0,2) -> 2 points. 100%: CUMULATIVE union of
+        // [0,2) and [2,4) -> all 4 points, not just the second slice's 2.
+        assert_eq!(raw, &vec![2, 4]);
     }
 
     #[test]
@@ -572,7 +647,7 @@ chr1\t0\t300\ttx1\t0\t+\t0\t300\t0\t2\t100,100,\t0,200,
             exon_ends: vec![],
             mrna_len: 0,
         };
-        let err = compute_saturation(&[t], &lists, false, 100, 100, 1).unwrap_err();
+        let err = compute_saturation(&[t], &lists, false, 100, 100, 1, "refgene.bed").unwrap_err();
         assert!(err.to_string().contains("tx0"));
     }
 

@@ -111,7 +111,11 @@ fn run(args: &Args) -> std::io::Result<()> {
     };
     let strand_rule_active = args.strand_rule.is_some();
 
-    eprintln!("Load BAM file ... ");
+    // Upstream: `print("Load BAM file ... ", end=' ')` -- the literal's
+    // own trailing space plus `end=' '` gives TWO spaces before "Done"
+    // (verified via a live python3 -c probe), then a separate
+    // `print("Done")` on the same line.
+    eprint!("Load BAM file ...  ");
     let (mut reader, header) = rseqc_formats::open_bam(&args.input_file)?;
     let mut lists = build_block_lists(reader.records(), &header, true, args.map_qual, strand_rule_active, &strand_map)?;
     eprintln!("Done");
@@ -130,21 +134,22 @@ fn run(args: &Args) -> std::io::Result<()> {
         args.percentile_low_bound,
         args.percentile_up_bound,
         args.percentile_step,
+        &args.refgene_bed.display().to_string(),
     )?;
 
     let prefix = args.output_prefix.to_string_lossy();
     let rpkm_path = format!("{prefix}.eRPKM.xls");
     let raw_path = format!("{prefix}.rawCount.xls");
+    // Upstream's main() prints no "Created" messages at all for this
+    // command (unlike several other ported commands) -- confirmed by
+    // grepping the actual source; do not add any here.
     File::create(&rpkm_path)?.write_all(render_rpkm_xls(&result).as_bytes())?;
     File::create(&raw_path)?.write_all(render_raw_xls(&result).as_bytes())?;
-    eprintln!("Created {rpkm_path}");
-    eprintln!("Created {raw_path}");
 
     let plot_data = build_quartile_plot_data(&result, args.rpkm_cutoff);
     let script = render_saturation_r_script(&plot_data, &prefix)?;
     let r_path = format!("{prefix}.saturation.r");
     File::create(&r_path)?.write_all(script.as_bytes())?;
-    eprintln!("Created {r_path}");
 
     if !args.skip_plot {
         let status = Command::new(&args.rscript).arg(&r_path).status()?;
