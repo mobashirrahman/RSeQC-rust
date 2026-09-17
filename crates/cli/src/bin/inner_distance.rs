@@ -65,11 +65,24 @@ fn main() -> std::process::ExitCode {
 }
 
 fn run(args: &Args) -> std::io::Result<()> {
+    // Upstream: `print("Get exon regions from " + refbed + " ...",
+    // file=sys.stderr)` -- its own line, default trailing newline.
+    eprintln!("Get exon regions from {} ...", args.refgene.display());
     let model = build_model(&args.refgene)?;
+
+    // Upstream: `print("Load BAM file ... ", end=' ', file=sys.stderr)`,
+    // then (only on natural iterator exhaustion, not on hitting
+    // `sample_size`) `print("Done", file=sys.stderr)`.
+    eprint!("Load BAM file ...  ");
     let (mut reader, header) = rseqc_formats::open_bam(&args.input_file)?;
     let result = compute_inner_distance(reader.records(), &header, &model, args.mapq, args.sample_size)?;
+    if result.loop_exhausted_naturally {
+        eprintln!("Done");
+    }
 
-    eprintln!("Total read pairs used {}", result.pair_num);
+    // Upstream: `print("Total read pairs  used " + str(pair_num),
+    // file=sys.stderr)` -- literal double space before "used".
+    eprintln!("Total read pairs  used {}", result.pair_num);
     if result.pair_num == 0 {
         eprintln!("Cannot find paired reads");
         return Ok(());

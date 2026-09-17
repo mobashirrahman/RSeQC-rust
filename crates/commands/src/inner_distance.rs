@@ -94,6 +94,11 @@ pub struct DistanceRecord {
 pub struct DistanceResult {
     pub pair_num: u64,
     pub records: Vec<DistanceRecord>,
+    /// `true` when the input iterator ran out on its own (upstream's
+    /// `except StopIteration`, which prints "Done" to stderr); `false`
+    /// when `sample_size` was reached first (upstream's `break`, no
+    /// "Done"). See `crates/cli/src/bin/inner_distance.rs`.
+    pub loop_exhausted_naturally: bool,
 }
 
 pub fn compute_inner_distance<I>(
@@ -108,9 +113,11 @@ where
 {
     let mut pair_num = 0u64;
     let mut out = Vec::new();
+    let mut loop_exhausted_naturally = true;
 
     for result in records {
         if pair_num >= sample_size {
+            loop_exhausted_naturally = false;
             break;
         }
         let record = result?;
@@ -235,7 +242,7 @@ where
         }
     }
 
-    Ok(DistanceResult { pair_num, records: out })
+    Ok(DistanceResult { pair_num, records: out, loop_exhausted_naturally })
 }
 
 pub fn render_distance_file(result: &DistanceResult) -> String {
@@ -339,6 +346,7 @@ dev.off()\n";
                 DistanceRecord { line: "r1\t100\tsameTranscript=No,dist=genomic\n".to_string(), histogram_value: Some(100) },
                 DistanceRecord { line: "r2\t50\tunknownChromosome,dist=genomic".to_string(), histogram_value: Some(50) },
             ],
+            loop_exhausted_naturally: true,
         };
         let text = render_distance_file(&result);
         assert_eq!(text, "r1\t100\tsameTranscript=No,dist=genomic\nr2\t50\tunknownChromosome,dist=genomic");
