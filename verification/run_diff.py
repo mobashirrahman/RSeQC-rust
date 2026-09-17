@@ -1130,6 +1130,58 @@ CASES: list[Case] = [
         compare_stream="none",
         compare_files=("out.wig",),
     ),
+    Case(
+        name="normalize_bigwig_genome",
+        # Found by this case: several stderr progress lines were
+        # missing entirely ("Get chromosome sizes from BigWig header
+        # ...", "Normalizing BigWig file ...", "Writing <chrom> ...")
+        # -- same "silent CLI" bug class found repeatedly this session.
+        # Fixing "Writing <chrom> ..." required splitting the compute
+        # function into two phases (calculate_wigsum/
+        # render_normalized_body) so the CLI could interleave its
+        # summary prints at the exact point upstream does, between
+        # computing the normalization factor and writing chromosome
+        # bodies -- previously the whole body was built silently before
+        # any of those lines printed, a real (if here unobservable
+        # since only one chromosome exists) print-ORDER bug, not just a
+        # missing-line one. Default args (no --refgene): exercises
+        # calculate_genome_wigsum's own per-chromosome scan.
+        ensure_fixture=ensure_track_fixtures,
+        py_script="normalize_bigwig.py",
+        rust_bin="normalize_bigwig",
+        py_args=lambda scratch_dir: [
+            "-i", _track_fixture("track_signal.bw"), "-o", str(scratch_dir / "out.bgr"), "-t", "1000",
+        ],
+        rust_args=lambda scratch_dir: [
+            "-i", _track_fixture("track_signal.bw"), "-o", str(scratch_dir / "out.bgr"), "-t", "1000",
+        ],
+        compare_stream="stderr",
+        stream_format="exact",
+        compare_files=("out.bgr",),
+        normalize_paths=True,
+    ),
+    Case(
+        name="normalize_bigwig_refgene",
+        # Same fix as normalize_bigwig_genome, exercising the OTHER
+        # branch instead: calculate_exonic_wigsum's 3 progress lines
+        # ("Extract exons from...", "Merge overlapping exons ...",
+        # "Calculate WIG sum covered by... only") plus -f wig output.
+        ensure_fixture=ensure_track_fixtures,
+        py_script="normalize_bigwig.py",
+        rust_bin="normalize_bigwig",
+        py_args=lambda scratch_dir: [
+            "-i", _track_fixture("track_signal.bw"), "-o", str(scratch_dir / "out.wig"),
+            "-f", "wig", "-r", _track_fixture("track_model.bed12"),
+        ],
+        rust_args=lambda scratch_dir: [
+            "-i", _track_fixture("track_signal.bw"), "-o", str(scratch_dir / "out.wig"),
+            "-f", "wig", "-r", _track_fixture("track_model.bed12"),
+        ],
+        compare_stream="stderr",
+        stream_format="exact",
+        compare_files=("out.wig",),
+        normalize_paths=True,
+    ),
 ]
 
 

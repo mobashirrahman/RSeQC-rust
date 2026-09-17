@@ -51,12 +51,18 @@ fn signal_sum(bw: &mut BigWigReader, chrom: &str, start: i64, end: i64) -> io::R
 }
 
 /// Sums signal over merged exon regions only. Ports
-/// `calculate_exonic_wigsum`. A merged-exon chromosome name absent from
-/// the BigWig is skipped, matching upstream's `except RuntimeError:
-/// continue` around pyBigWig's invalid-chromosome error.
-pub fn calculate_exonic_wigsum(bw: &mut BigWigReader, refbed: impl BufRead) -> io::Result<f64> {
+/// `calculate_exonic_wigsum`, including its 3 stderr progress lines
+/// ("Extract exons from...", printed by the CLI beforehand since it
+/// alone has the refgene path string; "Merge overlapping exons ...";
+/// "Calculate WIG sum covered by {refgene_bed} only"). A merged-exon
+/// chromosome name absent from the BigWig is skipped, matching
+/// upstream's `except RuntimeError: continue` around pyBigWig's
+/// invalid-chromosome error.
+pub fn calculate_exonic_wigsum(bw: &mut BigWigReader, refbed: impl BufRead, refgene_path: &str) -> io::Result<f64> {
     let exons = rseqc_formats::bed::get_exon(refbed)?;
+    eprintln!("Merge overlapping exons ...");
     let merged = rseqc_formats::interval::union_bed3(&exons);
+    eprintln!("Calculate WIG sum covered by {refgene_path} only");
     let chrom_set: std::collections::HashSet<String> = bw.chroms().into_iter().map(|(n, _)| n).collect();
 
     let mut wig_sum = 0.0;
@@ -90,6 +96,7 @@ pub fn calculate_genome_wigsum(bw: &mut BigWigReader, chrom_sizes: &[(String, i6
 /// scaled by `weight`, zero-valued positions omitted. Ports
 /// `write_wig_chromosome`.
 pub fn write_wig_chromosome(out: &mut String, bw: &mut BigWigReader, chrom: &str, chrom_size: i64, chunk_size: i64, weight: f64) -> io::Result<()> {
+    eprintln!("Writing {chrom} ...");
     out.push_str(&format!("variableStep chrom={chrom}\n"));
     for (start, end) in chromosome_chunks(chrom_size, chunk_size) {
         let values = bw.values(chrom, start as u32, end as u32)?;
@@ -145,6 +152,7 @@ fn write_bedgraph_chunk(out: &mut String, chrom: &str, chunk_start: i64, scaled_
 /// Writes one chromosome's bedGraph body, chunk by chunk. Ports
 /// `write_bedgraph_chromosome`.
 pub fn write_bedgraph_chromosome(out: &mut String, bw: &mut BigWigReader, chrom: &str, chrom_size: i64, chunk_size: i64, weight: f64) -> io::Result<()> {
+    eprintln!("Writing {chrom} ...");
     for (start, end) in chromosome_chunks(chrom_size, chunk_size) {
         let values = bw.values(chrom, start as u32, end as u32)?;
         let scaled: Vec<f64> = values.iter().map(|&v| if v.is_nan() { 0.0 } else { v as f64 * weight }).collect();
@@ -153,18 +161,28 @@ pub fn write_bedgraph_chromosome(out: &mut String, bw: &mut BigWigReader, chrom:
     Ok(())
 }
 
-pub struct NormalizeResult {
+pub struct WigsumResult {
+    pub chrom_sizes: Vec<(String, i64)>,
     pub observed_wigsum: f64,
     pub weight: f64,
-    pub body: String,
 }
 
-/// Runs the full normalize-and-render pipeline. Ports `normalize_bigwig`.
-pub fn normalize_bigwig(bw: &mut BigWigReader, refgene: Option<impl BufRead>, total_wigsum: f64, chunk_size: i64, out_format: &str) -> io::Result<NormalizeResult> {
+/// Computes the observed WIG sum and normalization weight -- the FIRST
+/// half of upstream's `normalize_bigwig`, up through the point it
+/// prints "Total WIG sum is .../Normalization factor: ...". Split out
+/// from the write phase (`render_normalized_body`) so the CLI can print
+/// those two lines (plus "Normalizing BigWig file ...") at the correct
+/// point in the sequence -- upstream's `main()` calls `normalize_bigwig`
+/// as ONE function that does both phases back to back with no
+/// opportunity to interleave caller-side prints; this port's own
+/// `main`-equivalent (crates/cli/src/bin/normalize_bigwig.rs) needs to
+/// emit the same lines, in the same order, without a String round-trip
+/// through both phases first.
+pub fn calculate_wigsum(bw: &mut BigWigReader, refgene: Option<impl BufRead>, total_wigsum: f64, chunk_size: i64, refgene_path: &str) -> io::Result<WigsumResult> {
     let chrom_sizes: Vec<(String, i64)> = bw.chroms().into_iter().map(|(n, l)| (n, l as i64)).collect();
 
     let observed_wigsum = match refgene {
-        Some(r) => calculate_exonic_wigsum(bw, r)?,
+        Some(r) => calculate_exonic_wigsum(bw, r, refgene_path)?,
         None => calculate_genome_wigsum(bw, &chrom_sizes, chunk_size)?,
     };
 
@@ -173,8 +191,16 @@ pub fn normalize_bigwig(bw: &mut BigWigReader, refgene: Option<impl BufRead>, to
     }
     let weight = total_wigsum / observed_wigsum;
 
+    Ok(WigsumResult { chrom_sizes, observed_wigsum, weight })
+}
+
+/// Writes every chromosome's normalized body. Ports the write loop at
+/// the end of upstream's `normalize_bigwig`, called AFTER the CLI has
+/// already printed "Total WIG sum/Normalization factor/Normalizing
+/// BigWig file ..." (see `calculate_wigsum`'s doc comment).
+pub fn render_normalized_body(bw: &mut BigWigReader, chrom_sizes: &[(String, i64)], chunk_size: i64, weight: f64, out_format: &str) -> io::Result<String> {
     let mut body = String::new();
-    for (chrom, size) in &chrom_sizes {
+    for (chrom, size) in chrom_sizes {
         if bw.intervals(chrom, 0, *size as u32)?.is_empty() {
             eprintln!("Skip {chrom}!");
             continue;
@@ -185,8 +211,7 @@ pub fn normalize_bigwig(bw: &mut BigWigReader, refgene: Option<impl BufRead>, to
             write_bedgraph_chromosome(&mut body, bw, chrom, *size, chunk_size, weight)?;
         }
     }
-
-    Ok(NormalizeResult { observed_wigsum, weight, body })
+    Ok(body)
 }
 
 #[cfg(test)]

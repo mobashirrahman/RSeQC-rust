@@ -7,7 +7,7 @@ use std::io::{BufReader, Write as _};
 use std::path::PathBuf;
 
 use clap::Parser;
-use rseqc_commands::normalize_bigwig::normalize_bigwig;
+use rseqc_commands::normalize_bigwig::{calculate_wigsum, render_normalized_body};
 use rseqc_commands::python_fmt::python_g12;
 use rseqc_formats::bigwig::BigWigReader;
 
@@ -71,26 +71,30 @@ fn run(args: &Args) -> std::io::Result<()> {
 
     let mut bw = BigWigReader::open(&args.bigwig_file)?;
 
+    eprintln!("Get chromosome sizes from BigWig header ...");
     let refgene_reader = match &args.refgene_bed {
         Some(p) => Some(BufReader::new(File::open(p)?)),
         None => None,
     };
+    let refgene_path = args.refgene_bed.as_ref().map(|p| p.display().to_string()).unwrap_or_default();
     if refgene_reader.is_some() {
-        eprintln!("Extract exons from {}", args.refgene_bed.as_ref().unwrap().display());
+        eprintln!("Extract exons from {refgene_path}");
     } else {
         eprintln!("Calculate WIG sum from {}", args.bigwig_file.display());
     }
 
-    let result = normalize_bigwig(&mut bw, refgene_reader, args.total_wigsum, args.chunk_size, &out_format)?;
+    let wigsum = calculate_wigsum(&mut bw, refgene_reader, args.total_wigsum, args.chunk_size, &refgene_path)?;
 
-    eprintln!("\nTotal WIG sum is {:.2}\n", result.observed_wigsum);
-    eprintln!("Normalization factor: {}", python_g12(result.weight));
+    eprintln!("\nTotal WIG sum is {:.2}\n", wigsum.observed_wigsum);
+    eprintln!("Normalization factor: {}", python_g12(wigsum.weight));
+    eprintln!("Normalizing BigWig file ...");
 
-    File::create(&args.output_file)?.write_all(result.body.as_bytes())?;
+    let body = render_normalized_body(&mut bw, &wigsum.chrom_sizes, args.chunk_size, wigsum.weight, &out_format)?;
+    File::create(&args.output_file)?.write_all(body.as_bytes())?;
 
     eprintln!("Created: {}", args.output_file.display());
-    eprintln!("Observed WIG sum: {:.2}", result.observed_wigsum);
-    eprintln!("Applied normalization factor: {}", python_g12(result.weight));
+    eprintln!("Observed WIG sum: {:.2}", wigsum.observed_wigsum);
+    eprintln!("Applied normalization factor: {}", python_g12(wigsum.weight));
 
     Ok(())
 }
