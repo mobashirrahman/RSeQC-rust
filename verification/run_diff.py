@@ -414,6 +414,15 @@ def ensure_hexamer_fixtures() -> None:
         raise FileNotFoundError(f"missing committed fixture(s): {missing}")
 
 
+def ensure_sc_bamstat_fixture() -> None:
+    fixture_dir = REPO_ROOT / "verification" / "fixtures"
+    required = (fixture_dir / "sc_bamstat_basic.bam", fixture_dir / "sc_bamstat_basic.bam.bai")
+    if all(path.is_file() for path in required):
+        return
+    generator = fixture_dir / "make_sc_bamstat_fixture.py"
+    subprocess.run([str(ORACLE_PYTHON), str(generator), str(fixture_dir / "sc_bamstat_basic.bam")], cwd=REPO_ROOT, check=True)
+
+
 CASES: list[Case] = [
     Case(
         name="bam_stat_basic",
@@ -909,6 +918,27 @@ CASES: list[Case] = [
         stream_format="exact",
         compare_files=("out.junctionSaturation_plot.r",),
         normalize_paths=True,
+    ),
+    Case(
+        name="sc_bamstat_basic",
+        # stdout only: upstream's stderr is a fully timestamped
+        # `logging` trail (DIV-0019, open -- byte-exact comparison is
+        # impossible in principle regardless of message content because
+        # of the timestamp prefix). The stdout report -- the actual data
+        # output -- IS verified byte-identical here, exercising the
+        # RE-tag if/elif/else dead-code bug, sense/antisense/other,
+        # chrM detection, and CB/UMI presence tallies all at once. Both
+        # sides run with cwd=their own scratch dir since upstream writes
+        # `All_reads_uniqID.txt`/`confident_reads_uniqID.txt` into the
+        # current directory as an undocumented side effect (DIV-0018,
+        # accepted -- not replicated by the Rust port).
+        ensure_fixture=ensure_sc_bamstat_fixture,
+        py_script="sc_bamStat.py",
+        rust_bin="sc_bamStat",
+        py_args=lambda scratch_dir: ["-i", _regression_fixture("sc_bamstat_basic.bam")],
+        rust_args=lambda scratch_dir: ["-i", _regression_fixture("sc_bamstat_basic.bam")],
+        compare_stream="stdout",
+        stream_format="exact",
     ),
 ]
 

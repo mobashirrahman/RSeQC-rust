@@ -279,3 +279,66 @@ divergences:
       both of which hold in either implementation). Not planned for
       closure.
     status: accepted
+
+  - id: DIV-0018
+    command_or_api: sc_bamStat.py
+    description: >
+      Upstream's `qcmodule.scbam.mapping_stat` writes per-chromosome
+      intermediate files (`<chrom>.all_reads_id.txt`/
+      `<chrom>.confident_reads_id.txt`) into the CURRENT WORKING
+      DIRECTORY (fixed names, not scoped to any output prefix or flag),
+      shells out to `awk '!a[$0]++' *.all_reads_id.txt | tee
+      All_reads_uniqID.txt | wc -l` (and the confident-reads equivalent)
+      to deduplicate read IDs and count them, deletes the per-chromosome
+      temp files afterward, but LEAVES `All_reads_uniqID.txt`/
+      `confident_reads_uniqID.txt` behind permanently in whatever
+      directory the command was invoked from. The Rust port computes the
+      identical counts directly via an in-memory `HashSet<String>` (see
+      crates/commands/src/sc_bamstat.rs module docs) and does not shell
+      out to `awk`/`wc`/`tee` or write ANY of these intermediate/leftover
+      files -- the printed stdout report (the actual data output) is
+      unaffected and verified byte-identical.
+    classification: explicit-compatibility-exception
+    decision: >
+      Deliberately not replicated. This is fixed-name, unscoped CWD
+      pollution with no `-o`/prefix control in upstream's own CLI --
+      blindly reproducing it would risk silently clobbering an existing
+      file of the same name in whatever directory the Rust binary is
+      invoked from, for no benefit (nothing downstream in the standard
+      workflow consumes these files; they exist only as an artifact of
+      upstream's `awk`-based dedup-counting implementation detail, not a
+      documented output of the command). If a real consumer is found
+      that depends on these specific files, revisit.
+    status: accepted
+
+  - id: DIV-0019
+    command_or_api: sc_bamStat.py
+    description: >
+      Upstream configures Python's `logging` module at INFO level
+      (unconditionally -- `--verbose` only raises it to DEBUG, it is NOT
+      required for INFO output) and emits a full per-chromosome progress
+      trail: "Reading BAM file ... ", one "Processing \"<chrom>\" ..." /
+      "Processed N alignments from \"<chrom>\"" pair per chromosome in
+      the BAM header (even chromosomes with zero alignments -- the loop
+      iterates `samfile.references` unconditionally), "Processing total
+      N alignments ...", "Count total/confidently mapped reads ...",
+      "Removing intermediate files ...", "Done." -- each line prefixed
+      with a `%(asctime)s [%(levelname)s]` timestamp. The Rust CLI
+      currently prints only a bare "Done." to stderr unconditionally
+      (plus an "Input BAM: <path>" line under `--verbose`, matching
+      upstream's DEBUG-level line). The stdout report (the actual data
+      output) is unaffected and verified byte-identical.
+    classification: explicit-compatibility-exception
+    decision: >
+      Not closed this session. Two considerations: (1) the timestamp
+      prefix makes byte-exact stderr comparison impossible in principle
+      regardless of message content, so this can never be a `run_diff.py`
+      byte-comparison target the way other commands' progress lines are;
+      (2) fully replicating the per-chromosome cadence requires grouping
+      the scan by header-order chromosome (including chromosomes with
+      zero alignments) rather than one flat sequential pass, a real
+      restructuring, not a one-line fix. Worth doing for observable
+      parity (a user tailing stderr for progress would see much less
+      output than upstream), just not done yet -- tracked here rather
+      than silently left as an undocumented gap.
+    status: open
