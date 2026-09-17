@@ -21,6 +21,7 @@ use std::process::Command;
 
 use clap::Parser;
 use rseqc_commands::bam2wig::{build_wig_signal, cal_wig_sum, load_chrom_sizes, parse_strand_rule, render_stranded_wig, render_unstranded_wig};
+use rseqc_commands::python_fmt::python_str_float;
 
 #[derive(Parser)]
 #[command(name = "bam2wig.py", about = "Convert a sorted, indexed BAM file into WIG coverage files.")]
@@ -72,11 +73,29 @@ fn run(args: &Args) -> std::io::Result<()> {
         }
     }
 
-    eprintln!("Skip multi-hits: {}", args.skip_multi);
+    // Upstream: `print(f"Skip multi-hits: {args.skip_multi}", ...)` --
+    // Python's bool str() is "True"/"False" (capitalized), not Rust's
+    // lowercase Display impl.
+    eprintln!("Skip multi-hits: {}", if args.skip_multi { "True" } else { "False" });
 
     let chrom_sizes = load_chrom_sizes(BufReader::new(File::open(&args.chrom_size)?))?;
     let strand_map = parse_strand_rule(args.strand_rule.as_deref()).map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidInput, e))?;
     let strand_rule_active = args.strand_rule.is_some();
+
+    // Upstream: `calWigSum` (called during the wigsum phase) and
+    // `bamTowig` (the main phase) EACH run their own independent
+    // per-chromosome scan, and each prints its OWN "Processing <chrom>
+    // ..." / "No alignments for <chrom>. skipped" progress line -- so
+    // with `--wigsum` given, these lines appear TWICE, once per phase.
+    let print_chrom_progress = |valid_chroms: &HashSet<String>| {
+        for (chrom, _) in &chrom_sizes {
+            if !valid_chroms.contains(chrom) {
+                eprintln!("No alignments for {chrom}. skipped");
+            } else {
+                eprintln!("Processing {chrom} ...");
+            }
+        }
+    };
 
     let normalization_factor = match args.total_wigsum {
         None => None,
@@ -84,9 +103,12 @@ fn run(args: &Args) -> std::io::Result<()> {
             eprintln!("Calcualte wigsum ... ");
             let (mut reader, header) = rseqc_formats::open_bam(&args.input_file)?;
             let chrom_names: HashSet<String> = header.reference_sequences().keys().map(|k| k.to_string()).collect();
+            print_chrom_progress(&chrom_names);
             let listed: HashSet<String> = chrom_sizes.iter().map(|(c, _)| c.clone()).filter(|c| chrom_names.contains(c)).collect();
             let wig_sum = cal_wig_sum(reader.records(), &header, &listed, args.skip_multi)?;
-            eprintln!("Total WIG sum: {wig_sum}");
+            // Upstream's `wig_sum` is a Python float, so an f-string
+            // always shows it as e.g. "100.0", never bare "100".
+            eprintln!("Total WIG sum: {}", python_str_float(wig_sum));
             if wig_sum <= 0.0 {
                 return Err(std::io::Error::new(std::io::ErrorKind::InvalidData, format!("normalization cannot be calculated because the observed WIG sum is {wig_sum:?}")));
             }
@@ -96,13 +118,7 @@ fn run(args: &Args) -> std::io::Result<()> {
 
     let (mut reader, header) = rseqc_formats::open_bam(&args.input_file)?;
     let valid_chroms: HashSet<String> = header.reference_sequences().keys().map(|k| k.to_string()).collect();
-    for (chrom, _) in &chrom_sizes {
-        if !valid_chroms.contains(chrom) {
-            eprintln!("No alignments for {chrom}. skipped");
-        } else {
-            eprintln!("Processing {chrom} ...");
-        }
-    }
+    print_chrom_progress(&valid_chroms);
 
     let signal = build_wig_signal(reader.records(), &header, strand_rule_active, &strand_map, args.skip_multi, args.map_qual)?;
 

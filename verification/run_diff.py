@@ -458,6 +458,30 @@ def ensure_fpkm_uq_fixtures() -> None:
     (fixture_dir / "mock_htseq_count.sh").chmod(0o755)
 
 
+def _track_fixture(name: str) -> str:
+    return str(REPO_ROOT / "verification" / "fixtures" / "track" / name)
+
+
+def ensure_track_fixtures() -> None:
+    """BigWig/WIG-family fixtures (bam2wig.py, geneBody_coverage2.py,
+    normalize_bigwig.py, overlay_bigwig.py). Regenerated via pyBigWig +
+    pysam if missing; verified reproducible/deterministic byte-for-byte
+    before being relied on here."""
+    track_dir = REPO_ROOT / "verification" / "fixtures" / "track"
+    required = (
+        track_dir / "track_chrom.sizes",
+        track_dir / "track_signal.bw",
+        track_dir / "track_signal2.bw",
+        track_dir / "track_reads.bam",
+        track_dir / "track_reads.bam.bai",
+        track_dir / "track_model.bed12",
+    )
+    if all(path.is_file() for path in required):
+        return
+    generator = REPO_ROOT / "verification" / "fixtures" / "make_track_fixtures.py"
+    subprocess.run([str(ORACLE_PYTHON), str(generator), str(track_dir)], cwd=REPO_ROOT, check=True)
+
+
 CASES: list[Case] = [
     Case(
         name="bam_stat_basic",
@@ -1074,6 +1098,37 @@ CASES: list[Case] = [
         ],
         compare_stream="none",
         compare_files=("out.FPKM-UQ.txt", "out.htseq.counts.txt"),
+    ),
+    Case(
+        name="bam2wig_basic",
+        # Found by this case: (1) "Skip multi-hits: {bool}" printed
+        # Rust's lowercase "false" instead of Python's capitalized
+        # "False" (str(bool) in an f-string); (2) "Total WIG sum: N"
+        # rendered as bare "100" via Rust's default f64 Display instead
+        # of Python's float str() "100.0" (fixed via python_str_float).
+        # Not exercised by this specific default-args case (no --wigsum
+        # here, see the module's own doc comment for a --wigsum probe),
+        # but both are real, permanent regression guards now that the
+        # code paths exist. compare_stream is "none": stderr's final
+        # line is a best-effort `wigToBigWig` invocation whose exact
+        # failure text is inherently environment-dependent (present vs.
+        # absent on PATH) -- the .wig file is the actual data output and
+        # is what's verified here.
+        ensure_fixture=ensure_track_fixtures,
+        py_script="bam2wig.py",
+        rust_bin="bam2wig",
+        py_args=lambda scratch_dir: [
+            "-i", _track_fixture("track_reads.bam"),
+            "-s", _track_fixture("track_chrom.sizes"),
+            "-o", str(scratch_dir / "out"),
+        ],
+        rust_args=lambda scratch_dir: [
+            "-i", _track_fixture("track_reads.bam"),
+            "-s", _track_fixture("track_chrom.sizes"),
+            "-o", str(scratch_dir / "out"),
+        ],
+        compare_stream="none",
+        compare_files=("out.wig",),
     ),
 ]
 
