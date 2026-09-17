@@ -6,3 +6,6 @@ license.workspace = true
 
 [dependencies]
 rseqc-core = { path = "../core" }
+# PNG output for sc_seqLogo.py's --oformat png (DIV-0016). Pure Rust,
+# no system libpng dependency.
+png = "0.18.1"

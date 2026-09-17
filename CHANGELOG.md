@@ -24,7 +24,8 @@ of a feature or a closed divergence, not every commit.
   `--index`/`--index-output` flag.
 - Compressed (`.gz`/`.Z`/`.z`/`.bz`/`.bz2`/`.bzip2`) FASTA/FASTQ input support for the single-cell
   sequence-quality/logo commands.
-- A native SVG sequence-logo renderer (`crates/render::seqlogo`) for `sc_seqLogo.py`.
+- Native SVG and PNG sequence-logo renderers (`crates/render::seqlogo`/`seqlogo_png`) for
+  `sc_seqLogo.py`.
 - GitHub Actions CI (build/test/clippy across Linux/macOS/Windows, a Docker image build, an
   advisory `cargo fmt` check) and a tag-triggered release workflow that publishes a checksummed
   distribution archive.
@@ -55,9 +56,10 @@ Notable categories (see the divergences file for the full, individually-verified
 ### Known limitations
 
 See the README's own "Limitations" section for the current, up-to-date list — it is **not**
-duplicated here to avoid the two going out of sync. As of this entry: `sc_seqLogo.py`'s `pdf`/`png`
-output formats are not implemented (only `svg`); no real biological/held-out dataset validation or
-fuzzing has been performed; packaging covers Linux x86_64 only (no container-image or Python-wheel
-publication yet, though the Docker image build itself exists); no performance benchmarking has
+duplicated here to avoid the two going out of sync. As of this entry: `sc_seqLogo.py`'s `pdf`
+output format is not implemented (`svg`/`png` are); no real biological/held-out dataset validation
+or fuzzing has been performed; packaging covers Linux x86_64 distribution archives only (CI now
+builds/tests on macOS and Windows too, and a Docker image build exists, but neither has been
+verified to actually work yet — no Python-wheel publication); no performance benchmarking has
 been done; this project's own release license is pending resolution of `compatibility/
 divergences.yaml`'s DIV-0003 (upstream's own license metadata is internally inconsistent).

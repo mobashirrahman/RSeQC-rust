@@ -73,6 +73,19 @@ fn base_color(base: char) -> &'static str {
     }
 }
 
+/// Same color scheme as `base_color`, as RGB triples (standard CSS/SVG
+/// named-color values) for the PNG raster renderer, which has no
+/// notion of a named-color string.
+pub(crate) fn base_color_rgb(base: char) -> (u8, u8, u8) {
+    match base {
+        'A' => (0, 128, 0),     // green
+        'C' => (0, 0, 255),     // blue
+        'G' => (255, 165, 0),   // orange
+        'T' => (255, 0, 0),     // red
+        _ => (128, 128, 128),   // grey
+    }
+}
+
 const BAR_WIDTH: f64 = 28.0;
 const LOGO_HEIGHT: f64 = 260.0;
 const MARGIN_LEFT: f64 = 55.0;
@@ -80,7 +93,7 @@ const MARGIN_BOTTOM: f64 = 45.0;
 const MARGIN_TOP: f64 = 20.0;
 const MARGIN_RIGHT: f64 = 20.0;
 
-fn order_indices(values: &[f64], order: StackOrder) -> Vec<usize> {
+pub(crate) fn order_indices(values: &[f64], order: StackOrder) -> Vec<usize> {
     let mut idx: Vec<usize> = (0..values.len()).collect();
     match order {
         StackOrder::BigOnTop => idx.sort_by(|&a, &b| values[a].abs().partial_cmp(&values[b].abs()).unwrap()),

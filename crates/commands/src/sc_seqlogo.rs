@@ -1,12 +1,12 @@
 //! Port of `sc_seqLogo.py`'s count-matrix computation. Ports
 //! `qcmodule.fastq.fasta_iter`/`seq2countMat`.
 //!
-//! **DIV-0016, PARTIALLY CLOSED**: `--oformat svg` now produces real
-//! sequence-logo images via `rseqc_render::seqlogo` (a from-scratch SVG
-//! renderer, not a `logomaker`/matplotlib port) -- see that module's
-//! own doc comment for exactly what is and isn't reproduced. `pdf`/
-//! `png` remain unimplemented (need real rasterization/font-embedding
-//! crates). The `.count_matrix.csv` output (this module's whole scope)
+//! **DIV-0016, PARTIALLY CLOSED**: `--oformat svg`/`png` now produce
+//! real sequence-logo images via `rseqc_render::seqlogo`/`seqlogo_png`
+//! (from-scratch renderers, not a `logomaker`/matplotlib port) -- see
+//! those modules' own doc comments for exactly what is and isn't
+//! reproduced. `pdf` remains unimplemented (needs a real PDF-writing
+//! crate). The `.count_matrix.csv` output (this module's whole scope)
 //! is fully computed and correct regardless of `--oformat`.
 //!
 //! Compressed (`.gz`/`.Z`/`.z`/`.bz`/`.bz2`/`.bzip2`) input is supported

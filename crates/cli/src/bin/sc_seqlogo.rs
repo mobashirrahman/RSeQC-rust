@@ -2,16 +2,16 @@
 //! contain '.' (see crates/cli/Cargo.toml); packaging (PORTING_PLAN
 //! Step 10) adds the `.py`-suffixed PATH alias.
 //!
-//! `--oformat svg` (DIV-0016, partially closed): renders both of
+//! `--oformat svg`/`png` (DIV-0016, partially closed): renders both of
 //! upstream's real logo outputs -- `<prefix>.logo.<format>` (plain,
 //! frequency-based) and `<prefix>.logo.mean_centered.<format>`
-//! (mean-centered, flipped-below) -- via `rseqc_render::seqlogo`. See
-//! that module's own doc comment for exactly what is and isn't
-//! reproduced (no real font metrics, `shade_below`/`fade_below` not
-//! honored, no working upstream oracle to verify visual output
-//! against). `--oformat pdf`/`png` remain unimplemented (need real
-//! rasterization/font-embedding crates, out of scope this pass) --
-//! still fails cleanly with a disclosed error, per DIV-0016.
+//! (mean-centered, flipped-below) -- via `rseqc_render::seqlogo`/
+//! `seqlogo_png`. See those modules' own doc comments for exactly what
+//! is and isn't reproduced (no real font metrics/hinting, `shade_below`/
+//! `fade_below` not honored, no working upstream oracle to verify
+//! visual output against). `--oformat pdf` remains unimplemented (needs
+//! a real PDF-writing crate, out of scope this pass) -- still fails
+//! cleanly with a disclosed error, per DIV-0016.
 //!
 //! **Preserves a genuine upstream quirk, not "fixed"**: the
 //! "Mean-centered logo saved to ..." progress line names the file as
@@ -33,8 +33,9 @@ use std::io::Write as _;
 use std::path::PathBuf;
 
 use clap::Parser;
-use rseqc_commands::sc_seqlogo::{compute_count_matrix, fasta_iter, fastq_seq_strings, render_count_matrix_csv};
+use rseqc_commands::sc_seqlogo::{CountMatrix, compute_count_matrix, fasta_iter, fastq_seq_strings, render_count_matrix_csv};
 use rseqc_render::seqlogo::{StackOrder, render_frequency_logo_svg, render_mean_centered_logo_svg};
+use rseqc_render::seqlogo_png::{render_frequency_logo_png, render_mean_centered_logo_png};
 
 #[derive(Parser)]
 #[command(name = "sc_seqLogo.py", about = "Generate a DNA sequence logo from FASTA, FASTQ, or sequence-only input.")]
@@ -164,9 +165,9 @@ fn run(args: &Args) -> std::io::Result<()> {
     File::create(&count_matrix_path)?.write_all(render_count_matrix_csv(&matrix).as_bytes())?;
 
     let logo_path = format!("{prefix}.logo.{}", args.out_format);
-    if args.out_format != "svg" {
+    if !matches!(args.out_format.as_str(), "svg" | "png") {
         return Err(std::io::Error::other(format!(
-            "sequence logo was not created: {logo_path} (native rendering is only implemented for --oformat svg in this port -- see DIV-0016 in compatibility/divergences.yaml; {count_matrix_path} was written successfully)"
+            "sequence logo was not created: {logo_path} (native rendering is only implemented for --oformat svg/png in this port -- see DIV-0016 in compatibility/divergences.yaml; {count_matrix_path} was written successfully)"
         )));
     }
 
@@ -195,9 +196,8 @@ fn run(args: &Args) -> std::io::Result<()> {
     if let Some((s, e)) = highlight {
         eprintln!("Highlight logo from {s} to {e}");
     }
-    let mean_centered_svg = render_mean_centered_logo_svg(&matrix.bases, &matrix.rows, stack_order, highlight);
     let mean_centered_path = format!("{prefix}.logo.mean_centered.{}", args.out_format);
-    File::create(&mean_centered_path)?.write_all(mean_centered_svg.as_bytes())?;
+    write_logo(&mean_centered_path, &matrix, stack_order, highlight, &args.out_format, true)?;
 
     // Upstream: `logging.info("Logo saved to \"%s\"." % (outfile +
     // '.logo.' + oformat))` -- unconditional.
@@ -205,8 +205,29 @@ fn run(args: &Args) -> std::io::Result<()> {
     if let Some((s, e)) = highlight {
         eprintln!("Highlight logo from {s} to {e}");
     }
-    let logo_svg = render_frequency_logo_svg(&matrix.bases, &matrix.rows, stack_order, highlight);
-    File::create(&logo_path)?.write_all(logo_svg.as_bytes())?;
+    write_logo(&logo_path, &matrix, stack_order, highlight, &args.out_format, false)?;
 
     Ok(())
+}
+
+fn write_logo(path: &str, matrix: &CountMatrix, stack_order: StackOrder, highlight: Option<(i64, i64)>, out_format: &str, centered: bool) -> std::io::Result<()> {
+    match out_format {
+        "svg" => {
+            let svg = if centered {
+                render_mean_centered_logo_svg(&matrix.bases, &matrix.rows, stack_order, highlight)
+            } else {
+                render_frequency_logo_svg(&matrix.bases, &matrix.rows, stack_order, highlight)
+            };
+            File::create(path)?.write_all(svg.as_bytes())
+        }
+        "png" => {
+            let png = if centered {
+                render_mean_centered_logo_png(&matrix.bases, &matrix.rows, stack_order, highlight)?
+            } else {
+                render_frequency_logo_png(&matrix.bases, &matrix.rows, stack_order, highlight)?
+            };
+            File::create(path)?.write_all(&png)
+        }
+        _ => unreachable!("out_format already validated to be svg or png"),
+    }
 }

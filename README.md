@@ -106,10 +106,10 @@ upstream, for every case currently exercised. It does **not** mean every possibl
 combination has been tried — see [Limitations](#limitations).
 
 `sc_seqLogo.py` is ⚠️ **partial**: its `.count_matrix.csv` output is fully computed and verified
-correct, and `--oformat svg` now produces real, valid sequence-logo images via a native
-from-scratch renderer (`crates/render`) — but `--oformat pdf`/`png` are not yet implemented, and
-the SVG renderer's own known gaps (approximate glyph placement, no `shade_below`/`fade_below`
-support) are documented in `crates/render/src/seqlogo.rs`. See DIV-0016 in
+correct, and `--oformat svg`/`png` now both produce real, valid sequence-logo images via native
+from-scratch renderers (`crates/render`) — but `--oformat pdf` is not yet implemented, and both
+renderers' own known gaps (approximate glyph placement, no `shade_below`/`fade_below` support) are
+documented in `crates/render/src/seqlogo.rs`/`seqlogo_png.rs`. See DIV-0016 in
 `compatibility/divergences.yaml`.
 
 Every known, intentional behavioral difference from upstream — including ones that are permanent
@@ -119,12 +119,13 @@ this table, is the authoritative compatibility record.
 
 ## Limitations
 
-- **`sc_seqLogo.py`'s sequence-logo image rendering is partial** (DIV-0016) — `--oformat svg` is
-  implemented; `pdf`/`png` are not (need real rasterization/font-embedding crates). No two
-  independent renderers can byte-match matplotlib's own image output regardless; a real reference
-  image to visually compare against isn't currently available either (the upstream oracle used
-  during development can't produce one in its own environment, due to an unrelated
-  `logomaker`/`pandas` version incompatibility).
+- **`sc_seqLogo.py`'s sequence-logo image rendering is partial** (DIV-0016) — `--oformat svg` and
+  `--oformat png` are both implemented (from-scratch renderers, verified by visually inspecting
+  real generated images); `pdf` is not (needs a real PDF-writing crate). No two independent
+  renderers can byte-match matplotlib's own image output regardless; a real reference image to
+  visually compare against isn't currently available either (the upstream oracle used during
+  development can't produce one in its own environment, due to an unrelated `logomaker`/`pandas`
+  version incompatibility).
 - **`.cram` input is now supported** (all 14 commands that accept `.bam`/`.sam` also accept
   `.cram`), decoded with no external reference file — the common case, matching what `pysam`/
   `htslib` themselves fall back to when writing CRAM without one configured. A CRAM file that
