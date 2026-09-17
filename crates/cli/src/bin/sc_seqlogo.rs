@@ -9,9 +9,14 @@
 //! non-zero (matching upstream's own behavior when logo generation
 //! fails for any reason: `if not logo_path.is_file(): raise
 //! RuntimeError(...)`), after writing the real, correct count matrix.
+//!
+//! Compressed (.gz/.Z/.z/.bz/.bz2/.bzip2) input IS supported via
+//! `rseqc_formats::open_text_input`, matching upstream's
+//! `qcmodule.ireader.nopen` extension dispatch -- independent of the
+//! logo-rendering gap above.
 
 use std::fs::File;
-use std::io::{BufReader, Write as _};
+use std::io::Write as _;
 use std::path::PathBuf;
 
 use clap::Parser;
@@ -99,7 +104,7 @@ fn run(args: &Args) -> std::io::Result<()> {
         _ => {}
     }
 
-    let reader = BufReader::new(File::open(&args.in_file)?);
+    let reader = rseqc_formats::open_text_input(&args.in_file)?;
     let seqs = if args.in_format == "fq" { fastq_seq_strings(reader)? } else { fasta_iter(reader)? };
 
     let matrix = compute_count_matrix(&seqs, args.max_seq, args.exclude_n)?;

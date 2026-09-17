@@ -3,7 +3,7 @@
 //! parsing so `rseqc-commands` and `rseqc-python` share one implementation.
 
 use std::fs::File;
-use std::io::{self, BufReader};
+use std::io::{self, BufRead, BufReader};
 use std::path::Path;
 
 use noodles_sam as sam;
@@ -12,6 +12,37 @@ pub mod bed;
 pub mod bigwig;
 pub mod cigar;
 pub mod interval;
+
+/// Opens a plain-text, gzip-, or bzip2-compressed file for line-buffered
+/// reading, dispatching on the exact (CASE-SENSITIVE) trailing extension
+/// -- matching upstream's `qcmodule.ireader.nopen`:
+/// `f.endswith((".gz", ".Z", ".z"))` routes to `gzip.open` (so a literal
+/// `.Z`-suffixed file, historically the `compress`(1) utility's own
+/// extension and NOT actually gzip format, is still routed to a gzip
+/// decoder by upstream itself -- reproduced exactly here, including that
+/// it will equally fail on a genuine LZW `.Z` file on both sides, since
+/// that's upstream's own established behavior, not a bug this port
+/// should "fix"); `f.endswith((".bz", ".bz2", ".bzip2"))` routes to
+/// `bz2.BZ2File`. Anything else is opened as plain text. Used by
+/// `sc_seqQual.py`/`sc_seqLogo.py` (DIV-0002-adjacent input-format gap,
+/// tracked in compatibility/divergences.yaml's compressed-input note).
+///
+/// `flate2`'s `MultiGzDecoder` (not plain `GzDecoder`) matches Python's
+/// `gzip` module's own transparent support for concatenated
+/// (multi-member) gzip streams. `bzip2-rs` is a decode-only, pure-Rust
+/// bzip2 implementation (no system `libbz2` dependency, unlike the
+/// `bzip2` crate's C bindings).
+pub fn open_text_input(path: &Path) -> io::Result<Box<dyn BufRead>> {
+    let path_str = path.to_string_lossy();
+    let file = File::open(path)?;
+    if path_str.ends_with(".gz") || path_str.ends_with(".Z") || path_str.ends_with(".z") {
+        Ok(Box::new(BufReader::new(flate2::read::MultiGzDecoder::new(file))))
+    } else if path_str.ends_with(".bz") || path_str.ends_with(".bz2") || path_str.ends_with(".bzip2") {
+        Ok(Box::new(BufReader::new(bzip2_rs::DecoderReader::new(file))))
+    } else {
+        Ok(Box::new(BufReader::new(file)))
+    }
+}
 
 /// Opens a BAM file for sequential record reading, returning both the
 /// reader (positioned at the first record) and the parsed header (needed by

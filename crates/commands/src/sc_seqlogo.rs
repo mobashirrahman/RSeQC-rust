@@ -14,8 +14,9 @@
 //! real native rendering (`crates/render`, not started) to implement.
 //! Disclosed as DIV-0016 rather than silently skipped.
 //!
-//! **Scope gap shared with `sc_seqQual.py`, same reasoning**: compressed
-//! (.gz/.bz2) input is not supported; plain-text FASTA/FASTQ only.
+//! Compressed (`.gz`/`.Z`/`.z`/`.bz`/`.bz2`/`.bzip2`) input is supported
+//! at the CLI layer via `rseqc_formats::open_text_input`, same as
+//! `sc_seqQual.py` -- independent of the logo-rendering gap above.
 //!
 //! **Preserves the `pandas.DataFrame.from_dict` column/row ORDER
 //! quirk**, verified against a real `pandas` run in `oracle/venv`: with

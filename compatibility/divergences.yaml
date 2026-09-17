@@ -511,3 +511,31 @@ divergences:
       other commands' progress lines are -- that specific formatting
       gap remains, by design, not by omission.
     status: accepted
+
+  - id: DIV-0020
+    command_or_api: sc_seqQual.py, sc_seqLogo.py
+    description: >
+      CLOSED 2026-09-17. Upstream's `qcmodule.ireader.nopen` transparently
+      decompresses input by file extension: `.gz`/`.Z`/`.z` (gzip,
+      including the historically-mismatched `.Z` compress(1) extension,
+      which upstream ALSO routes to `gzip.open` -- reproduced exactly,
+      including that a genuine LZW `.Z` file would fail identically on
+      both sides) and `.bz`/`.bz2`/`.bzip2` (bzip2). Neither
+      `sc_seqQual.py` nor `sc_seqLogo.py` supported this previously (no
+      compression crate had been added). Added
+      `rseqc_formats::open_text_input`, dispatching on the exact
+      case-sensitive extension match (matching upstream's own
+      `str.endswith` check, not a case-insensitive one) via `flate2`'s
+      `MultiGzDecoder` (matches Python gzip's transparent multi-member
+      support) for gzip and the pure-Rust, decode-only `bzip2-rs` crate
+      for bzip2 (no system libbz2 dependency). Verified via live diff for
+      both `.gz` and `.bz2` input against real upstream on
+      `sc_seqQual.py` (byte-identical `.qual_count.csv`/
+      `.qual_percent.csv`) and `.gz` input on `sc_seqLogo.py`
+      (byte-identical `.count_matrix.csv`; both sides still exit
+      non-zero for the separate, still-open DIV-0016 logo-image gap,
+      unrelated to input decompression). See `verification/run_diff.py`
+      case `sc_seqqual_gzip_input`.
+    classification: explicit-compatibility-exception
+    decision: Closed. Independent of DIV-0016 (sc_seqLogo.py's native image rendering remains unimplemented) -- this entry covers input decompression only.
+    status: fixed-working-tree

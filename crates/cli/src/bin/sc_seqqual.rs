@@ -2,11 +2,12 @@
 //! contain '.' (see crates/cli/Cargo.toml); packaging (PORTING_PLAN
 //! Step 10) adds the `.py`-suffixed PATH alias.
 //!
-//! Compressed (.gz/.bz2) FASTQ input is not yet supported -- see
-//! crates/commands/src/sc_seqqual.rs module docs.
+//! Compressed (.gz/.Z/.z/.bz/.bz2/.bzip2) FASTQ input is supported via
+//! `rseqc_formats::open_text_input`, matching upstream's
+//! `qcmodule.ireader.nopen` extension dispatch.
 
 use std::fs::File;
-use std::io::{BufReader, Write as _};
+use std::io::Write as _;
 use std::path::PathBuf;
 use std::process::Command;
 
@@ -109,7 +110,7 @@ fn run(args: &Args) -> std::io::Result<()> {
         return Err(std::io::Error::new(std::io::ErrorKind::InvalidInput, "--cell-width, --cell-height, and --font-size must be greater than zero"));
     }
 
-    let quals = fastq_qual_strings(BufReader::new(File::open(&args.in_file)?))?;
+    let quals = fastq_qual_strings(rseqc_formats::open_text_input(&args.in_file)?)?;
     let dat = qual2count_mat(&quals, args.max_seq);
     let (count_csv, percent_csv) = render_quality_matrices(&dat)?;
 

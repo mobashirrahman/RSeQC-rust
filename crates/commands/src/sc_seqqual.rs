@@ -4,13 +4,10 @@
 //! render_heatmap_r_script`). Ports `qcmodule.fastq.fastq_iter`/
 //! `qual2countMat`.
 //!
-//! **Scope gap, disclosed rather than silently ignored**: upstream's
-//! `qcmodule.ireader.reader` transparently decompresses `.gz`/`.bz2`
-//! input by file extension. This port only reads plain-text FASTQ --
-//! compressed input is not yet supported (no compression crate has been
-//! added; every other "format" in this port turned out to need no new
-//! dependency, so this is a genuine, disclosed gap rather than an
-//! assumed non-issue).
+//! Compressed (`.gz`/`.Z`/`.z`/`.bz`/`.bz2`/`.bzip2`) input is supported
+//! at the CLI layer via `rseqc_formats::open_text_input`, matching
+//! upstream's `qcmodule.ireader.nopen` extension dispatch; this module's
+//! own functions are unaffected (already generic over `impl BufRead`).
 //!
 //! **Preserves a `pandas.DataFrame.from_dict(...).fillna(0)` dtype
 //! quirk, but NOT the same one as `sc_editmatrix.rs`**: unlike

@@ -491,6 +491,26 @@ def ensure_sc_seqqual_fixture() -> None:
         raise FileNotFoundError(f"missing committed fixture: {fixture}")
 
 
+def ensure_sc_seqqual_gz_fixture() -> None:
+    # Same content as regression_sc_seqqual.fq, gzip-compressed, for
+    # exercising open_text_input's .gz dispatch. Regenerated with
+    # Python's own gzip module (deterministic content; the gzip
+    # CONTAINER's own mtime/filename header is not reproducible run-to-
+    # run regardless, same as DIV-0007's bam2fq.py -c output -- callers
+    # only need this file to decompress to the right content, not to be
+    # byte-identical to any previous run of this generator).
+    ensure_sc_seqqual_fixture()
+    fixture_dir = REPO_ROOT / "verification" / "fixtures"
+    src = fixture_dir / "regression_sc_seqqual.fq"
+    dst = fixture_dir / "regression_sc_seqqual.fq.gz"
+    if dst.is_file():
+        return
+    import gzip as _gzip
+
+    with open(src, "rb") as f_in, open(dst, "wb") as raw, _gzip.GzipFile(filename="", mode="wb", fileobj=raw, mtime=0) as f_out:
+        f_out.write(f_in.read())
+
+
 def ensure_sc_seqlogo_fixture() -> None:
     fixture = REPO_ROOT / "verification" / "fixtures" / "regression_sc_seqlogo.fa"
     if not fixture.is_file():
@@ -1535,6 +1555,20 @@ CASES: list[Case] = [
         rust_bin="sc_seqQual",
         py_args=lambda scratch_dir: ["-i", _regression_fixture("regression_sc_seqqual.fq"), "-o", str(scratch_dir / "out"), "--skip-heatmap"],
         rust_args=lambda scratch_dir: ["-i", _regression_fixture("regression_sc_seqqual.fq"), "-o", str(scratch_dir / "out"), "--skip-heatmap"],
+        compare_stream="none",
+        compare_files=("out.qual_count.csv", "out.qual_percent.csv"),
+    ),
+    Case(
+        name="sc_seqqual_gzip_input",
+        # Compressed FASTQ input support: open_text_input dispatches
+        # .fq.gz to a gzip decoder, matching upstream's
+        # qcmodule.ireader.nopen. Same fixture content as
+        # sc_seqqual_basic, just gzip-compressed.
+        ensure_fixture=ensure_sc_seqqual_gz_fixture,
+        py_script="sc_seqQual.py",
+        rust_bin="sc_seqQual",
+        py_args=lambda scratch_dir: ["-i", _regression_fixture("regression_sc_seqqual.fq.gz"), "-o", str(scratch_dir / "out"), "--skip-heatmap"],
+        rust_args=lambda scratch_dir: ["-i", _regression_fixture("regression_sc_seqqual.fq.gz"), "-o", str(scratch_dir / "out"), "--skip-heatmap"],
         compare_stream="none",
         compare_files=("out.qual_count.csv", "out.qual_percent.csv"),
     ),
