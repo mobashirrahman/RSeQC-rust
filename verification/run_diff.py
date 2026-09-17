@@ -400,6 +400,15 @@ def ensure_bam_stat_fixture() -> None:
     subprocess.run([str(ORACLE_PYTHON), str(generator), str(fixture)], cwd=REPO_ROOT, check=True)
 
 
+def ensure_mismatch_profile_fixture() -> None:
+    fixture_dir = REPO_ROOT / "verification" / "fixtures"
+    required = (fixture_dir / "mismatch_profile_basic.bam", fixture_dir / "mismatch_profile_basic.bam.bai")
+    if all(path.is_file() for path in required):
+        return
+    generator = fixture_dir / "make_mismatch_profile_fixture.py"
+    subprocess.run([str(ORACLE_PYTHON), str(generator), str(fixture_dir / "mismatch_profile_basic.bam")], cwd=REPO_ROOT, check=True)
+
+
 def ensure_bam_stat_sam_fixture() -> None:
     # Same alignments as bam_stat_basic.bam, re-encoded as plain-text SAM
     # via pysam -- exercises open_alignments()'s SAM-text round-trip path
@@ -827,6 +836,38 @@ CASES: list[Case] = [
         compare_files=("out.tsv",),
     ),
     Case(
+        name="RNA_fragment_size_insufficient_fragments",
+        # -n above the fixture's real fragment count exercises the
+        # count < ncut branch (mean/median/std left as upstream's zero
+        # placeholders rather than computed) -- not covered by the
+        # equals_cigar case above, which always clears its own -n 1.
+        ensure_fixture=ensure_regression_fixtures,
+        py_script="RNA_fragment_size.py",
+        rust_bin="RNA_fragment_size",
+        py_args=lambda scratch_dir: [
+            "-i",
+            _regression_fixture("regression_rna_equals.bam"),
+            "-r",
+            _regression_fixture("regression_single_exon.bed12"),
+            "-n",
+            "100",
+            "-o",
+            str(scratch_dir / "out.tsv"),
+        ],
+        rust_args=lambda scratch_dir: [
+            "-i",
+            _regression_fixture("regression_rna_equals.bam"),
+            "-r",
+            _regression_fixture("regression_single_exon.bed12"),
+            "-n",
+            "100",
+            "-o",
+            str(scratch_dir / "out.tsv"),
+        ],
+        compare_stream="none",
+        compare_files=("out.tsv",),
+    ),
+    Case(
         name="FPKM_count_fetch_reference_span",
         ensure_fixture=ensure_regression_fixtures,
         py_script="FPKM_count.py",
@@ -1224,6 +1265,27 @@ CASES: list[Case] = [
         compare_stream="stdout",
         stream_format="exact",
         compare_files=("out.mismatch_profile.xls", "out.mismatch_profile.r"),
+    ),
+    Case(
+        name="mismatch_profile_with_mismatch",
+        # Exercises the actual mismatch-counting logic (a genuine A2C
+        # mismatch at read position 5, real MD/NM tags) -- the other
+        # case only covers the zero-mismatches early-exit path.
+        ensure_fixture=ensure_mismatch_profile_fixture,
+        py_script="mismatch_profile.py",
+        rust_bin="mismatch_profile",
+        py_args=lambda scratch_dir: [
+            "-i", str(REPO_ROOT / "verification" / "fixtures" / "mismatch_profile_basic.bam"),
+            "-l", "10", "-o", str(scratch_dir / "out"), "--skip-plot",
+        ],
+        rust_args=lambda scratch_dir: [
+            "-i", str(REPO_ROOT / "verification" / "fixtures" / "mismatch_profile_basic.bam"),
+            "-l", "10", "-o", str(scratch_dir / "out"), "--skip-plot",
+        ],
+        compare_stream="stderr",
+        stream_format="exact",
+        compare_files=("out.mismatch_profile.xls", "out.mismatch_profile.r"),
+        normalize_paths=True,
     ),
     Case(
         name="junction_annotation_no_junctions",
