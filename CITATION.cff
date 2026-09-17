@@ -1,0 +1,28 @@
+cff-version: 1.2.0
+message: >-
+  If you use RSeQC-rust, please cite this repository. RSeQC-rust is an independent
+  reimplementation of RSeQC; if your work relies on the underlying scientific methods RSeQC
+  implements, please also cite the original RSeQC project (see "references" below).
+title: RSeQC-rust
+type: software
+version: 0.1.0
+date-released: "2026-09-17"
+authors:
+  - name: Md Mobashir Rahman
+# NOTE: this repository has not yet been published under a public URL -- see
+# compatibility/divergences.yaml's DIV-0003 for why this project's own release license (and, by
+# extension, a permanent citable URL) is still pending a decision. Update `repository-code` and
+# `url` below once that happens; Cargo.toml's own `repository` field uses the same placeholder.
+repository-code: "https://github.com/TBD/rseqc-rust"
+url: "https://github.com/TBD/rseqc-rust"
+license: GPL-3.0-or-later
+references:
+  - type: software
+    title: RSeQC
+    authors:
+      - name: Liguo Wang
+      - name: RSeQC contributors
+    repository-code: "https://github.com/liguowang/RSeQC"
+    notes: >-
+      The original RNA-seq quality-control toolkit this project reimplements. See that
+      repository for the canonical citation for RSeQC itself (its own README/publication).
