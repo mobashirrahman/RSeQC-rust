@@ -409,6 +409,15 @@ def ensure_mismatch_profile_fixture() -> None:
     subprocess.run([str(ORACLE_PYTHON), str(generator), str(fixture_dir / "mismatch_profile_basic.bam")], cwd=REPO_ROOT, check=True)
 
 
+def ensure_deletion_profile_fixture() -> None:
+    fixture_dir = REPO_ROOT / "verification" / "fixtures"
+    required = (fixture_dir / "deletion_profile_basic.bam", fixture_dir / "deletion_profile_basic.bam.bai")
+    if all(path.is_file() for path in required):
+        return
+    generator = fixture_dir / "make_deletion_profile_fixture.py"
+    subprocess.run([str(ORACLE_PYTHON), str(generator), str(fixture_dir / "deletion_profile_basic.bam")], cwd=REPO_ROOT, check=True)
+
+
 def ensure_bam_stat_sam_fixture() -> None:
     # Same alignments as bam_stat_basic.bam, re-encoded as plain-text SAM
     # via pysam -- exercises open_alignments()'s SAM-text round-trip path
@@ -1244,6 +1253,27 @@ CASES: list[Case] = [
         rust_bin="deletion_profile",
         py_args=lambda scratch_dir: ["-i", _nvc_fixture_path(), "-l", "20", "-o", str(scratch_dir / "out"), "--skip-plot"],
         rust_args=lambda scratch_dir: ["-i", _nvc_fixture_path(), "-l", "20", "-o", str(scratch_dir / "out"), "--skip-plot"],
+        compare_stream="stdout",
+        stream_format="exact",
+        compare_files=("out.deletion_profile.txt", "out.deletion_profile.r"),
+        normalize_paths=True,
+    ),
+    Case(
+        name="deletion_profile_with_deletion",
+        # Exercises the actual deletion-counting logic (a genuine 2-base
+        # deletion via CIGAR 5M2D5M) -- the other case only covers the
+        # zero-deletions early-exit path.
+        ensure_fixture=ensure_deletion_profile_fixture,
+        py_script="deletion_profile.py",
+        rust_bin="deletion_profile",
+        py_args=lambda scratch_dir: [
+            "-i", str(REPO_ROOT / "verification" / "fixtures" / "deletion_profile_basic.bam"),
+            "-l", "10", "-o", str(scratch_dir / "out"), "--skip-plot",
+        ],
+        rust_args=lambda scratch_dir: [
+            "-i", str(REPO_ROOT / "verification" / "fixtures" / "deletion_profile_basic.bam"),
+            "-l", "10", "-o", str(scratch_dir / "out"), "--skip-plot",
+        ],
         compare_stream="stdout",
         stream_format="exact",
         compare_files=("out.deletion_profile.txt", "out.deletion_profile.r"),
