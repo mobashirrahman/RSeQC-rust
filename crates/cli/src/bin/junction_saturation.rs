@@ -13,7 +13,7 @@ use clap::Parser;
 use rand::SeedableRng;
 use rand::rngs::StdRng;
 use rseqc_commands::junction_saturation::{
-    build_known_splice_sites, collect_splice_sites, compute_saturation, render_r_script, shuffle_sites,
+    build_known_splice_sites, collect_splice_sites, compute_saturation, render_percentile_report, render_r_script, shuffle_sites,
 };
 
 #[derive(Parser)]
@@ -82,10 +82,19 @@ fn run(args: &Args) -> std::io::Result<()> {
     let _ = &args.rscript;
     let _ = args.skip_plot;
 
+    // Upstream (SAM.py's ParseBAM.saturation_junction): `print("reading
+    // reference bed file: ", refgene, " ... ", end=' ')` -- a 3-arg
+    // print with the default `sep=' '` joins "reading reference bed
+    // file: " + " " + refgene + " " + " ... ", then `end=' '` appends
+    // one more space; byte-verified via python3 -c.
+    eprint!("reading reference bed file:  {}  ...  ", args.refgene.display());
     let refgene_file = File::open(&args.refgene)?;
     let (known_sites, chrom_list) = build_known_splice_sites(BufReader::new(refgene_file))?;
     eprintln!("Done! Total {} known splicing junctions.", known_sites.len());
 
+    // Upstream: `print("Load BAM file ... ", end=' ')` (BAM-only in this
+    // port, so always the BAM branch, never "Load SAM file").
+    eprint!("Load BAM file ...  ");
     let (mut reader, header) = rseqc_formats::open_bam(&args.input_file)?;
     let mut sites = collect_splice_sites(
         reader.records(),
@@ -94,9 +103,16 @@ fn run(args: &Args) -> std::io::Result<()> {
         args.map_qual,
         args.minimum_intron_size,
     )?;
+    eprintln!("Done");
 
+    // Upstream: `print("shuffling alignments ...", end=' ')` then a
+    // separate `print("Done")` -- only ONE space before "Done" here
+    // (the literal itself has no trailing space, unlike the two prints
+    // above whose literals already end in a space).
+    eprint!("shuffling alignments ... ");
     let mut rng = StdRng::from_entropy();
     shuffle_sites(&mut sites, &mut rng);
+    eprintln!("Done");
 
     let counts = compute_saturation(
         &sites,
@@ -106,6 +122,7 @@ fn run(args: &Args) -> std::io::Result<()> {
         args.percentile_up_bound,
         args.percentile_step,
     );
+    eprint!("{}", render_percentile_report(&counts));
 
     let prefix = args.out_prefix.to_string_lossy();
     let mut r_file = File::create(format!("{prefix}.junctionSaturation_plot.r"))?;

@@ -881,6 +881,35 @@ CASES: list[Case] = [
         compare_stream="both",
         stream_format="exact",
     ),
+    Case(
+        name="junction_saturation_basic",
+        # Reuses the same BAM/BED12 pair as junction_annotation_with_
+        # junction: exactly one qualifying spliced read (20M100N20M
+        # against a single-exon model, no annotated introns), so the
+        # random-shuffle-order dependence of the middle percentile steps
+        # is moot -- there is only one splice site total, so every
+        # percentile step's counts are deterministic regardless of RNG
+        # stream. This exercises the previously entirely-missing
+        # progress-message pipeline (reading bed file / Load BAM file /
+        # shuffling / per-percentile summary lines) end to end.
+        ensure_fixture=ensure_regression_fixtures,
+        py_script="junction_saturation.py",
+        rust_bin="junction_saturation",
+        py_args=lambda scratch_dir: [
+            "-i", _regression_fixture("regression_fpkm_fetch_span.bam"),
+            "-r", _regression_fixture("regression_splice_fetch.bed12"),
+            "-m", "10", "-o", str(scratch_dir / "out"), "--skip-plot",
+        ],
+        rust_args=lambda scratch_dir: [
+            "-i", _regression_fixture("regression_fpkm_fetch_span.bam"),
+            "-r", _regression_fixture("regression_splice_fetch.bed12"),
+            "-m", "10", "-o", str(scratch_dir / "out"), "--skip-plot",
+        ],
+        compare_stream="both",
+        stream_format="exact",
+        compare_files=("out.junctionSaturation_plot.r",),
+        normalize_paths=True,
+    ),
 ]
 
 

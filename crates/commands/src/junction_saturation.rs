@@ -104,6 +104,12 @@ pub struct SaturationCounts {
     pub known: Vec<i64>,
     pub all: Vec<i64>,
     pub novel: Vec<i64>,
+    /// Cumulative `sample_size += index_end - index_st` after each
+    /// percentile step -- tracked separately from `index_end` because
+    /// upstream's per-iteration bin bounds are computed from `pertl` and
+    /// the fixed `sample_step`, not from the previous iteration's
+    /// `index_end`, so the two can diverge (see module docs).
+    pub sample_sizes: Vec<i64>,
 }
 
 /// Collects filtered per-read intron junctions (mirrors the upstream
@@ -182,6 +188,8 @@ pub fn compute_saturation(
     let mut known_junc = Vec::new();
     let mut all_junc = Vec::new();
     let mut unknown_junc = Vec::new();
+    let mut sample_sizes = Vec::new();
+    let mut sample_size = 0i64;
 
     for &pertl in &percentiles {
         let mut index_st = (sr_num as f64 * ((pertl - sample_step) as f64 / 100.0)) as i64;
@@ -189,6 +197,8 @@ pub fn compute_saturation(
         if index_st < 0 {
             index_st = 0;
         }
+        sample_size += index_end - index_st;
+        sample_sizes.push(sample_size);
 
         for i in index_st..index_end {
             if let Some(site) = shuffled_sites.get(i as usize) {
@@ -208,11 +218,27 @@ pub fn compute_saturation(
         unknown_junc.push(unknown_count);
     }
 
-    SaturationCounts { percentiles, known: known_junc, all: all_junc, novel: unknown_junc }
+    SaturationCounts { percentiles, known: known_junc, all: all_junc, novel: unknown_junc, sample_sizes }
 }
 
 pub fn shuffle_sites(sites: &mut [Junction], rng: &mut impl rand::Rng) {
     sites.shuffle(rng);
+}
+
+/// Ports the per-percentile stderr summary lines from
+/// `saturation_junction`: one line per percentile step, each built from
+/// FOUR chained `print(..., end=' ')` calls followed by a final
+/// newline-terminated `print`. Verified byte-for-byte against a real
+/// `python3 -c` run of the literal upstream prints with matching inputs.
+pub fn render_percentile_report(counts: &SaturationCounts) -> String {
+    let mut out = String::new();
+    for i in 0..counts.percentiles.len() {
+        out.push_str(&format!(
+            "sampling {}% ({}) splicing reads. {} splicing junctions. {} known splicing junctions. {} novel splicing junctions.\n",
+            counts.percentiles[i], counts.sample_sizes[i], counts.all[i], counts.known[i], counts.novel[i]
+        ));
+    }
+    out
 }
 
 /// Ports the literal R-script text written by `saturation_junction`
@@ -321,6 +347,22 @@ too short line
     }
 
     #[test]
+    fn render_percentile_report_exact_text() {
+        // Verified byte-for-byte against a real `python3 -c` run of the
+        // upstream chained print(..., end=' ') calls with matching
+        // inputs (see the module's commit message for the probe).
+        let counts = SaturationCounts {
+            percentiles: vec![5],
+            known: vec![2],
+            all: vec![3],
+            novel: vec![1],
+            sample_sizes: vec![10],
+        };
+        let report = render_percentile_report(&counts);
+        assert_eq!(report, "sampling 5% (10) splicing reads. 3 splicing junctions. 2 known splicing junctions. 1 novel splicing junctions.\n");
+    }
+
+    #[test]
     fn render_r_script_exact_text() {
         // Verified byte-for-byte against a real `python3 -c` run of the
         // upstream print()/%-format lines with the same inputs.
@@ -329,6 +371,7 @@ too short line
             known: vec![1, 2, 3],
             all: vec![2, 4, 6],
             novel: vec![1, 2, 3],
+            sample_sizes: vec![1, 2, 3],
         };
         let script = render_r_script(&counts, "out");
         let expected = "pdf('out.junctionSaturation_plot.pdf')\n\
