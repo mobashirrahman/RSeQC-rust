@@ -52,6 +52,10 @@ fn main() -> std::process::ExitCode {
 
 fn run(args: &Args) -> std::io::Result<()> {
     let (mut reader, _header) = rseqc_formats::open_bam(&args.input_file)?;
+    // Upstream: `print("Process BAM file ... ", end=' ', file=sys.stderr)`
+    // -- the string literal's own trailing space plus `end=' '` gives two
+    // spaces before whatever prints next on the same stderr line.
+    eprint!("Process BAM file ...  ");
     let profile = compute_mismatch_profile(
         reader.records(),
         args.mapq,
@@ -62,13 +66,33 @@ fn run(args: &Args) -> std::io::Result<()> {
     if !profile.loop_exhausted_naturally {
         eprintln!("Total reads used: {}", profile.count);
     }
+    // Upstream's unconditional `print('\n')`: the literal "\n" plus
+    // print's own trailing newline is two bytes, always, regardless of
+    // whether any mismatches were found.
+    println!();
+    println!();
+
+    let prefix = args.out_prefix.to_string_lossy();
 
     if profile.data.is_empty() {
+        // Upstream opens both output files unconditionally before this
+        // check (`DOUT = open(...)`, `ROUT = open(...)`), so they exist
+        // even though `sys.exit()` fires here before the table header or
+        // any data rows are written. The one exception: on natural
+        // iterator exhaustion, `except StopIteration: print("Total reads
+        // used: " + str(count), file=DOUT)` already ran BEFORE this
+        // check, so that single line is present in an otherwise-empty
+        // xls file (the table header line only follows it once
+        // `len(data) == 0` is known to be false, which never happens
+        // here).
+        let mut table = File::create(format!("{prefix}.mismatch_profile.xls"))?;
+        if profile.loop_exhausted_naturally {
+            writeln!(table, "Total reads used: {}", profile.count)?;
+        }
+        File::create(format!("{prefix}.mismatch_profile.r"))?;
         eprintln!("No mismatches found");
         return Ok(());
     }
-
-    let prefix = args.out_prefix.to_string_lossy();
 
     let mut table = File::create(format!("{prefix}.mismatch_profile.xls"))?;
     table.write_all(render_mismatch_table(&profile).as_bytes())?;

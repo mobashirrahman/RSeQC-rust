@@ -52,6 +52,10 @@ fn main() -> std::process::ExitCode {
 
 fn run(args: &Args) -> std::io::Result<()> {
     let (mut reader, _header) = rseqc_formats::open_bam(&args.input_file)?;
+    // Upstream: `print("Process BAM file ... ", end=' ', file=sys.stderr)`
+    // -- the string literal's own trailing space plus `end=' '` gives two
+    // spaces before "Total reads used" on the same stderr line.
+    eprint!("Process BAM file ...  ");
     let profile = compute_deletion_profile(
         reader.records(),
         args.mapq,
@@ -59,6 +63,10 @@ fn run(args: &Args) -> std::io::Result<()> {
         args.read_num,
     )?;
     eprintln!("Total reads used: {}", profile.count);
+    // Upstream's unconditional `print('\n')`: the literal "\n" plus
+    // print's own trailing newline is two bytes.
+    println!();
+    println!();
 
     let prefix = args.out_prefix.to_string_lossy();
 
