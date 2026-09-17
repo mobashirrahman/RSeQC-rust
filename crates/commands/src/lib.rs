@@ -13,6 +13,7 @@ pub mod genebody_coverage2;
 pub mod normalize_bigwig;
 pub mod overlay_bigwig;
 pub mod sc_bamstat;
+pub mod sc_editmatrix;
 pub mod clipping_profile;
 pub mod deletion_profile;
 pub mod infer_experiment;

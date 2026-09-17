@@ -157,6 +157,11 @@ path = "src/bin/overlay_bigwig.rs"
 name = "sc_bamStat"
 path = "src/bin/sc_bamstat.rs"
 
+[[bin]]
+# Same naming note as above: packaging aliases this to `sc_editMatrix.py`.
+name = "sc_editMatrix"
+path = "src/bin/sc_editmatrix.rs"
+
 [dependencies]
 rseqc-core = { path = "../core" }
 rseqc-formats = { path = "../formats" }
