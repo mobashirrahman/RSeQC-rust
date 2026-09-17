@@ -423,6 +423,27 @@ def ensure_sc_bamstat_fixture() -> None:
     subprocess.run([str(ORACLE_PYTHON), str(generator), str(fixture_dir / "sc_bamstat_basic.bam")], cwd=REPO_ROOT, check=True)
 
 
+def ensure_sc_editmatrix_fixture() -> None:
+    fixture_dir = REPO_ROOT / "verification" / "fixtures"
+    fixture = fixture_dir / "sc_editmatrix_basic.bam"
+    if fixture.is_file():
+        return
+    generator = fixture_dir / "make_sc_editmatrix_fixture.py"
+    subprocess.run([str(ORACLE_PYTHON), str(generator), str(fixture)], cwd=REPO_ROOT, check=True)
+
+
+def ensure_sc_seqqual_fixture() -> None:
+    fixture = REPO_ROOT / "verification" / "fixtures" / "regression_sc_seqqual.fq"
+    if not fixture.is_file():
+        raise FileNotFoundError(f"missing committed fixture: {fixture}")
+
+
+def ensure_sc_seqlogo_fixture() -> None:
+    fixture = REPO_ROOT / "verification" / "fixtures" / "regression_sc_seqlogo.fa"
+    if not fixture.is_file():
+        raise FileNotFoundError(f"missing committed fixture: {fixture}")
+
+
 CASES: list[Case] = [
     Case(
         name="bam_stat_basic",
@@ -939,6 +960,66 @@ CASES: list[Case] = [
         rust_args=lambda scratch_dir: ["-i", _regression_fixture("sc_bamstat_basic.bam")],
         compare_stream="stdout",
         stream_format="exact",
+    ),
+    Case(
+        name="sc_editmatrix_basic",
+        # Found by this case (before it was formalized): the edit-count
+        # CSV's float/int cell dtype is a real `pandas.DataFrame.
+        # from_dict(...).fillna(0)` quirk, but it's decided PER COLUMN
+        # here (no transpose in this command's pipeline) -- a column
+        # stays plain-integer only if that position had an entry for
+        # every substitution key seen anywhere. The previous code always
+        # appended ".0" to every cell; this fixture's UMI matrix has
+        # exactly one (position, substitution) entry -- a trivially
+        # dense single column -- so it now renders "1", not "1.0".
+        # --skip-heatmap avoids the Rscript/pheatmap dependency entirely
+        # (pure data-file comparison, not the plotting path).
+        ensure_fixture=ensure_sc_editmatrix_fixture,
+        py_script="sc_editMatrix.py",
+        rust_bin="sc_editMatrix",
+        py_args=lambda scratch_dir: ["-i", _regression_fixture("sc_editmatrix_basic.bam"), "-o", str(scratch_dir / "out"), "--skip-heatmap"],
+        rust_args=lambda scratch_dir: ["-i", _regression_fixture("sc_editmatrix_basic.bam"), "-o", str(scratch_dir / "out"), "--skip-heatmap"],
+        compare_stream="none",
+        compare_files=("out.CB_edits_count.csv", "out.CB_freq.tsv", "out.UMI_edits_count.csv", "out.UMI_freq.tsv"),
+    ),
+    Case(
+        name="sc_seqqual_basic",
+        # Found by this case: unlike sc_editMatrix.py, this command's
+        # pipeline DOES transpose the matrix before `to_csv`, which
+        # forces pandas to upcast EVERY column to a common dtype when
+        # any column needed NaN-filling -- so the float/int decision is
+        # GLOBAL (one flag for the whole matrix), not per column. This
+        # fixture is constructed so every read cycle observes the exact
+        # same quality-score set (fully dense) -- the whole count matrix
+        # should stay plain-integer, which the previous code got wrong
+        # (always appended ".0" unconditionally).
+        ensure_fixture=ensure_sc_seqqual_fixture,
+        py_script="sc_seqQual.py",
+        rust_bin="sc_seqQual",
+        py_args=lambda scratch_dir: ["-i", _regression_fixture("regression_sc_seqqual.fq"), "-o", str(scratch_dir / "out"), "--skip-heatmap"],
+        rust_args=lambda scratch_dir: ["-i", _regression_fixture("regression_sc_seqqual.fq"), "-o", str(scratch_dir / "out"), "--skip-heatmap"],
+        compare_stream="none",
+        compare_files=("out.qual_count.csv", "out.qual_percent.csv"),
+    ),
+    Case(
+        name="sc_seqlogo_basic",
+        # Same GLOBAL-dtype pandas quirk as sc_seqQual.py (seq2countMat
+        # also transposes once before returning) -- this fixture rotates
+        # a single edited base through every position across 3 short
+        # sequences so every position observes both bases (fully dense),
+        # exercising the same previously-broken "always append .0" bug.
+        # Expects exit code 1 on BOTH sides (DIV-0016: sc_seqLogo.py
+        # produces no native image output at all in this port, matching
+        # upstream's own crash shape once the CSV -- the only file this
+        # case actually checks -- is already written).
+        ensure_fixture=ensure_sc_seqlogo_fixture,
+        py_script="sc_seqLogo.py",
+        rust_bin="sc_seqLogo",
+        py_args=lambda scratch_dir: ["-i", _regression_fixture("regression_sc_seqlogo.fa"), "-o", str(scratch_dir / "out"), "--iformat", "fa"],
+        rust_args=lambda scratch_dir: ["-i", _regression_fixture("regression_sc_seqlogo.fa"), "-o", str(scratch_dir / "out"), "--iformat", "fa"],
+        compare_stream="none",
+        compare_files=("out.count_matrix.csv",),
+        expected_exit_code=1,
     ),
 ]
 

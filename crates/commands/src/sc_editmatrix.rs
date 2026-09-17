@@ -158,11 +158,21 @@ pub fn render_freq_tsv(counts: &EditCounts) -> String {
 }
 
 /// Renders the edit-count CSV, replicating `pandas.DataFrame.
-/// from_dict(...).fillna(0)`'s all-float-cells output (see module
-/// docs): `Index,<pos>,<pos>,...` header (positions ascending), one row
-/// per substitution key (alphabetically ascending), all cells with a
-/// trailing `.0`. Empty input renders just `Index\n`, matching pandas'
-/// empty-DataFrame `to_csv` output.
+/// from_dict(...).fillna(0)`'s dtype behavior: `Index,<pos>,<pos>,...`
+/// header (positions ascending), one row per substitution key
+/// (alphabetically ascending). Dtype is decided PER COLUMN, not
+/// globally: a position's column stays plain-integer ONLY if that
+/// position's inner dict already had an entry for every substitution
+/// key in the union (fully dense -- `fillna(0)` never touches it, so
+/// pandas keeps whatever int dtype the raw counts had); if the position
+/// was missing even one substitution key present at some OTHER
+/// position, the whole column becomes float64 (every cell in it prints
+/// with a trailing `.0`, including cells that had a real nonzero count
+/// -- NaN-filling promotes the entire column, not just the filled
+/// cells). Confirmed via live `pandas.DataFrame.from_dict` probes
+/// against several dense/sparse shapes, not inferred from source alone.
+/// Empty input renders just `Index\n`, matching pandas' empty-DataFrame
+/// `to_csv` output.
 pub fn render_edit_matrix_csv(corrected_bases: &BTreeMap<i64, BTreeMap<String, i64>>) -> String {
     let positions: Vec<i64> = corrected_bases.keys().copied().collect();
 
@@ -178,11 +188,23 @@ pub fn render_edit_matrix_csv(corrected_bases: &BTreeMap<i64, BTreeMap<String, i
     }
     out.push('\n');
 
+    let column_is_dense: HashMap<i64, bool> = positions
+        .iter()
+        .map(|&pos| {
+            let dense = corrected_bases.get(&pos).is_some_and(|m| substitutions.iter().all(|s| m.contains_key(s)));
+            (pos, dense)
+        })
+        .collect();
+
     for sub in &substitutions {
         out.push_str(sub);
         for pos in &positions {
             let count = corrected_bases.get(pos).and_then(|m| m.get(sub)).copied().unwrap_or(0);
-            out.push_str(&format!(",{count}.0"));
+            if column_is_dense[pos] {
+                out.push_str(&format!(",{count}"));
+            } else {
+                out.push_str(&format!(",{count}.0"));
+            }
         }
         out.push('\n');
     }
@@ -330,6 +352,39 @@ mod tests {
         let csv = render_edit_matrix_csv(&matrix);
         let expected = "Index,1,2,3\nA:C,1.0,0.0,0.0\nA:T,1.0,0.0,0.0\nC:G,0.0,1.0,0.0\nG:T,0.0,0.0,1.0\n";
         assert_eq!(csv, expected);
+    }
+
+    #[test]
+    fn render_edit_matrix_csv_dtype_is_decided_per_column_not_globally() {
+        // Cross-checked byte-for-byte against a real
+        // pandas.DataFrame.from_dict(...).fillna(0).to_csv(...) run:
+        // column 2 only has an "A:T" entry (missing "C:G", which
+        // appears at columns 1 and 3), so ONLY column 2 gets promoted
+        // to float by fillna(0) -- columns 1 and 3 are fully dense
+        // (every row present) and stay plain integers, even though the
+        // matrix as a whole is NOT fully dense.
+        let mut matrix: BTreeMap<i64, BTreeMap<String, i64>> = BTreeMap::new();
+        matrix.entry(1).or_default().insert("A:T".to_string(), 2);
+        matrix.entry(1).or_default().insert("C:G".to_string(), 1);
+        matrix.entry(2).or_default().insert("A:T".to_string(), 5);
+        matrix.entry(3).or_default().insert("A:T".to_string(), 1);
+        matrix.entry(3).or_default().insert("C:G".to_string(), 3);
+
+        let csv = render_edit_matrix_csv(&matrix);
+        let expected = "Index,1,2,3\nA:T,2,5.0,1\nC:G,1,0.0,3\n";
+        assert_eq!(csv, expected);
+    }
+
+    #[test]
+    fn render_edit_matrix_csv_single_dense_column_stays_integer() {
+        // A single (position, substitution) pair is trivially dense --
+        // no NaN is ever introduced, so pandas keeps the int64 dtype and
+        // `to_csv` prints "1", not "1.0". This is the exact shape that
+        // was previously mis-rendered as "1.0" (the bug this test
+        // guards against).
+        let mut matrix: BTreeMap<i64, BTreeMap<String, i64>> = BTreeMap::new();
+        matrix.entry(3).or_default().insert("A:T".to_string(), 1);
+        assert_eq!(render_edit_matrix_csv(&matrix), "Index,3\nA:T,1\n");
     }
 
     #[test]

@@ -151,10 +151,22 @@ pub fn compute_count_matrix(seqs: &[String], limit: Option<i64>, exclude_n: bool
 }
 
 /// Renders the `.count_matrix.csv` text: `Index,<base>,<base>,...`
-/// header, then one `<position>,<count>.0,...` row per position (the
-/// same all-float-cells `pandas.fillna(0)` convention documented in
-/// `sc_editmatrix.rs`/`sc_seqqual.rs`).
+/// header, then one `<position>,<count>,...` row per position.
+///
+/// Cell dtype is decided GLOBALLY (one flag for the whole matrix), the
+/// same rule as `sc_seqqual::render_quality_matrices` and for the same
+/// reason: `seq2countMat` (`fastq.py`) calls `pandas.DataFrame.T` before
+/// returning, and transposing a DataFrame with heterogeneous per-column
+/// dtypes forces pandas to upcast EVERY column to a common dtype
+/// (float64) -- confirmed via a live pandas probe. Only when every
+/// position's observed-base set is a subset of the union (no position
+/// is sparse relative to some other position) does the whole matrix
+/// stay integer; this is DIFFERENT from `sc_editmatrix::
+/// render_edit_matrix_csv`, whose pipeline never transposes and so
+/// decides dtype per COLUMN instead.
 pub fn render_count_matrix_csv(matrix: &CountMatrix) -> String {
+    let fully_dense = matrix.rows.iter().all(|row| row.iter().all(|&c| c > 0));
+
     let mut out = String::from("Index");
     for b in &matrix.bases {
         out.push(',');
@@ -165,7 +177,11 @@ pub fn render_count_matrix_csv(matrix: &CountMatrix) -> String {
         out.push_str(&pos.to_string());
         for &c in row {
             out.push(',');
-            out.push_str(&python_str_float(c as f64));
+            if fully_dense {
+                out.push_str(&c.to_string());
+            } else {
+                out.push_str(&python_str_float(c as f64));
+            }
         }
         out.push('\n');
     }
@@ -211,6 +227,19 @@ mod tests {
         let csv = render_count_matrix_csv(&matrix);
         let expected = "Index,A,T,C,G\n0,3.0,1.0,0.0,0.0\n1,0.0,0.0,4.0,0.0\n2,0.0,0.0,0.0,4.0\n3,1.0,3.0,0.0,0.0\n";
         assert_eq!(csv, expected);
+    }
+
+    #[test]
+    fn render_count_matrix_csv_stays_integer_when_fully_dense() {
+        // Cross-checked against a real pandas run: when every position
+        // observes every base in the union (no position is sparse
+        // relative to another), the transpose inside seq2countMat
+        // doesn't need to upcast any column, so the whole matrix stays
+        // int64 -- "3", not "3.0". This is the shape that was
+        // previously mis-rendered (the bug this test guards against).
+        let matrix = CountMatrix { bases: vec!['A', 'T'], rows: vec![vec![3, 1], vec![2, 2], vec![1, 3]] };
+        let csv = render_count_matrix_csv(&matrix);
+        assert_eq!(csv, "Index,A,T\n0,3,1\n1,2,2\n2,1,3\n");
     }
 
     #[test]

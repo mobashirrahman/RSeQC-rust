@@ -12,12 +12,18 @@
 //! dependency, so this is a genuine, disclosed gap rather than an
 //! assumed non-issue).
 //!
-//! **Preserves the same `pandas.DataFrame.from_dict(...).fillna(0)`
-//! all-float-cells quirk documented in `sc_editmatrix.rs`**: every count
-//! matrix cell prints with a trailing `.0`. The percentage matrix's
-//! cells are genuine fractions, rendered with full `str(float)`
-//! precision (`python_str_float`), verified against a real `pandas` run
-//! in `oracle/venv`.
+//! **Preserves a `pandas.DataFrame.from_dict(...).fillna(0)` dtype
+//! quirk, but NOT the same one as `sc_editmatrix.rs`**: unlike
+//! `sc_editMatrix.py` (no transpose), this command's pipeline calls
+//! `.T` on the matrix before `to_csv`, which forces pandas to upcast
+//! EVERY column to a common dtype when the pre-transpose columns had
+//! heterogeneous dtypes -- so the count matrix's float-vs-int cell
+//! rendering is decided GLOBALLY (one flag for the whole matrix), not
+//! per column. See `render_quality_matrices`'s doc comment for the full
+//! reasoning, confirmed via live pandas probes. The percentage matrix's
+//! cells are genuine fractions regardless, rendered with full
+//! `str(float)` precision (`python_str_float`), verified against a real
+//! `pandas` run in `oracle/venv`.
 use std::collections::{BTreeSet, HashMap};
 use std::io::{self, BufRead};
 
@@ -78,6 +84,20 @@ pub fn qual2count_mat(quals: &[String], limit: Option<i64>) -> Vec<HashMap<i64, 
 /// positions in natural ascending order. Ports the CLI script's own
 /// matrix-shaping and division logic, including the hard error on any
 /// zero-total column.
+///
+/// `count_csv`'s cell dtype is decided GLOBALLY, not per column, unlike
+/// `sc_editmatrix::render_edit_matrix_csv`: `qual2countMat` (`fastq.py`)
+/// and the CLI both call `pandas.DataFrame.T` on the matrix before
+/// `to_csv`, and transposing a DataFrame with heterogeneous per-column
+/// dtypes forces pandas to upcast EVERY column to a common dtype (here,
+/// float64) -- confirmed via a live pandas probe comparing pre- and
+/// post-transpose `.dtypes`. So: if every read-cycle's observed-score
+/// set is a subset of some OTHER cycle's observed-score set (i.e. no
+/// cycle is sparse relative to the union), the whole count matrix stays
+/// integer; if even one cycle is missing a score present elsewhere, the
+/// ENTIRE matrix (every cell, not just that column) renders with a
+/// trailing `.0`. `percent_csv`'s cells are always genuine floats
+/// regardless (a division result), so this doesn't apply there.
 pub fn render_quality_matrices(dat: &[HashMap<i64, i64>]) -> io::Result<(String, String)> {
     if dat.is_empty() {
         return Err(io::Error::new(io::ErrorKind::InvalidData, "no usable quality records were found in the FASTQ file"));
@@ -95,6 +115,8 @@ pub fn render_quality_matrices(dat: &[HashMap<i64, i64>]) -> io::Result<(String,
         return Err(io::Error::new(io::ErrorKind::InvalidData, format!("one or more read cycles contain zero total observations: {}", zero_cols.join(", "))));
     }
 
+    let fully_dense = dat.iter().all(|pos_map| scores.iter().all(|s| pos_map.contains_key(s)));
+
     let header: String = (0..dat.len()).map(|i| format!(",{i}")).collect();
 
     let mut count_csv = format!("Index{header}\n");
@@ -105,7 +127,11 @@ pub fn render_quality_matrices(dat: &[HashMap<i64, i64>]) -> io::Result<(String,
         percent_csv.push_str(&score.to_string());
         for (i, pos_map) in dat.iter().enumerate() {
             let c = pos_map.get(&score).copied().unwrap_or(0);
-            count_csv.push_str(&format!(",{}", python_str_float(c as f64)));
+            if fully_dense {
+                count_csv.push_str(&format!(",{c}"));
+            } else {
+                count_csv.push_str(&format!(",{}", python_str_float(c as f64)));
+            }
             percent_csv.push_str(&format!(",{}", python_str_float(c as f64 / totals[i] as f64)));
         }
         count_csv.push('\n');
@@ -152,6 +178,23 @@ mod tests {
         let (count_csv, percent_csv) = render_quality_matrices(&dat).unwrap();
         assert_eq!(count_csv, "Index,0,1,2\n40,2.0,3.0,2.0\n2,1.0,0.0,1.0\n");
         assert_eq!(percent_csv, "Index,0,1,2\n40,0.6666666666666666,1.0,0.6666666666666666\n2,0.3333333333333333,0.0,0.3333333333333333\n");
+    }
+
+    #[test]
+    fn render_quality_matrices_stays_integer_when_fully_dense() {
+        // Cross-checked against a real pandas run: when every position's
+        // observed-score set is the SAME (no position is sparse relative
+        // to the union), the transpose doesn't need to upcast any
+        // column, so the whole count matrix stays int64 -- "2", not
+        // "2.0". This is the shape that was previously mis-rendered
+        // (the bug this test guards against).
+        let dat = vec![
+            HashMap::from([(40, 2), (2, 1)]),
+            HashMap::from([(40, 5), (2, 3)]),
+            HashMap::from([(40, 9), (2, 7)]),
+        ];
+        let (count_csv, _) = render_quality_matrices(&dat).unwrap();
+        assert_eq!(count_csv, "Index,0,1,2\n40,2,5,9\n2,1,3,7\n");
     }
 
     #[test]
