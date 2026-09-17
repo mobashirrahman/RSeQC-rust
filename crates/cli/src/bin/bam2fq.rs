@@ -3,7 +3,8 @@
 //! `.py`-suffixed PATH alias.
 //!
 //! `-c/--compress` (gzip output) is not implemented yet — disclosed gap, see
-//! crates/commands/src/bam2fq.rs module docs.
+//! crates/commands/src/bam2fq.rs module docs. SAM-text input (DIV-0002/0004)
+//! is supported via `rseqc_formats::open_alignments`.
 
 use std::fs::File;
 use std::path::PathBuf;
@@ -17,7 +18,8 @@ use rseqc_commands::bam2fq::{write_paired, write_single};
     about = "Convert alignments in BAM or SAM format to FASTQ."
 )]
 struct Args {
-    /// Input BAM file (SAM-text input is not yet supported).
+    /// Input alignment file in BAM or plain-text SAM format (dispatched by
+    /// the `.bam`/`.sam` extension).
     #[arg(short = 'i', long = "input-file")]
     input_file: PathBuf,
 
@@ -42,18 +44,23 @@ fn main() -> std::process::ExitCode {
 }
 
 fn run(args: &Args) -> std::io::Result<()> {
-    let (mut reader, _header) = rseqc_formats::open_bam(&args.input_file)?;
+    let (_header, records) = rseqc_formats::open_alignments(&args.input_file)?;
     let prefix = args.out_prefix.to_string_lossy();
+
+    eprintln!("Convert BAM/SAM file into FASTQ format ...");
 
     if args.single_end {
         let mut out = File::create(format!("{prefix}.fastq"))?;
-        let counts = write_single(reader.records(), &mut out)?;
-        eprintln!("{counts:?}");
+        let counts = write_single(records, &mut out)?;
+        eprintln!("Done");
+        eprintln!("read count: {}", counts.single);
     } else {
         let mut out1 = File::create(format!("{prefix}.R1.fastq"))?;
         let mut out2 = File::create(format!("{prefix}.R2.fastq"))?;
-        let counts = write_paired(reader.records(), &mut out1, &mut out2)?;
-        eprintln!("{counts:?}");
+        let counts = write_paired(records, &mut out1, &mut out2)?;
+        eprintln!("Done");
+        eprintln!("read_1 count: {}", counts.read1);
+        eprintln!("read_2 count: {}", counts.read2);
     }
 
     Ok(())

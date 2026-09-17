@@ -19,25 +19,30 @@ divergences:
     status: accepted
 
   - id: DIV-0002
-    command_or_api: bam_stat.py
+    command_or_api: bam_stat.py, bam2fq.py
     description: >
-      CLOSED 2026-09-17. bam_stat.py's CLI now opens input via
+      CLOSED 2026-09-17 for both commands. Their CLIs now open input via
       `rseqc_formats::open_alignments`, which dispatches on the `.bam`/
       `.sam` extension (case-insensitive) and, for `.sam` input, round-trips
       the parsed text records through an in-memory BAM byte buffer before
-      handing them to the existing `compute_stats` function -- which needed
-      zero changes. A live diff against real upstream also surfaced a
-      genuine behavioral subtlety worth recording: pysam's
+      handing them to the existing compute function -- which needed zero
+      changes in either case. A live diff against real upstream also
+      surfaced a genuine behavioral subtlety worth recording (found on
+      bam_stat.py, applies identically to bam2fq.py): pysam's
       `Samfile(path, 'rb')` succeeds even for authentic plain-text SAM
       content (htslib auto-detects format and ignores the 'b' mode hint),
       so upstream's own "Load SAM file ..." branch is practically dead code
       -- upstream prints "Load BAM file ...  Done" for `.sam` input too, and
       the port now matches that exactly rather than printing a
       format-conditional message. Verified byte-identical stdout+stderr for
-      both `.bam` and `.sam` input; see `verification/run_diff.py` case
-      `bam_stat_sam_text`.
+      both `.bam` and `.sam` input; see `verification/run_diff.py` cases
+      `bam_stat_sam_text`, `bam2fq_sam_text`. bam2fq.py's migration also
+      surfaced and fixed an unrelated pre-existing bug: its CLI printed a
+      raw `{counts:?}` Debug dump to stderr instead of upstream's real
+      "Convert BAM/SAM file into FASTQ format ...", "Done", "read count: N"
+      / "read_1 count: N" + "read_2 count: N" lines.
     classification: explicit-compatibility-exception
-    decision: Closed for bam_stat.py. The same `open_alignments` function is available in crates/formats for migrating the remaining BAM-consuming commands (tracked as DIV-0004).
+    decision: Closed for bam_stat.py and bam2fq.py. The same `open_alignments` function is available in crates/formats for migrating the remaining candidate commands (tracked as DIV-0004).
     status: fixed-working-tree
 
   - id: DIV-0003
@@ -52,29 +57,42 @@ divergences:
 
   - id: DIV-0004
     command_or_api: >
-      All commands whose CLI still calls `rseqc_formats::open_bam` directly
-      (BAM-only): bam2fq.py, bam2wig.py, clipping_profile.py,
-      deletion_profile.py, divide_bam.py, fpkm_count.py,
-      geneBody_coverage.py, infer_experiment.py, inner_distance.py,
+      clipping_profile.py, infer_experiment.py, inner_distance.py,
       insertion_profile.py, junction_annotation.py, junction_saturation.py,
-      mismatch_profile.py, read_distribution.py, read_duplication.py,
-      read_GC.py, read_NVC.py, read_quality.py, RNA_fragment_size.py,
-      RPKM_saturation.py, sc_bamStat.py, sc_editMatrix.py, split_bam.py,
-      split_paired_bam.py, tin.py
+      read_distribution.py, read_duplication.py, read_GC.py, read_NVC.py,
+      read_quality.py, RPKM_saturation.py
     description: >
-      This entry originally listed only 4 commands (bam_stat.py,
-      split_paired_bam.py, bam2fq.py, divide_bam.py) as the known BAM-only
-      set; found stale 2026-09-17 -- the true scope is every command whose
-      CLI opens input via `rseqc_formats::open_bam` (checked via
-      `grep -rl open_bam crates/cli/src/`), which is broader. Upstream's
-      help text for each advertises "BAM or SAM" (plain-text SAM input via
-      pysam). A shared `rseqc_formats::open_alignments` function now exists
-      (added closing DIV-0002 for bam_stat.py) that any of these commands
-      can adopt by swapping their `open_bam` call for `open_alignments` --
-      the existing `compute_*` functions need zero changes since they are
-      already generic over `IntoIterator<Item = io::Result<bam::Record>>`.
+      A first pass at this entry (2026-09-17, superseded within the same
+      day) wrongly listed every command whose CLI calls `rseqc_formats::
+      open_bam`, ~24 commands, on the assumption that "uses open_bam" ==
+      "upstream advertises BAM or SAM input". That assumption was tested by
+      migrating split_paired_bam.py and divide_bam.py and diffing against
+      real upstream on a `.sam` fixture: BOTH commands' own
+      `validate_args` explicitly reject any non-`.bam` extension via
+      `parser.error` (exit code 2) BEFORE the file is ever opened --
+      upstream itself is BAM-only for these two by deliberate design, not
+      an unimplemented feature. Checking the full ~24-command list found
+      this same explicit `.suffix.lower() != ".bam"` rejection in 8 more:
+      bam2wig.py, deletion_profile.py, FPKM_count.py, mismatch_profile.py,
+      RNA_fragment_size.py, sc_bamStat.py, sc_editMatrix.py, split_bam.py
+      (10 total, none of which belong in this entry -- verified BAM-only
+      by upstream, out of scope). Two more, geneBody_coverage.py and
+      tin.py, have no explicit extension whitelist but call
+      `pysam.AlignmentFile(...).pileup(...)`, which requires genuine
+      random-access indexed BAM -- SAM text has no index and could never
+      work here either, so these are also excluded as a structural (not
+      missing-feature) BAM requirement. The remaining 12 commands listed
+      above each explicitly validate
+      `input_file.suffix.lower() in {".bam", ".sam", ".cram"}` in their own
+      upstream source -- genuine candidates, the same class bam_stat.py/
+      bam2fq.py (DIV-0002, closed) turned out to be. Note these 12 also
+      advertise `.cram`, which `open_alignments` does NOT support at all
+      (no CRAM reader in crates/formats) -- closing SAM-text support for
+      one of these 12 does not by itself close its CRAM gap; track that
+      remnant per-command if/when it matters rather than re-opening this
+      whole entry for it.
     classification: explicit-compatibility-exception
-    decision: SAM-text input is a disclosed gap for all commands listed above until each is migrated to open_alignments; see DIV-0002 for the closed bam_stat.py case and the migration pattern. Do not claim full compatibility for any listed command until closed.
+    decision: SAM-text input is a disclosed gap only for the 12 commands listed above, until each is migrated to open_alignments; see DIV-0002 for the closed bam_stat.py/bam2fq.py cases and the migration pattern. The other ~12 open_bam-using commands are NOT part of this gap (10 are genuinely BAM-only by upstream's own argparse validation; geneBody_coverage.py/tin.py require indexed random access that SAM text structurally cannot provide) -- do not re-add them here without re-deriving from upstream source first.
     status: open
 
   - id: DIV-0005

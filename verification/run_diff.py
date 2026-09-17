@@ -405,8 +405,12 @@ def _bam_stat_args(_scratch_dir: Path) -> list[str]:
     return ["-i", str(REPO_ROOT / "verification" / "fixtures" / "bam_stat_basic.bam")]
 
 
+def _bam_stat_sam_fixture_path() -> str:
+    return str(REPO_ROOT / "verification" / "fixtures" / "bam_stat_basic.sam")
+
+
 def _bam_stat_sam_args(_scratch_dir: Path) -> list[str]:
-    return ["-i", str(REPO_ROOT / "verification" / "fixtures" / "bam_stat_basic.sam")]
+    return ["-i", _bam_stat_sam_fixture_path()]
 
 
 def _nvc_fixture_path() -> str:
@@ -880,12 +884,31 @@ CASES: list[Case] = [
     ),
     Case(
         name="bam2fq_single_end",
+        # Found by this case (before it was formalized): the CLI's stderr
+        # was a raw `{counts:?}` Debug dump instead of upstream's real
+        # "Convert BAM/SAM file into FASTQ format ...", "Done", "read
+        # count: N" lines (ParseBAM.bam2fq() in qcmodule/SAM.py) -- fixed,
+        # now comparing stderr exactly instead of skipping it.
         ensure_fixture=ensure_bam_stat_fixture,
         py_script="bam2fq.py",
         rust_bin="bam2fq",
         py_args=lambda scratch_dir: ["-i", _nvc_fixture_path(), "-o", str(scratch_dir / "out"), "-s"],
         rust_args=lambda scratch_dir: ["-i", _nvc_fixture_path(), "-o", str(scratch_dir / "out"), "-s"],
-        compare_stream="none",
+        compare_stream="stderr",
+        stream_format="exact",
+        compare_files=("out.fastq",),
+    ),
+    Case(
+        name="bam2fq_sam_text",
+        # DIV-0002/0004: SAM-text input, closed for bam2fq.py via
+        # open_alignments.
+        ensure_fixture=ensure_bam_stat_sam_fixture,
+        py_script="bam2fq.py",
+        rust_bin="bam2fq",
+        py_args=lambda scratch_dir: ["-i", _bam_stat_sam_fixture_path(), "-o", str(scratch_dir / "out"), "-s"],
+        rust_args=lambda scratch_dir: ["-i", _bam_stat_sam_fixture_path(), "-o", str(scratch_dir / "out"), "-s"],
+        compare_stream="stderr",
+        stream_format="exact",
         compare_files=("out.fastq",),
     ),
     Case(

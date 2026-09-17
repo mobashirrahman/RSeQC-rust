@@ -10,7 +10,10 @@
 //! read1 nor read2 is silently dropped (no `else` branch upstream).
 //!
 //! Known gap: `-c/--compress` (gzip output) is not implemented here yet —
-//! disclosed follow-up. BAM-only for now (see DIV-0002 pattern).
+//! disclosed follow-up (DIV-0007). SAM-text input (DIV-0002/0004) is
+//! supported at the CLI layer via `rseqc_formats::open_alignments`; this
+//! module's own functions were unaffected (already generic over
+//! `IntoIterator<Item = io::Result<bam::Record>>`).
 
 use std::io::{self, Write};
 

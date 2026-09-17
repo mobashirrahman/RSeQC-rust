@@ -19,7 +19,11 @@ use rseqc_commands::split_paired_bam::{SplitCounts, render_report, split_paired_
     about = "Split a paired-end BAM into read-1, read-2, and unmapped BAM files."
 )]
 struct Args {
-    /// Input BAM file.
+    /// Input BAM file. Upstream (`split_paired_bam.py`'s own `validate_args`)
+    /// explicitly rejects any non-`.bam` extension via `parser.error` before
+    /// ever reading the file -- unlike `bam_stat.py`/`bam2fq.py`, this
+    /// command genuinely is BAM-only by upstream's own design, not a
+    /// disclosed gap (see DIV-0004).
     #[arg(short = 'i', long = "input-file")]
     input_file: PathBuf,
 
