@@ -5,6 +5,7 @@
 use std::fs::File;
 use std::io::Write as _;
 use std::path::PathBuf;
+use std::process::Command;
 
 use clap::{Parser, ValueEnum};
 use rseqc_commands::clipping_profile::{
@@ -41,6 +42,14 @@ struct Args {
     /// Minimum mapping quality for a read to be considered uniquely mapped.
     #[arg(short = 'q', long = "mapq", default_value_t = 30)]
     mapq: u8,
+
+    /// Generate the profile files but do not run the R plotting script.
+    #[arg(long = "skip-plot")]
+    skip_plot: bool,
+
+    /// Rscript executable to use.
+    #[arg(long = "rscript", default_value = "Rscript")]
+    rscript: String,
 }
 
 fn main() -> std::process::ExitCode {
@@ -58,27 +67,42 @@ fn run(args: &Args) -> std::io::Result<()> {
     let (mut reader, _header) = rseqc_formats::open_bam(&args.input_file)?;
     let prefix = args.out_prefix.to_string_lossy();
 
+    // Upstream: `print("Load BAM file ... ", end=' ')` -- the literal's
+    // own trailing space plus `end=' '` gives two spaces before "Done".
+    eprint!("Load BAM file ...  ");
+
     let (table_text, r_script_text) = match args.sequencing {
         Layout::SingleEnd => {
             let profile = compute_single_end(reader.records(), args.mapq, b'S')?;
-            eprintln!("Total reads used: {}", profile.total_read);
+            eprintln!("Done");
+            // Upstream: `print("Totoal reads used: %d" % ...)` -- a
+            // literal upstream typo ("Totoal"), preserved exactly.
+            eprintln!("Totoal reads used: {}", profile.total_read);
             (render_single_table(&profile), render_single_r_script(&profile, &prefix))
         }
         Layout::PairedEnd => {
             let profile = compute_paired_end(reader.records(), args.mapq, b'S')?;
-            eprintln!(
-                "Total read-1 used: {}, read-2 used: {}",
-                profile.total_read1, profile.total_read2
-            );
+            eprintln!("Done");
+            // Upstream prints these as TWO SEPARATE lines (also with
+            // the same "Totoal" typo), not one combined line.
+            eprintln!("Totoal read-1 used: {}", profile.total_read1);
+            eprintln!("Totoal read-2 used: {}", profile.total_read2);
             (render_paired_table(&profile), render_paired_r_script(&profile, &prefix))
         }
     };
 
-    let mut xls = File::create(format!("{prefix}.clipping_profile.xls"))?;
-    xls.write_all(table_text.as_bytes())?;
+    let xls_path = format!("{prefix}.clipping_profile.xls");
+    File::create(&xls_path)?.write_all(table_text.as_bytes())?;
 
-    let mut r = File::create(format!("{prefix}.clipping_profile.r"))?;
-    r.write_all(r_script_text.as_bytes())?;
+    let r_path = format!("{prefix}.clipping_profile.r");
+    File::create(&r_path)?.write_all(r_script_text.as_bytes())?;
+
+    if !args.skip_plot {
+        let status = Command::new(&args.rscript).arg(&r_path).status()?;
+        if !status.success() {
+            return Err(std::io::Error::other(format!("R plotting failed for {r_path}")));
+        }
+    }
 
     Ok(())
 }

@@ -778,28 +778,68 @@ CASES: list[Case] = [
         name="clipping_profile_basic",
         # Regression case for the defaultdict(int)-vs-float duck-typing
         # bug: an untouched position's Clipped_nt must render as bare "0",
-        # not "0.0" -- see crates/commands/src/clipping_profile.rs.
+        # not "0.0" -- see crates/commands/src/clipping_profile.rs. Also
+        # covers the later DIV-0005 fix: missing --skip-plot/--rscript,
+        # missing "Load BAM file ...  Done" progress, and upstream's own
+        # "Totoal reads used: N" typo (preserved exactly, not "Total").
         ensure_fixture=ensure_bam_stat_fixture,
         py_script="clipping_profile.py",
         rust_bin="clipping_profile",
         py_args=lambda scratch_dir: [
             "-i", _nvc_fixture_path(), "-o", str(scratch_dir / "out"), "-s", "SE", "--skip-plot",
         ],
-        rust_args=lambda scratch_dir: ["-i", _nvc_fixture_path(), "-o", str(scratch_dir / "out"), "-s", "SE"],
-        compare_stream="none",
+        rust_args=lambda scratch_dir: ["-i", _nvc_fixture_path(), "-o", str(scratch_dir / "out"), "-s", "SE", "--skip-plot"],
+        compare_stream="stderr",
+        stream_format="exact",
+        compare_files=("out.clipping_profile.xls", "out.clipping_profile.r"),
+        normalize_paths=True,
+    ),
+    Case(
+        name="clipping_profile_pe",
+        # Same fixture, PE branch: exercises the "Totoal read-1 used"/
+        # "Totoal read-2 used" TWO-SEPARATE-LINES message shape (the
+        # port previously combined these into one invented line).
+        ensure_fixture=ensure_bam_stat_fixture,
+        py_script="clipping_profile.py",
+        rust_bin="clipping_profile",
+        py_args=lambda scratch_dir: [
+            "-i", _nvc_fixture_path(), "-o", str(scratch_dir / "out"), "-s", "PE", "--skip-plot",
+        ],
+        rust_args=lambda scratch_dir: ["-i", _nvc_fixture_path(), "-o", str(scratch_dir / "out"), "-s", "PE", "--skip-plot"],
+        compare_stream="stderr",
+        stream_format="exact",
         compare_files=("out.clipping_profile.xls", "out.clipping_profile.r"),
         normalize_paths=True,
     ),
     Case(
         name="insertion_profile_basic",
+        # Same DIV-0005 fix pattern as clipping_profile.py (identical
+        # code structure upstream): missing --skip-plot/--rscript,
+        # missing "Load BAM file ...  Done" progress, upstream's
+        # "Totoal reads used: N" typo preserved exactly.
         ensure_fixture=ensure_bam_stat_fixture,
         py_script="insertion_profile.py",
         rust_bin="insertion_profile",
         py_args=lambda scratch_dir: [
             "-i", _nvc_fixture_path(), "-o", str(scratch_dir / "out"), "-s", "SE", "--skip-plot",
         ],
-        rust_args=lambda scratch_dir: ["-i", _nvc_fixture_path(), "-o", str(scratch_dir / "out"), "-s", "SE"],
-        compare_stream="none",
+        rust_args=lambda scratch_dir: ["-i", _nvc_fixture_path(), "-o", str(scratch_dir / "out"), "-s", "SE", "--skip-plot"],
+        compare_stream="stderr",
+        stream_format="exact",
+        compare_files=("out.insertion_profile.xls", "out.insertion_profile.r"),
+        normalize_paths=True,
+    ),
+    Case(
+        name="insertion_profile_pe",
+        ensure_fixture=ensure_bam_stat_fixture,
+        py_script="insertion_profile.py",
+        rust_bin="insertion_profile",
+        py_args=lambda scratch_dir: [
+            "-i", _nvc_fixture_path(), "-o", str(scratch_dir / "out"), "-s", "PE", "--skip-plot",
+        ],
+        rust_args=lambda scratch_dir: ["-i", _nvc_fixture_path(), "-o", str(scratch_dir / "out"), "-s", "PE", "--skip-plot"],
+        compare_stream="stderr",
+        stream_format="exact",
         compare_files=("out.insertion_profile.xls", "out.insertion_profile.r"),
         normalize_paths=True,
     ),
