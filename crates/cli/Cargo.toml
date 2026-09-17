@@ -111,6 +111,11 @@ path = "src/bin/tin.rs"
 name = "FPKM_count"
 path = "src/bin/fpkm_count.rs"
 
+[[bin]]
+# Same naming note as above: packaging aliases this to `RPKM_saturation.py`.
+name = "RPKM_saturation"
+path = "src/bin/rpkm_saturation.rs"
+
 [dependencies]
 rseqc-core = { path = "../core" }
 rseqc-formats = { path = "../formats" }

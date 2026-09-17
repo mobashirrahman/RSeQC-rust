@@ -21,6 +21,7 @@ pub mod read_nvc;
 pub mod read_distribution;
 pub mod read_quality;
 pub mod rna_fragment_size;
+pub mod rpkm_saturation;
 pub mod split_bam;
 pub mod split_paired_bam;
 pub mod tin;

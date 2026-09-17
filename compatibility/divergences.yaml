@@ -145,3 +145,46 @@ divergences:
       BAMs with an appreciable insert-size overlap will run somewhat high
       relative to upstream until this is implemented.
     status: accepted
+
+  - id: DIV-0012
+    command_or_api: RPKM_saturation.py
+    description: >
+      Upstream's saturation_RPKM re-opens and re-parses the reference
+      BED12 gene model file from scratch on every iteration of the outer
+      percentile-sampling loop (once per entry in `tmp`, typically ~20
+      times at the default -l5/-u100/-s5 settings). Any malformed line's
+      "[NOTE:input bed must be 12-column] skipped this line: ..." stderr
+      warning is therefore printed once per percentile iteration, not
+      once overall. The Rust port parses the gene model exactly once
+      (`parse_gene_model`) and reuses the resulting `Vec<TranscriptExons>`
+      across all percentiles, since the file's content and the parse
+      outcome cannot change between iterations.
+    classification: acceptable-simplification
+    decision: >
+      Preserving the literal re-parse-per-iteration behavior would only
+      reproduce duplicated stderr diagnostic noise for malformed input
+      lines; it has no effect on any computed output (.eRPKM.xls,
+      .rawCount.xls, or the R script). Parsing once is strictly better
+      and does not change program behavior observable in output files.
+    status: accepted
+
+  - id: DIV-0013
+    command_or_api: RPKM_saturation.py
+    description: >
+      Upstream's show_saturation() writes the `pdf(...)` and
+      `par(mfrow=c(2,2))` lines to the `.saturation.r` file BEFORE
+      computing `plot_headers = header[:-1]` inside the first quantile
+      iteration; if `plot_headers` turns out to be empty (fewer than two
+      sampling percentiles), it raises ValueError mid-write, leaving a
+      truncated two-line R script on disk. The Rust port
+      (render_saturation_r_script) checks this condition up front and
+      returns an error before writing anything, so no partial file is
+      produced.
+    classification: acceptable-simplification
+    decision: >
+      A truncated, unusable R script is not a meaningful artifact to
+      reproduce byte-for-byte; both implementations fail the command with
+      a hard error in this case (an edge case requiring
+      --percentile-step >= --percentile-ceiling - --percentile-floor).
+      Not writing a broken partial file is strictly better behavior.
+    status: accepted
