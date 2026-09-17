@@ -8,13 +8,13 @@
 //! index built once per BAM, not real htslib random access.
 //!
 //! **Preserves several deliberate upstream quirks, do not "fix"**:
-//! - `read_end`/`frag_end` (and a mapped mate's estimated span) are
-//!   computed as `start + rlen`, where `rlen` is the READ'S OWN query
-//!   length (SEQ length) -- NOT the true CIGAR reference span. For a
-//!   mapped mate, `mate_end = mate_st + aligned_read.rlen` reuses THIS
-//!   read's own length for the MATE's span estimate (pysam has no way to
-//!   know the mate's actual CIGAR from a single record). Both
-//!   approximations are preserved exactly.
+//! - Fragment overlap formulas (`read_end`/`frag_end`, and a mapped mate's
+//!   estimated span) use `start + rlen`, where `rlen` is the READ'S OWN
+//!   query length (SEQ length), matching the upstream counting formulas.
+//!   Region-fetch selection is separate and uses the true CIGAR reference
+//!   span, as htslib does; a spliced/deletion-containing alignment can
+//!   therefore be fetched even when its query-length estimate ends before
+//!   the transcript.
 //! - `count_total_fragments` and `count_transcript` disagree on case
 //!   folding: the former uppercases chromosome names when testing
 //!   membership in the global exon index (built with uppercased keys),
@@ -91,7 +91,7 @@ pub fn parse_strand_rule(rule: Option<&str>) -> Result<HashMap<String, char>, St
 #[derive(Debug, Clone)]
 pub struct IndexedRead {
     pub start: i64,
-    /// `start + rlen` (query length) -- not the true CIGAR reference span.
+    /// True CIGAR reference end used to emulate htslib fetch selection.
     pub end: i64,
     pub rlen: i64,
     /// `pnext`, 0-based; `-1` if unset (pysam's raw sentinel), matching
@@ -141,11 +141,13 @@ where
         let Some(pos) = record.alignment_start().transpose()? else { continue };
         let start = (pos.get() - 1) as i64;
         let rlen = record.sequence().len() as i64;
+        let cigar_ops: Vec<_> = record.cigar().iter().collect::<Result<Vec<_>, _>>()?;
+        let (_, reference_end) = rseqc_formats::cigar::reference_span(start as usize, cigar_ops);
         let mate_start = record.mate_alignment_start().transpose()?.map(|p| (p.get() - 1) as i64).unwrap_or(-1);
 
         by_chrom.entry(chrom).or_default().push(IndexedRead {
             start,
-            end: start + rlen,
+            end: reference_end as i64,
             rlen,
             mate_start,
             is_paired: flags.is_segmented(),
@@ -261,7 +263,14 @@ pub fn count_total_fragments(
                 }
             } else {
                 total_frags += 1.0;
-                if global_exon_ranges.overlap_length(&chrom_upper, r.start, read_end) > 0 {
+                // Upstream treats a paired fragment as exonic only when
+                // BOTH mapped ends overlap an exon.  Checking only read 1
+                // incorrectly classifies a pair whose mate lies outside the
+                // gene model and inflates the exonic denominator used by
+                // `-e` FPKM normalization.
+                if global_exon_ranges.overlap_length(&chrom_upper, r.start, read_end) > 0
+                    && global_exon_ranges.overlap_length(&chrom_upper, r.mate_start, mate_end) > 0
+                {
                     exonic_frags += 1.0;
                 }
             }
@@ -274,6 +283,7 @@ pub fn count_total_fragments(
 /// Counts one transcript's forward/reverse/unstranded fragments. Ports
 /// `count_transcript` exactly, including its two-separate-`if` (not
 /// `if`/`elif`) structure for the unpaired/paired branches.
+#[allow(clippy::too_many_arguments)]
 pub fn count_transcript(
     reads_by_chrom: &HashMap<String, Vec<IndexedRead>>,
     chrom: &str,
@@ -630,6 +640,34 @@ mod tests {
         let (total, exonic_count) = count_total_fragments(&index, &exon_ranges, 0.5);
         assert_eq!(total, 0.5);
         assert_eq!(exonic_count, 0.5);
+    }
+
+    #[test]
+    fn count_total_fragments_requires_both_mapped_mates_to_overlap_exon() {
+        use sam::alignment::record::{Flags, MappingQuality, cigar::Op, cigar::op::Kind};
+        use sam::alignment::record_buf::{Cigar, RecordBuf};
+
+        let header = header_with_chrom("chr1", 1000);
+        let read1 = RecordBuf::builder()
+            .set_name("mate_outside")
+            .set_flags(Flags::SEGMENTED | Flags::FIRST_SEGMENT)
+            .set_reference_sequence_id(0)
+            .set_alignment_start(noodles_core::Position::try_from(111).unwrap())
+            .set_mate_reference_sequence_id(0)
+            .set_mate_alignment_start(noodles_core::Position::try_from(501).unwrap())
+            .set_mapping_quality(MappingQuality::new(40).unwrap())
+            .set_cigar(Cigar::from(vec![Op::new(Kind::Match, 20)]))
+            .set_sequence(sam::alignment::record_buf::Sequence::from(vec![b'A'; 20]))
+            .set_quality_scores(sam::alignment::record_buf::QualityScores::from(vec![40; 20]))
+            .build();
+
+        let bam_records = to_bam_records(&header, &[read1]);
+        let index = build_read_index(bam_records.into_iter().map(Ok), &header, false, 0).unwrap();
+        let exon_ranges = MergedRegions::new(&[("CHR1".to_string(), 100, 200)]);
+
+        let (total, exonic_count) = count_total_fragments(&index, &exon_ranges, 1.0);
+        assert_eq!(total, 1.0);
+        assert_eq!(exonic_count, 0.0);
     }
 
     #[test]
