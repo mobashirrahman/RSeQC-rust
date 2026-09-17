@@ -21,7 +21,9 @@ Uses only the Python standard library at runtime.
 from __future__ import annotations
 
 import dataclasses
+import os
 import re
+import signal
 import subprocess
 import sys
 from pathlib import Path
@@ -63,27 +65,87 @@ class Case:
     # "explicitly named normalization for paths" PORTING_PLAN.md's Step 4
     # table allows, not a way to hide a real difference.
     normalize_paths: bool = False
+    # Files whose whitespace-delimited table cells should be compared as
+    # numbers where possible.  This is explicit per case: byte comparison
+    # remains the default, while numeric tables do not fail on Python's
+    # harmless `0` versus `0.0` rendering difference.
+    numeric_files: tuple[str, ...] = ()
+    # Exit status expected from both implementations.  A positive
+    # compatibility case must therefore not pass merely because both sides
+    # failed in the same way.
+    expected_exit_code: int = 0
+    # Stream comparison is either semantic labelled-number comparison or
+    # exact text comparison.  Cases with file outputs normally use "none".
+    stream_format: str = "labels"
+    # Optional labels that must be present on both sides.  This closes the
+    # empty-stream false-pass path while allowing commands whose reports are
+    # intentionally file-only.
+    required_labels: tuple[str, ...] = ()
+    allow_empty_stream: bool = False
+    # Wall-clock limit for each implementation.  A timeout is a failed run,
+    # never an equivalent result.
+    timeout_s: float = 120.0
 
 
 @dataclasses.dataclass
 class RunResult:
-    exit_code: int
+    exit_code: int | None
     stdout: str
     stderr: str
+    timed_out: bool = False
 
 
-def run(argv: list[str], pythonpath: str | None = None) -> RunResult:
-    env = None
+def run(
+    argv: list[str],
+    pythonpath: str | None = None,
+    *,
+    cwd: Path = REPO_ROOT,
+    timeout_s: float = 120.0,
+) -> RunResult:
+    env = dict(os.environ)
     if pythonpath is not None:
-        import os
-
-        env = dict(os.environ)
         env["PYTHONPATH"] = pythonpath
-    proc = subprocess.run(argv, capture_output=True, text=True, cwd=REPO_ROOT, env=env)
-    return RunResult(exit_code=proc.returncode, stdout=proc.stdout, stderr=proc.stderr)
+    try:
+        proc = subprocess.Popen(
+            argv,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            cwd=cwd,
+            env=env,
+            start_new_session=True,
+        )
+        try:
+            stdout, stderr = proc.communicate(timeout=timeout_s)
+            return RunResult(exit_code=proc.returncode, stdout=stdout, stderr=stderr)
+        except subprocess.TimeoutExpired as exc:
+            # subprocess.run does not kill grandchildren.  Since each
+            # command is a process group, terminate the group before
+            # returning a failed result.
+            try:
+                os.killpg(proc.pid, signal.SIGKILL)
+            except ProcessLookupError:
+                pass
+            stdout, stderr = proc.communicate()
+            stdout = stdout or exc.stdout or ""
+            stderr = stderr or exc.stderr or ""
+            return RunResult(
+                exit_code=None,
+                stdout=stdout if isinstance(stdout, str) else stdout.decode(errors="replace"),
+                stderr=(stderr if isinstance(stderr, str) else stderr.decode(errors="replace"))
+                + f"\n[verification timeout after {timeout_s:g}s]",
+                timed_out=True,
+            )
+    except OSError as exc:
+        return RunResult(exit_code=None, stdout="", stderr=f"[verification could not execute command: {exc}]")
 
 
-LABEL_COUNT_RE = re.compile(r"^([A-Za-z][^:]*?):\s*(-?\d+(?:\.\d+)?)")
+# Keep the token boundary explicit: the old expression parsed ``1e-3`` as
+# ``1`` and ``1e+3`` as ``1``.  Decimal and scientific notation are accepted,
+# but arbitrary trailing prose is still tolerated because upstream reports
+# often append percentages or units.
+NUMBER_TOKEN = r"[-+]?(?:(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][-+]?\d+)?|(?:inf|nan))"
+LABEL_COUNT_RE = re.compile(rf"^([A-Za-z][^:]*?):\s*({NUMBER_TOKEN})(?=\s|$)", re.IGNORECASE)
 
 
 def extract_labeled_counts(text: str) -> dict[str, str]:
@@ -96,7 +158,10 @@ def extract_labeled_counts(text: str) -> dict[str, str]:
     for line in text.splitlines():
         m = LABEL_COUNT_RE.match(line.strip())
         if m:
-            out[m.group(1).strip()] = m.group(2)
+            label = m.group(1).strip()
+            if label in out:
+                raise ValueError(f"duplicate report label: {label!r}")
+            out[label] = m.group(2)
     return out
 
 
@@ -108,6 +173,144 @@ def stream_for(result: RunResult, which: str) -> str:
     return result.stdout + result.stderr
 
 
+def _numeric_equal(left: str, right: str) -> bool:
+    from decimal import Decimal, InvalidOperation
+
+    try:
+        lval = Decimal(left)
+        rval = Decimal(right)
+    except InvalidOperation:
+        return left == right
+    if lval.is_nan() or rval.is_nan():
+        return lval.is_nan() and rval.is_nan()
+    return lval == rval
+
+
+def _numeric_table_equal(left: bytes, right: bytes) -> bool:
+    """Compare a whitespace-delimited text table with numeric cell semantics."""
+    left_rows = left.decode("utf-8", errors="replace").splitlines()
+    right_rows = right.decode("utf-8", errors="replace").splitlines()
+    if len(left_rows) != len(right_rows):
+        return False
+    from decimal import Decimal, InvalidOperation
+
+    for left_row, right_row in zip(left_rows, right_rows):
+        left_cells = left_row.split()
+        right_cells = right_row.split()
+        if len(left_cells) != len(right_cells):
+            return False
+        for left_cell, right_cell in zip(left_cells, right_cells):
+            try:
+                Decimal(left_cell)
+                Decimal(right_cell)
+            except InvalidOperation:
+                if left_cell != right_cell:
+                    return False
+            else:
+                if not _numeric_equal(left_cell, right_cell):
+                    return False
+    return True
+
+
+def compare_results(case: Case, py_result: RunResult, rust_result: RunResult, py_dir: Path, rust_dir: Path) -> bool:
+    """Compare two completed runs and print actionable diagnostics."""
+    ok = True
+    expected = case.expected_exit_code
+    for side, result in (("python", py_result), ("rust", rust_result)):
+        if result.exit_code != expected:
+            suffix = " (timed out)" if result.timed_out else ""
+            print(f"  FAIL {side} exit code: expected={expected} actual={result.exit_code}{suffix}")
+            if result.stderr:
+                print(f"  --- {side} stderr ---")
+                print(result.stderr)
+            ok = False
+    if py_result.exit_code != rust_result.exit_code:
+        print(f"  FAIL exit code differs: python={py_result.exit_code} rust={rust_result.exit_code}")
+        ok = False
+    if not ok:
+        # Never treat output produced by a failed process as a valid
+        # compatibility result.
+        return False
+
+    if case.compare_stream != "none":
+        py_text = stream_for(py_result, case.compare_stream)
+        rust_text = stream_for(rust_result, case.compare_stream)
+        if case.stream_format == "exact":
+            if not py_text and not case.allow_empty_stream:
+                print("  FAIL stream comparison: both streams are empty")
+                ok = False
+            elif py_text != rust_text:
+                print("  FAIL exact stream content differs")
+                print("  --- python output ---")
+                print(py_text)
+                print("  --- rust output ---")
+                print(rust_text)
+                ok = False
+            else:
+                print(f"  stream comparison PASS (exact, {len(py_text)} characters)")
+        elif case.stream_format == "labels":
+            try:
+                py_counts = extract_labeled_counts(py_text)
+                rust_counts = extract_labeled_counts(rust_text)
+            except ValueError as exc:
+                print(f"  FAIL stream parser: {exc}")
+                return False
+            if not case.allow_empty_stream and (not py_counts or not rust_counts):
+                print(
+                    "  FAIL stream comparison: expected labelled values, "
+                    f"got python={len(py_counts)} rust={len(rust_counts)}"
+                )
+                ok = False
+            missing = sorted(set(case.required_labels) - set(py_counts))
+            missing += sorted(set(case.required_labels) - set(rust_counts))
+            if missing:
+                print(f"  FAIL required report labels missing: {sorted(set(missing))}")
+                ok = False
+            all_labels = sorted(set(py_counts) | set(rust_counts))
+            for label in all_labels:
+                pv = py_counts.get(label)
+                rv = rust_counts.get(label)
+                if pv is None or rv is None or not _numeric_equal(pv, rv):
+                    print(f"  FAIL '{label}': python={pv!r} rust={rv!r}")
+                    ok = False
+            if ok:
+                print(f"  stream comparison PASS ({len(all_labels)} labelled values matched)")
+            else:
+                print("  --- python output ---")
+                print(py_text)
+                print("  --- rust output ---")
+                print(rust_text)
+        else:
+            print(f"  FAIL unsupported stream format: {case.stream_format!r}")
+            ok = False
+
+    for rel_path in case.compare_files:
+        py_file = py_dir / rel_path
+        rust_file = rust_dir / rel_path
+        if not py_file.is_file() or not rust_file.is_file():
+            print(f"  FAIL file '{rel_path}': python_exists={py_file.is_file()} rust_exists={rust_file.is_file()}")
+            ok = False
+            continue
+        py_bytes = py_file.read_bytes()
+        rust_bytes = rust_file.read_bytes()
+        if case.normalize_paths:
+            py_bytes = py_bytes.replace(str(py_dir).encode(), b"<SCRATCH_DIR>")
+            rust_bytes = rust_bytes.replace(str(rust_dir).encode(), b"<SCRATCH_DIR>")
+        numeric = rel_path in case.numeric_files
+        file_equal = _numeric_table_equal(py_bytes, rust_bytes) if numeric else py_bytes == rust_bytes
+        if file_equal:
+            qualifier = "numeric cells" if numeric else f"byte-identical, {len(py_bytes)} bytes"
+            print(f"  file '{rel_path}' PASS ({qualifier})")
+        else:
+            print(f"  FAIL file '{rel_path}': byte content differs ({len(py_bytes)} vs {len(rust_bytes)} bytes)")
+            print(f"  --- python {rel_path} ---")
+            print(py_bytes.decode("utf-8", errors="replace"))
+            print(f"  --- rust {rel_path} ---")
+            print(rust_bytes.decode("utf-8", errors="replace"))
+            ok = False
+    return ok
+
+
 def run_case(case: Case) -> bool:
     import shutil
     import tempfile
@@ -116,65 +319,37 @@ def run_case(case: Case) -> bool:
     case.ensure_fixture()
 
     ok = True
-    py_dir = Path(tempfile.mkdtemp(prefix="rseqc_verify_py_"))
-    rust_dir = Path(tempfile.mkdtemp(prefix="rseqc_verify_rust_"))
+    keep_failures = os.environ.get("RSEQC_KEEP_FAILURES") == "1"
+    if keep_failures:
+        failure_root = REPO_ROOT / "verification" / "failures"
+        failure_root.mkdir(parents=True, exist_ok=True)
+        py_dir = Path(tempfile.mkdtemp(prefix=f"{case.name}_py_", dir=failure_root))
+        rust_dir = Path(tempfile.mkdtemp(prefix=f"{case.name}_rust_", dir=failure_root))
+    else:
+        py_dir = Path(tempfile.mkdtemp(prefix="rseqc_verify_py_"))
+        rust_dir = Path(tempfile.mkdtemp(prefix="rseqc_verify_rust_"))
     try:
         py_args = case.py_args(py_dir)
         rust_args = case.rust_args(rust_dir)
 
-        py_result = run([str(ORACLE_PYTHON), str(ORACLE_SCRIPTS / case.py_script)] + py_args, pythonpath=ORACLE_PYTHONPATH)
-        rust_result = run([str(RUST_BIN_DIR / case.rust_bin)] + rust_args)
-
-        if py_result.exit_code != rust_result.exit_code:
-            print(f"  FAIL exit code: python={py_result.exit_code} rust={rust_result.exit_code}")
-            ok = False
-        else:
-            print(f"  exit code matches ({py_result.exit_code})")
-
-        if case.compare_stream != "none":
-            py_text = stream_for(py_result, case.compare_stream)
-            rust_text = stream_for(rust_result, case.compare_stream)
-            py_counts = extract_labeled_counts(py_text)
-            rust_counts = extract_labeled_counts(rust_text)
-            all_labels = sorted(set(py_counts) | set(rust_counts))
-            for label in all_labels:
-                pv = py_counts.get(label)
-                rv = rust_counts.get(label)
-                if pv != rv:
-                    print(f"  FAIL '{label}': python={pv!r} rust={rv!r}")
-                    ok = False
-            if ok:
-                print(f"  stream comparison PASS ({len(all_labels)} labeled values matched)")
-            else:
-                print("  --- python output ---")
-                print(py_text)
-                print("  --- rust output ---")
-                print(rust_text)
-
-        for rel_path in case.compare_files:
-            py_file = py_dir / rel_path
-            rust_file = rust_dir / rel_path
-            if not py_file.is_file() or not rust_file.is_file():
-                print(f"  FAIL file '{rel_path}': python_exists={py_file.is_file()} rust_exists={rust_file.is_file()}")
-                ok = False
-                continue
-            py_bytes = py_file.read_bytes()
-            rust_bytes = rust_file.read_bytes()
-            if case.normalize_paths:
-                py_bytes = py_bytes.replace(str(py_dir).encode(), b"<SCRATCH_DIR>")
-                rust_bytes = rust_bytes.replace(str(rust_dir).encode(), b"<SCRATCH_DIR>")
-            if py_bytes == rust_bytes:
-                print(f"  file '{rel_path}' PASS (byte-identical, {len(py_bytes)} bytes)")
-            else:
-                print(f"  FAIL file '{rel_path}': byte content differs ({len(py_bytes)} vs {len(rust_bytes)} bytes)")
-                print(f"  --- python {rel_path} ---")
-                print(py_bytes.decode("utf-8", errors="replace"))
-                print(f"  --- rust {rel_path} ---")
-                print(rust_bytes.decode("utf-8", errors="replace"))
-                ok = False
+        py_result = run(
+            [str(ORACLE_PYTHON), str(ORACLE_SCRIPTS / case.py_script)] + py_args,
+            pythonpath=ORACLE_PYTHONPATH,
+            cwd=py_dir,
+            timeout_s=case.timeout_s,
+        )
+        rust_result = run(
+            [str(RUST_BIN_DIR / case.rust_bin)] + rust_args,
+            cwd=rust_dir,
+            timeout_s=case.timeout_s,
+        )
+        ok = compare_results(case, py_result, rust_result, py_dir, rust_dir)
     finally:
-        shutil.rmtree(py_dir, ignore_errors=True)
-        shutil.rmtree(rust_dir, ignore_errors=True)
+        if not keep_failures or ok:
+            shutil.rmtree(py_dir, ignore_errors=True)
+            shutil.rmtree(rust_dir, ignore_errors=True)
+        else:
+            print(f"  kept failure evidence under {py_dir} and {rust_dir}")
 
     return ok
 
@@ -187,12 +362,38 @@ def ensure_bam_stat_fixture() -> None:
     subprocess.run([str(ORACLE_PYTHON), str(generator), str(fixture)], cwd=REPO_ROOT, check=True)
 
 
+def ensure_regression_fixtures() -> None:
+    fixture_dir = REPO_ROOT / "verification" / "fixtures"
+    required = (
+        fixture_dir / "regression_single_exon.bed12",
+        fixture_dir / "regression_fpkm_mate_overlap.bam",
+        fixture_dir / "regression_fpkm_mate_overlap.bam.bai",
+        fixture_dir / "regression_fpkm_fetch_span.bam",
+        fixture_dir / "regression_fpkm_fetch_span.bam.bai",
+        fixture_dir / "regression_splice_fetch.bed12",
+        fixture_dir / "regression_rna_equals.bam",
+        fixture_dir / "regression_rna_equals.bam.bai",
+        fixture_dir / "regression_overlap_pair.bam",
+        fixture_dir / "regression_overlap_pair.bam.bai",
+        fixture_dir / "regression_genebody_depth.bam",
+        fixture_dir / "regression_genebody_depth.bam.bai",
+    )
+    if all(path.is_file() for path in required):
+        return
+    generator = fixture_dir / "make_regression_fixtures.py"
+    subprocess.run([str(ORACLE_PYTHON), str(generator), str(fixture_dir)], cwd=REPO_ROOT, check=True)
+
+
 def _bam_stat_args(_scratch_dir: Path) -> list[str]:
     return ["-i", str(REPO_ROOT / "verification" / "fixtures" / "bam_stat_basic.bam")]
 
 
 def _nvc_fixture_path() -> str:
     return str(REPO_ROOT / "verification" / "fixtures" / "bam_stat_basic.bam")
+
+
+def _regression_fixture(name: str) -> str:
+    return str(REPO_ROOT / "verification" / "fixtures" / name)
 
 
 CASES: list[Case] = [
@@ -204,6 +405,7 @@ CASES: list[Case] = [
         py_args=_bam_stat_args,
         rust_args=_bam_stat_args,
         compare_stream="stdout",
+        required_labels=("Total records", "Unmapped reads", "Read-1"),
     ),
     Case(
         name="read_NVC_basic",
@@ -257,12 +459,209 @@ CASES: list[Case] = [
         compare_files=("out.qual.r",),
         normalize_paths=True,
     ),
+    Case(
+        name="FPKM_count_exonic_mate_overlap",
+        ensure_fixture=ensure_regression_fixtures,
+        py_script="FPKM_count.py",
+        rust_bin="FPKM_count",
+        py_args=lambda scratch_dir: [
+            "-i",
+            _regression_fixture("regression_fpkm_mate_overlap.bam"),
+            "-r",
+            _regression_fixture("regression_single_exon.bed12"),
+            "-o",
+            str(scratch_dir / "out"),
+            "-e",
+        ],
+        rust_args=lambda scratch_dir: [
+            "-i",
+            _regression_fixture("regression_fpkm_mate_overlap.bam"),
+            "-r",
+            _regression_fixture("regression_single_exon.bed12"),
+            "-o",
+            str(scratch_dir / "out"),
+            "-e",
+        ],
+        compare_stream="none",
+        compare_files=("out.FPKM.xls",),
+    ),
+    Case(
+        name="RNA_fragment_size_equals_cigar",
+        ensure_fixture=ensure_regression_fixtures,
+        py_script="RNA_fragment_size.py",
+        rust_bin="RNA_fragment_size",
+        py_args=lambda scratch_dir: [
+            "-i",
+            _regression_fixture("regression_rna_equals.bam"),
+            "-r",
+            _regression_fixture("regression_single_exon.bed12"),
+            "-n",
+            "1",
+            "-o",
+            str(scratch_dir / "out.tsv"),
+        ],
+        rust_args=lambda scratch_dir: [
+            "-i",
+            _regression_fixture("regression_rna_equals.bam"),
+            "-r",
+            _regression_fixture("regression_single_exon.bed12"),
+            "-n",
+            "1",
+            "-o",
+            str(scratch_dir / "out.tsv"),
+        ],
+        compare_stream="none",
+        compare_files=("out.tsv",),
+    ),
+    Case(
+        name="FPKM_count_fetch_reference_span",
+        ensure_fixture=ensure_regression_fixtures,
+        py_script="FPKM_count.py",
+        rust_bin="FPKM_count",
+        py_args=lambda scratch_dir: [
+            "-i",
+            _regression_fixture("regression_fpkm_fetch_span.bam"),
+            "-r",
+            _regression_fixture("regression_splice_fetch.bed12"),
+            "-o",
+            str(scratch_dir / "out"),
+        ],
+        rust_args=lambda scratch_dir: [
+            "-i",
+            _regression_fixture("regression_fpkm_fetch_span.bam"),
+            "-r",
+            _regression_fixture("regression_splice_fetch.bed12"),
+            "-o",
+            str(scratch_dir / "out"),
+        ],
+        compare_stream="none",
+        compare_files=("out.FPKM.xls",),
+    ),
+    Case(
+        name="geneBody_coverage_max_depth",
+        ensure_fixture=ensure_regression_fixtures,
+        py_script="geneBody_coverage.py",
+        rust_bin="geneBody_coverage",
+        py_args=lambda scratch_dir: [
+            "-i",
+            _regression_fixture("regression_genebody_depth.bam"),
+            "-r",
+            _regression_fixture("regression_single_exon.bed12"),
+            "-o",
+            str(scratch_dir / "out"),
+            "--skip-plot",
+        ],
+        rust_args=lambda scratch_dir: [
+            "-i",
+            _regression_fixture("regression_genebody_depth.bam"),
+            "-r",
+            _regression_fixture("regression_single_exon.bed12"),
+            "-o",
+            str(scratch_dir / "out"),
+            "--skip-plot",
+        ],
+        compare_stream="none",
+        compare_files=("out.geneBodyCoverage.txt",),
+    ),
+    Case(
+        name="geneBody_coverage_pair_overlap",
+        ensure_fixture=ensure_regression_fixtures,
+        py_script="geneBody_coverage.py",
+        rust_bin="geneBody_coverage",
+        py_args=lambda scratch_dir: [
+            "-i",
+            _regression_fixture("regression_overlap_pair.bam"),
+            "-r",
+            _regression_fixture("regression_single_exon.bed12"),
+            "-o",
+            str(scratch_dir / "out"),
+            "--skip-plot",
+        ],
+        rust_args=lambda scratch_dir: [
+            "-i",
+            _regression_fixture("regression_overlap_pair.bam"),
+            "-r",
+            _regression_fixture("regression_single_exon.bed12"),
+            "-o",
+            str(scratch_dir / "out"),
+            "--skip-plot",
+        ],
+        compare_stream="none",
+        compare_files=("out.geneBodyCoverage.txt",),
+        numeric_files=("out.geneBodyCoverage.txt",),
+    ),
+    Case(
+        name="tin_pair_overlap",
+        ensure_fixture=ensure_regression_fixtures,
+        py_script="tin.py",
+        rust_bin="tin",
+        py_args=lambda scratch_dir: [
+            "-i",
+            _regression_fixture("regression_overlap_pair.bam"),
+            "-r",
+            _regression_fixture("regression_single_exon.bed12"),
+            "-c",
+            "0",
+            "-n",
+            "100",
+            "-o",
+            str(scratch_dir),
+        ],
+        rust_args=lambda scratch_dir: [
+            "-i",
+            _regression_fixture("regression_overlap_pair.bam"),
+            "-r",
+            _regression_fixture("regression_single_exon.bed12"),
+            "-c",
+            "0",
+            "-n",
+            "100",
+            "-o",
+            str(scratch_dir),
+        ],
+        compare_stream="none",
+        compare_files=("regression_overlap_pair.tin.xls", "regression_overlap_pair.summary.txt"),
+    ),
+    Case(
+        name="clipping_profile_basic",
+        # Regression case for the defaultdict(int)-vs-float duck-typing
+        # bug: an untouched position's Clipped_nt must render as bare "0",
+        # not "0.0" -- see crates/commands/src/clipping_profile.rs.
+        ensure_fixture=ensure_bam_stat_fixture,
+        py_script="clipping_profile.py",
+        rust_bin="clipping_profile",
+        py_args=lambda scratch_dir: [
+            "-i", _nvc_fixture_path(), "-o", str(scratch_dir / "out"), "-s", "SE", "--skip-plot",
+        ],
+        rust_args=lambda scratch_dir: ["-i", _nvc_fixture_path(), "-o", str(scratch_dir / "out"), "-s", "SE"],
+        compare_stream="none",
+        compare_files=("out.clipping_profile.xls", "out.clipping_profile.r"),
+        normalize_paths=True,
+    ),
+    Case(
+        name="insertion_profile_basic",
+        ensure_fixture=ensure_bam_stat_fixture,
+        py_script="insertion_profile.py",
+        rust_bin="insertion_profile",
+        py_args=lambda scratch_dir: [
+            "-i", _nvc_fixture_path(), "-o", str(scratch_dir / "out"), "-s", "SE", "--skip-plot",
+        ],
+        rust_args=lambda scratch_dir: ["-i", _nvc_fixture_path(), "-o", str(scratch_dir / "out"), "-s", "SE"],
+        compare_stream="none",
+        compare_files=("out.insertion_profile.xls", "out.insertion_profile.r"),
+        normalize_paths=True,
+    ),
 ]
 
 
 def main() -> int:
     requested = sys.argv[1:]
-    cases = [c for c in CASES if not requested or c.name in requested]
+    case_by_name = {case.name: case for case in CASES}
+    unknown = sorted(set(requested) - set(case_by_name))
+    if unknown:
+        print(f"Unknown case(s): {', '.join(unknown)}", file=sys.stderr)
+        return 2
+    cases = [case_by_name[name] for name in requested] if requested else CASES
 
     if not cases:
         print(f"No matching cases for: {requested}", file=sys.stderr)
