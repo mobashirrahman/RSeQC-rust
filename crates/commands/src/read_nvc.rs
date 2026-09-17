@@ -116,21 +116,24 @@ where
 }
 
 /// Renders the NVC table as tab-separated text, matching upstream's output format
+/// Renders the `.NVC.xls` table. Data rows replicate a literal upstream
+/// quirk: the position/A/C/G/T/N fields are each written via
+/// `print(value+'\t', end=' ')`, immediately followed by the next
+/// `print()` call -- this inserts a literal SPACE after every one of
+/// those tabs (same class of `print(..., end=' ')` quirk seen in
+/// junction_annotation.py/RPKM_saturation.py). The final field (X) is
+/// `print(value+'\t', file=FO)` -- still has its OWN trailing tab (via
+/// string concatenation), but no `end=' '`, so the line ends
+/// `...\t<X>\t\n` (tab-X-tab-newline), not a bare `<X>\n`. The header
+/// row has no such quirk (it's a single literal `print()` call).
 pub fn render_nvc_table(table: &NvcTable) -> String {
-    let mut lines = Vec::new();
-    
-    // Header row
-    lines.push("Position\tA\tC\tG\tT\tN\tX".to_string());
-    
-    // Data rows
+    let mut out = String::from("Position\tA\tC\tG\tT\tN\tX\n");
+
     for row in &table.rows {
-        lines.push(format!(
-            "{}\t{}\t{}\t{}\t{}\t{}\t{}",
-            row.position, row.a, row.c, row.g, row.t, row.n, row.x
-        ));
+        out.push_str(&format!("{}\t {}\t {}\t {}\t {}\t {}\t {}\t\n", row.position, row.a, row.c, row.g, row.t, row.n, row.x));
     }
-    
-    lines.join("\n")
+
+    out
 }
 
 #[cfg(test)]
@@ -257,8 +260,10 @@ mod tests {
         };
 
         let output = render_nvc_table(&table);
-        let expected = "Position\tA\tC\tG\tT\tN\tX\n0\t10\t5\t3\t8\t1\t0\n1\t8\t12\t6\t4\t0\t1";
-        
+        // Cross-checked byte-for-byte against a `python3 -c` run of the
+        // literal upstream print(...)/end=' ' sequence with this data.
+        let expected = "Position\tA\tC\tG\tT\tN\tX\n0\t 10\t 5\t 3\t 8\t 1\t 0\t\n1\t 8\t 12\t 6\t 4\t 0\t 1\t\n";
+
         assert_eq!(output, expected);
     }
 }
