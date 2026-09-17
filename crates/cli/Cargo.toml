@@ -147,6 +147,11 @@ path = "src/bin/genebody_coverage2.rs"
 name = "normalize_bigwig"
 path = "src/bin/normalize_bigwig.rs"
 
+[[bin]]
+# Same naming note as above: packaging aliases this to `overlay_bigwig.py`.
+name = "overlay_bigwig"
+path = "src/bin/overlay_bigwig.rs"
+
 [dependencies]
 rseqc-core = { path = "../core" }
 rseqc-formats = { path = "../formats" }

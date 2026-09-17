@@ -211,3 +211,27 @@ divergences:
       including bugs, and documents them here rather than silently
       "fixing" them.
     status: accepted
+
+  - id: DIV-0015
+    command_or_api: overlay_bigwig.py
+    description: >
+      The '-a Division' action is uncallable under Python 3.
+      qcmodule.twoList.Division computes `(v1+1).__div__(v2+1)`, and
+      `__div__` is a Python-2-only ndarray dunder method that numpy does
+      not implement under Python 3 (only `__truediv__`/`__floordiv__`
+      exist) -- calling it always raises an uncaught AttributeError,
+      crashing the program with a traceback. This is not caught by the
+      CLI's own `except (OSError, ValueError, RuntimeError)` clause
+      (AttributeError is none of those). Confirmed by directly importing
+      and calling qcmodule.twoList.Division in oracle/venv.
+    classification: upstream-bug
+    decision: >
+      Preserved as dead/uncallable functionality: the Rust port's
+      '-a Division' returns an immediate hard error rather than either
+      implementing a working division (which upstream cannot actually
+      perform today) or silently succeeding. Same rationale as
+      DIV-0008/DIV-0009/DIV-0010/DIV-0014 -- replicate upstream behavior
+      faithfully, including confirmed bugs, and disclose them here
+      rather than silently "fixing" them into different (better)
+      behavior than upstream actually has.
+    status: accepted
