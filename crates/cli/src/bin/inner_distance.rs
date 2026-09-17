@@ -2,12 +2,10 @@
 //! contain '.' (see crates/cli/Cargo.toml); packaging (PORTING_PLAN Step
 //! 10) adds the `.py`-suffixed PATH alias.
 //!
-//! `--skip-plot`/`--rscript` (running Rscript) are not implemented --
-//! disclosed gap, this only generates the .r script text.
-
 use std::fs::File;
 use std::io::Write as _;
 use std::path::PathBuf;
+use std::process::Command;
 
 use clap::Parser;
 use rseqc_commands::inner_distance::{
@@ -51,6 +49,14 @@ struct Args {
     /// Minimum mapping quality for a read to be considered uniquely mapped.
     #[arg(short = 'q', long = "mapq", default_value_t = 30)]
     mapq: u8,
+
+    /// Generate inner-distance data but do not execute the R plotting script.
+    #[arg(long = "skip-plot")]
+    skip_plot: bool,
+
+    /// Rscript executable to use.
+    #[arg(long = "rscript", default_value = "Rscript")]
+    rscript: String,
 }
 
 fn main() -> std::process::ExitCode {
@@ -80,6 +86,24 @@ fn run(args: &Args) -> std::io::Result<()> {
         eprintln!("Done");
     }
 
+    let prefix = args.out_prefix.to_string_lossy();
+
+    // Upstream: `mRNA_inner_distance` opens all three output files
+    // UNCONDITIONALLY at the very top (`FO=open(...)`, `FQ=open(...)`,
+    // `RS=open(...)`), before any read scanning happens -- so even the
+    // `pair_num == 0` early exit below leaves all three as empty (but
+    // existing) files. That early exit is a literal `sys.exit(0)`
+    // called from INSIDE this function (not a caught exception), which
+    // unwinds the whole interpreter immediately -- `main()`'s
+    // `--skip-plot`/Rscript-invocation code never even runs on this
+    // path, matched here by returning before reaching it.
+    let distance_path = format!("{prefix}.inner_distance.txt");
+    let freq_path = format!("{prefix}.inner_distance_freq.txt");
+    let r_path = format!("{prefix}.inner_distance_plot.r");
+    File::create(&distance_path)?;
+    File::create(&freq_path)?;
+    File::create(&r_path)?;
+
     // Upstream: `print("Total read pairs  used " + str(pair_num),
     // file=sys.stderr)` -- literal double space before "used".
     eprintln!("Total read pairs  used {}", result.pair_num);
@@ -88,19 +112,23 @@ fn run(args: &Args) -> std::io::Result<()> {
         return Ok(());
     }
 
-    let prefix = args.out_prefix.to_string_lossy();
-
-    let mut distance_file = File::create(format!("{prefix}.inner_distance.txt"))?;
+    let mut distance_file = File::create(&distance_path)?;
     distance_file.write_all(render_distance_file(&result).as_bytes())?;
 
     let values: Vec<i64> = result.records.iter().filter_map(|r| r.histogram_value).collect();
     let buckets = histogram_buckets(&values, args.lower_bound, args.upper_bound, args.step);
 
-    let mut freq_file = File::create(format!("{prefix}.inner_distance_freq.txt"))?;
+    let mut freq_file = File::create(&freq_path)?;
     freq_file.write_all(render_freq_table(&buckets).as_bytes())?;
 
-    let mut r_file = File::create(format!("{prefix}.inner_distance_plot.r"))?;
-    r_file.write_all(render_r_script(&buckets, args.step, &prefix).as_bytes())?;
+    File::create(&r_path)?.write_all(render_r_script(&buckets, args.step, &prefix).as_bytes())?;
+
+    if !args.skip_plot {
+        let status = Command::new(&args.rscript).arg(&r_path).status()?;
+        if !status.success() {
+            return Err(std::io::Error::other(format!("R plotting failed for {r_path}")));
+        }
+    }
 
     Ok(())
 }

@@ -2,12 +2,10 @@
 //! can't contain '.' (see crates/cli/Cargo.toml); packaging (PORTING_PLAN
 //! Step 10) adds the `.py`-suffixed PATH alias.
 //!
-//! `--skip-plot`/`--rscript` (running Rscript to produce the PDF) are not
-//! implemented -- disclosed gap, this only generates the .r script text.
-
 use std::fs::File;
 use std::io::{BufReader, Write as _};
 use std::path::PathBuf;
+use std::process::Command;
 
 use clap::Parser;
 use rand::SeedableRng;
@@ -58,11 +56,11 @@ struct Args {
     #[arg(short = 'q', long = "mapq", default_value_t = 30)]
     map_qual: u8,
 
-    /// Generate saturation data but do not execute the R plotting script (always the case; disclosed gap).
+    /// Generate saturation data but do not execute the R plotting script.
     #[arg(long = "skip-plot")]
     skip_plot: bool,
 
-    /// Rscript executable to use (accepted, unused: no subprocess rendering).
+    /// Rscript executable to use.
     #[arg(long = "rscript", default_value = "Rscript")]
     rscript: String,
 }
@@ -79,9 +77,6 @@ fn main() -> std::process::ExitCode {
 }
 
 fn run(args: &Args) -> std::io::Result<()> {
-    let _ = &args.rscript;
-    let _ = args.skip_plot;
-
     // Upstream (SAM.py's ParseBAM.saturation_junction): `print("reading
     // reference bed file: ", refgene, " ... ", end=' ')` -- a 3-arg
     // print with the default `sep=' '` joins "reading reference bed
@@ -125,8 +120,15 @@ fn run(args: &Args) -> std::io::Result<()> {
     eprint!("{}", render_percentile_report(&counts));
 
     let prefix = args.out_prefix.to_string_lossy();
-    let mut r_file = File::create(format!("{prefix}.junctionSaturation_plot.r"))?;
-    r_file.write_all(render_r_script(&counts, &prefix).as_bytes())?;
+    let r_path = format!("{prefix}.junctionSaturation_plot.r");
+    File::create(&r_path)?.write_all(render_r_script(&counts, &prefix).as_bytes())?;
+
+    if !args.skip_plot {
+        let status = Command::new(&args.rscript).arg(&r_path).status()?;
+        if !status.success() {
+            return Err(std::io::Error::other(format!("R plotting failed for {r_path}")));
+        }
+    }
 
     Ok(())
 }

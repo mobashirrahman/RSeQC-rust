@@ -8,8 +8,7 @@
 //! are reverse-complemented; the output table's row count equals the last
 //! processed read's length (not the max length seen across all records).
 //!
-//! Known gap: `-x/--nx` and plot generation are not implemented here yet —
-//! disclosed follow-up. BAM-only for now (see DIV-0002 pattern).
+//! BAM-only for now (see DIV-0002 pattern).
 
 use std::collections::HashMap;
 use std::io;
@@ -131,6 +130,68 @@ pub fn render_nvc_table(table: &NvcTable) -> String {
 
     for row in &table.rows {
         out.push_str(&format!("{}\t {}\t {}\t {}\t {}\t {}\t {}\t\n", row.position, row.a, row.c, row.g, row.t, row.n, row.x));
+    }
+
+    out
+}
+
+/// Renders the `.NVC_plot.r` script text. Ports the R-generation half
+/// of `readsNVC()` (lines 3011-3047): each column vector is joined from
+/// plain integer counts (no floating-point formatting anywhere -- the
+/// `total`/`ym`/`yn`/division expressions are literal R code text, not
+/// values computed in Python), and `nx` selects between two nearly-
+/// identical branches that differ in which count vectors are included
+/// (N/X or not) and the legend's label/color lists.
+pub fn render_nvc_r_script(table: &NvcTable, out_prefix: &str, nx: bool) -> String {
+    let n = table.rows.len();
+    let position: Vec<String> = (0..n).map(|i| i.to_string()).collect();
+    let a: Vec<String> = table.rows.iter().map(|r| r.a.to_string()).collect();
+    let c: Vec<String> = table.rows.iter().map(|r| r.c.to_string()).collect();
+    let g: Vec<String> = table.rows.iter().map(|r| r.g.to_string()).collect();
+    let t: Vec<String> = table.rows.iter().map(|r| r.t.to_string()).collect();
+    let nn: Vec<String> = table.rows.iter().map(|r| r.n.to_string()).collect();
+    let x: Vec<String> = table.rows.iter().map(|r| r.x.to_string()).collect();
+
+    let mut out = String::new();
+    out.push_str(&format!("position=c({})\n", position.join(",")));
+    out.push_str(&format!("A_count=c({})\n", a.join(",")));
+    out.push_str(&format!("C_count=c({})\n", c.join(",")));
+    out.push_str(&format!("G_count=c({})\n", g.join(",")));
+    out.push_str(&format!("T_count=c({})\n", t.join(",")));
+    out.push_str(&format!("N_count=c({})\n", nn.join(",")));
+    out.push_str(&format!("X_count=c({})\n", x.join(",")));
+
+    let legend_x = n as i64 - 10;
+    let pdf_path = format!("{out_prefix}.NVC_plot.pdf");
+
+    if nx {
+        out.push_str("total= A_count + C_count + G_count + T_count + N_count + X_count\n");
+        out.push_str("ym=max(A_count/total,C_count/total,G_count/total,T_count/total,N_count/total,X_count/total) + 0.05\n");
+        out.push_str("yn=min(A_count/total,C_count/total,G_count/total,T_count/total,N_count/total,X_count/total)\n");
+        out.push_str(&format!("pdf(\"{pdf_path}\")\n"));
+        out.push_str("plot(position,A_count/total,type=\"o\",pch=20,ylim=c(yn,ym),col=\"dark green\",xlab=\"Position of Read\",ylab=\"Nucleotide Frequency\")\n");
+        out.push_str("lines(position,T_count/total,type=\"o\",pch=20,col=\"red\")\n");
+        out.push_str("lines(position,G_count/total,type=\"o\",pch=20,col=\"blue\")\n");
+        out.push_str("lines(position,C_count/total,type=\"o\",pch=20,col=\"cyan\")\n");
+        out.push_str("lines(position,N_count/total,type=\"o\",pch=20,col=\"black\")\n");
+        out.push_str("lines(position,X_count/total,type=\"o\",pch=20,col=\"grey\")\n");
+        out.push_str(&format!(
+            "legend({legend_x},ym,legend=c(\"A\",\"T\",\"G\",\"C\",\"N\",\"X\"),col=c(\"dark green\",\"red\",\"blue\",\"cyan\",\"black\",\"grey\"),lwd=2,pch=20,text.col=c(\"dark green\",\"red\",\"blue\",\"cyan\",\"black\",\"grey\"))\n"
+        ));
+        out.push_str("dev.off()\n");
+    } else {
+        out.push_str("total= A_count + C_count + G_count + T_count\n");
+        out.push_str("ym=max(A_count/total,C_count/total,G_count/total,T_count/total) + 0.05\n");
+        out.push_str("yn=min(A_count/total,C_count/total,G_count/total,T_count/total)\n");
+        out.push_str(&format!("pdf(\"{pdf_path}\")\n"));
+        out.push_str("plot(position,A_count/total,type=\"o\",pch=20,ylim=c(yn,ym),col=\"dark green\",xlab=\"Position of Read\",ylab=\"Nucleotide Frequency\")\n");
+        out.push_str("lines(position,T_count/total,type=\"o\",pch=20,col=\"red\")\n");
+        out.push_str("lines(position,G_count/total,type=\"o\",pch=20,col=\"blue\")\n");
+        out.push_str("lines(position,C_count/total,type=\"o\",pch=20,col=\"cyan\")\n");
+        out.push_str(&format!(
+            "legend({legend_x},ym,legend=c(\"A\",\"T\",\"G\",\"C\"),col=c(\"dark green\",\"red\",\"blue\",\"cyan\"),lwd=2,pch=20,text.col=c(\"dark green\",\"red\",\"blue\",\"cyan\"))\n"
+        ));
+        out.push_str("dev.off()\n");
     }
 
     out
@@ -265,5 +326,51 @@ mod tests {
         let expected = "Position\tA\tC\tG\tT\tN\tX\n0\t 10\t 5\t 3\t 8\t 1\t 0\t\n1\t 8\t 12\t 6\t 4\t 0\t 1\t\n";
 
         assert_eq!(output, expected);
+    }
+
+    #[test]
+    fn render_nvc_r_script_without_nx_exact_text() {
+        // Cross-checked byte-for-byte against a real python3 -c run of
+        // the literal upstream print()/string-join sequence with this
+        // exact data (readsNVC lines 3011-3047, nx=False branch).
+        let table = NvcTable {
+            rows: vec![
+                NvcRow { position: 0, a: 3, c: 0, g: 0, t: 0, n: 0, x: 0 },
+                NvcRow { position: 1, a: 0, c: 2, g: 0, t: 1, n: 0, x: 0 },
+            ],
+        };
+        let script = render_nvc_r_script(&table, "out", false);
+        let expected = "\
+position=c(0,1)
+A_count=c(3,0)
+C_count=c(0,2)
+G_count=c(0,0)
+T_count=c(0,1)
+N_count=c(0,0)
+X_count=c(0,0)
+total= A_count + C_count + G_count + T_count
+ym=max(A_count/total,C_count/total,G_count/total,T_count/total) + 0.05
+yn=min(A_count/total,C_count/total,G_count/total,T_count/total)
+pdf(\"out.NVC_plot.pdf\")
+plot(position,A_count/total,type=\"o\",pch=20,ylim=c(yn,ym),col=\"dark green\",xlab=\"Position of Read\",ylab=\"Nucleotide Frequency\")
+lines(position,T_count/total,type=\"o\",pch=20,col=\"red\")
+lines(position,G_count/total,type=\"o\",pch=20,col=\"blue\")
+lines(position,C_count/total,type=\"o\",pch=20,col=\"cyan\")
+legend(-8,ym,legend=c(\"A\",\"T\",\"G\",\"C\"),col=c(\"dark green\",\"red\",\"blue\",\"cyan\"),lwd=2,pch=20,text.col=c(\"dark green\",\"red\",\"blue\",\"cyan\"))
+dev.off()
+";
+        assert_eq!(script, expected);
+    }
+
+    #[test]
+    fn render_nvc_r_script_with_nx_includes_n_and_x_series() {
+        let table = NvcTable { rows: vec![NvcRow { position: 0, a: 1, c: 2, g: 3, t: 4, n: 5, x: 6 }] };
+        let script = render_nvc_r_script(&table, "out", true);
+        assert!(script.contains("N_count=c(5)\n"));
+        assert!(script.contains("X_count=c(6)\n"));
+        assert!(script.contains("total= A_count + C_count + G_count + T_count + N_count + X_count\n"));
+        assert!(script.contains("lines(position,N_count/total,type=\"o\",pch=20,col=\"black\")\n"));
+        assert!(script.contains("lines(position,X_count/total,type=\"o\",pch=20,col=\"grey\")\n"));
+        assert!(script.contains("legend=c(\"A\",\"T\",\"G\",\"C\",\"N\",\"X\")"));
     }
 }

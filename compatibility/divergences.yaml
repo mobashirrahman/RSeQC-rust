@@ -47,14 +47,47 @@ divergences:
     status: open
 
   - id: DIV-0005
-    command_or_api: read_NVC.py and other plotting commands
+    command_or_api: >
+      clipping_profile.py, deletion_profile.py, insertion_profile.py,
+      mismatch_profile.py, read_duplication.py, read_GC.py, read_quality.py
     description: >
-      Native plot rendering and R-script generation (crates/render) has not
-      been started. Commands that upstream pairs with an R plot (e.g.
-      read_NVC.py's .NVC_plot.r / .NVC_plot.pdf) currently produce only the
-      underlying data table.
+      This entry originally described a much broader gap ("native plot
+      rendering and R-script generation has not been started for any
+      command") that is now STALE and was corrected 2026-09-17: of the
+      14 upstream commands with a `--skip-plot`/`--rscript` R-plotting
+      contract, `geneBody_coverage.py`, `geneBody_coverage2.py`,
+      `RPKM_saturation.py`, `inner_distance.py`, `junction_annotation.py`,
+      `junction_saturation.py`, and `read_NVC.py` all now generate the
+      correct R-script text AND actually invoke `Rscript` (verified:
+      Rscript 4.3.3 IS present in this environment, and real PDF plots
+      were produced and spot-checked byte-size-identical against
+      upstream's own Rscript run for `read_NVC.py`/`junction_saturation
+      .py`/`junction_annotation.py`). The 7 commands named above are the
+      ACTUAL remaining gap: each generates SOME R-script text but never
+      accepts `--skip-plot`/`--rscript` or invokes Rscript at all --
+      `read_GC.py`'s port additionally prints invented, non-upstream
+      console messages ("GC table written to: ...", "R script written
+      to: ...") instead of real upstream progress text, a strong signal
+      the other 6 in this list likely have the same issue and need the
+      same close reading upstream did NOT get yet, not just the missing
+      subprocess wiring. `crates/render` (native, non-R plotting) still
+      does not exist at all -- that remains a separate, larger gap
+      (relevant chiefly to DIV-0016's sc_seqLogo.py, which has no R
+      fallback at all).
     classification: explicit-compatibility-exception
-    decision: Plotting is required for full compatibility per PORTING_PLAN.md Step 6 ("no TODO:plotting command is counted as finished") -- ported commands with a data-only Rust implementation are NOT yet complete ports, just usable data-generation slices, until crates/render exists and is wired in.
+    decision: >
+      Plotting is required for full compatibility per PORTING_PLAN.md
+      Step 6 ("no TODO:plotting command is counted as finished").
+      Fix each of the 7 listed commands the same way read_NVC.py was
+      fixed this session: (1) re-read its exact upstream console output
+      (progress prints AND the `run_plot_script`/error-message text,
+      not just the R-script content) via `python3 -c` probes and a live
+      CLI diff, don't assume the existing messages are close enough;
+      (2) add `--skip-plot`/`--rscript` CLI flags; (3) wire the actual
+      `Command::new(&args.rscript)` invocation matching the established
+      pattern in genebody_coverage.rs/rpkm_saturation.rs; (4) verify
+      with a REAL Rscript execution (not just --skip-plot) that a valid
+      PDF is produced, since Rscript is genuinely available here.
     status: open
 
   - id: DIV-0006

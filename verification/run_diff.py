@@ -510,19 +510,38 @@ CASES: list[Case] = [
         name="read_NVC_basic",
         # Reuses bam_stat_basic.bam -- read_NVC.py only needs a BAM with
         # some real sequence content, no need for a dedicated fixture.
+        # Found by this case (before it was formalized): read_NVC.py's
+        # port never generated an R script or invoked Rscript at all
+        # (missing --skip-plot/--rscript flags entirely, plus invented
+        # stderr messages instead of upstream's real ones) -- a genuine
+        # DIV-0005 instance, now fixed. --skip-plot on both sides here
+        # since real Rscript execution is separately spot-checked
+        # manually (both sides produce a real, valid, byte-identical-
+        # sized single-page PDF via the actual Rscript binary), not
+        # something this harness needs to assert every run.
         ensure_fixture=ensure_bam_stat_fixture,
         py_script="read_NVC.py",
         rust_bin="read_NVC",
-        # --skip-plot is needed on the python side to avoid it trying to
-        # invoke Rscript (not installed here) -- the Rust CLI does not
-        # accept this flag at all, because it never implements plot
-        # generation in the first place (a pre-existing, disclosed gap;
-        # see crates/cli/src/bin/read_NVC.rs's own module docs), so it's
-        # simply omitted there rather than needing to be "skipped".
         py_args=lambda scratch_dir: ["-i", _nvc_fixture_path(), "-o", str(scratch_dir / "out"), "--skip-plot"],
-        rust_args=lambda scratch_dir: ["-i", _nvc_fixture_path(), "-o", str(scratch_dir / "out")],
-        compare_stream="none",
-        compare_files=("out.NVC.xls",),
+        rust_args=lambda scratch_dir: ["-i", _nvc_fixture_path(), "-o", str(scratch_dir / "out"), "--skip-plot"],
+        compare_stream="stderr",
+        stream_format="exact",
+        compare_files=("out.NVC.xls", "out.NVC_plot.r"),
+        normalize_paths=True,
+    ),
+    Case(
+        name="read_NVC_with_nx",
+        # Same fixture, -x/--nx branch: the R script's total/ym/yn
+        # expressions and legend include the N/X count series too.
+        ensure_fixture=ensure_bam_stat_fixture,
+        py_script="read_NVC.py",
+        rust_bin="read_NVC",
+        py_args=lambda scratch_dir: ["-i", _nvc_fixture_path(), "-o", str(scratch_dir / "out"), "-x", "--skip-plot"],
+        rust_args=lambda scratch_dir: ["-i", _nvc_fixture_path(), "-o", str(scratch_dir / "out"), "-x", "--skip-plot"],
+        compare_stream="stderr",
+        stream_format="exact",
+        compare_files=("out.NVC.xls", "out.NVC_plot.r"),
+        normalize_paths=True,
     ),
     Case(
         name="read_GC_basic",

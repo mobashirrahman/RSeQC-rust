@@ -2,13 +2,10 @@
 //! can't contain '.' (see crates/cli/Cargo.toml); packaging (PORTING_PLAN
 //! Step 10) adds the `.py`-suffixed PATH alias.
 //!
-//! `--skip-plot`/`--rscript` (running Rscript to produce the PDF) are not
-//! implemented -- disclosed gap, this only generates the .r script text.
-
 use std::fs::File;
 use std::io::{BufReader, Write as _};
 use std::path::PathBuf;
-use std::process::ExitCode;
+use std::process::{Command, ExitCode};
 
 use clap::Parser;
 use rseqc_commands::junction_annotation::{
@@ -41,11 +38,11 @@ struct Args {
     #[arg(short = 'q', long = "mapq", default_value_t = 30)]
     mapq: u8,
 
-    /// Skip running Rscript to render the PDF (always skipped; disclosed gap).
+    /// Skip running Rscript to render the PDF.
     #[arg(long = "skip-plot")]
     skip_plot: bool,
 
-    /// Path to Rscript executable (accepted, unused: no native/subprocess rendering).
+    /// Path to Rscript executable.
     #[arg(long = "rscript", default_value = "Rscript")]
     rscript: String,
 
@@ -70,9 +67,6 @@ fn main() -> ExitCode {
 }
 
 fn run(args: &Args) -> std::io::Result<ExitCode> {
-    let _ = &args.rscript;
-    let _ = args.skip_plot;
-
     // Upstream: `print("Reading reference bed file: ",refgene, " ... ",
     // end=' ', file=sys.stderr)` -- print's default `sep=' '` between
     // positional args, combined with each string's own leading/trailing
@@ -105,8 +99,8 @@ fn run(args: &Args) -> std::io::Result<ExitCode> {
         return Ok(ExitCode::SUCCESS);
     }
 
-    let mut r_file = File::create(format!("{prefix}.junction_plot.r"))?;
-    r_file.write_all(render_r_script(&result, &prefix).as_bytes())?;
+    let r_path = format!("{prefix}.junction_plot.r");
+    File::create(&r_path)?.write_all(render_r_script(&result, &prefix).as_bytes())?;
 
     eprintln!();
     eprintln!("===================================================================");
@@ -134,6 +128,18 @@ fn run(args: &Args) -> std::io::Result<ExitCode> {
     eprintln!("Novel Splicing Junctions:\t{}", result.junction_novel35);
     eprintln!();
     eprintln!("===================================================================");
+
+    // Upstream's main() calls run_plot_script here, AFTER
+    // annotate_junction() returns normally (both earlier "No splice
+    // .../sys.exit()" paths bypass main() entirely via SystemExit, so
+    // Rscript is never invoked on those -- matched by returning before
+    // reaching this point on both of those paths above).
+    if !args.skip_plot {
+        let status = Command::new(&args.rscript).arg(&r_path).status()?;
+        if !status.success() {
+            return Err(std::io::Error::other(format!("R plotting failed for {r_path}")));
+        }
+    }
 
     // Upstream derives these paths from `<prefix>.junction.xls` via
     // `Path.with_suffix`/`Path.with_name(stem + ...)`, which only ever
