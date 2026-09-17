@@ -162,6 +162,11 @@ path = "src/bin/sc_bamstat.rs"
 name = "sc_editMatrix"
 path = "src/bin/sc_editmatrix.rs"
 
+[[bin]]
+# Same naming note as above: packaging aliases this to `sc_seqQual.py`.
+name = "sc_seqQual"
+path = "src/bin/sc_seqqual.rs"
+
 [dependencies]
 rseqc-core = { path = "../core" }
 rseqc-formats = { path = "../formats" }
