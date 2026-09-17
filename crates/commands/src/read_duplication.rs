@@ -157,7 +157,14 @@ pub fn render_dup_r_script(
     let mut lines = Vec::new();
     
     // PDF output line
-    lines.push(format!("pdf(\"{}.DupRate_plot.pdf\")", output_prefix));
+    // Upstream: `print("pdf(\'%s\')" % (...))` -- the `\'` inside the
+    // double-quoted Python string literal is an ESCAPED SINGLE QUOTE,
+    // so the rendered R code uses pdf('...'), not pdf("..."). Confirmed
+    // via a live python3 -c reproduction of the literal expression
+    // (the previous version of this line and its "cross-checked"
+    // test comment were both wrong -- found via a live diff against
+    // the real upstream CLI, not by re-deriving from source alone).
+    lines.push(format!("pdf('{}.DupRate_plot.pdf')", output_prefix));
     
     // Set plotting parameters
     lines.push("par(mar=c(5,4,4,5),las=0)".to_string());
@@ -360,11 +367,14 @@ mod tests {
 
         let output = render_dup_r_script(&hist, "test_output", 500);
 
-        // Exact text, derived independently by running the equivalent
-        // Python print()/%-format expressions from
-        // oracle/upstream-src/src/qcmodule/SAM.py lines 3222-3236 via
-        // `python3 -c`, not by copying this function's own output back in.
-        let expected = "pdf(\"test_output.DupRate_plot.pdf\")\n\
+        // Exact text, re-verified via a live python3 -c reproduction of
+        // the literal upstream print()/%-format expressions (the
+        // pdf(...) line uses single quotes -- `\'` inside upstream's
+        // double-quoted Python string literal is an escaped single
+        // quote, not a double quote; this test previously asserted
+        // double quotes incorrectly, found via a live diff against the
+        // real upstream CLI, not caught by the earlier "cross-check").
+        let expected = "pdf('test_output.DupRate_plot.pdf')\n\
 par(mar=c(5,4,4,5),las=0)\n\
 seq_occ=c(1,2,3)\n\
 seq_uniqRead=c(10,5,2)\n\

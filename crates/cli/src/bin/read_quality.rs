@@ -2,11 +2,15 @@
 //! (see crates/cli/Cargo.toml); packaging (PORTING_PLAN Step 10) adds the
 //! `.py`-suffixed PATH alias.
 //!
-//! Output: .qual.r script for generating quality plots.
+//! Output: .qual.r script for generating quality plots (no separate .xls
+//! table -- upstream's `readsQual_boxplot` genuinely only writes the R
+//! script, confirmed by reading the source: there is no other `open()`
+//! call in that function).
 
 use std::fs::File;
-use std::io::Write;
+use std::io::Write as _;
 use std::path::PathBuf;
+use std::process::Command;
 
 use clap::Parser;
 use rseqc_commands::read_quality::{compute_quality, render_qual_r_script};
@@ -25,13 +29,21 @@ struct Args {
     #[arg(short = 'o', long = "out-prefix")]
     out_prefix: PathBuf,
 
-    /// Reduce data for boxplot precision (default: 1).
+    /// Ignore quality-score observations occurring fewer than this many times.
     #[arg(short = 'r', long = "reduce", default_value_t = 1)]
     reduce: u64,
 
     /// Minimum mapping quality for a read to be considered uniquely mapped.
     #[arg(short = 'q', long = "mapq", default_value_t = 30)]
     mapq: u8,
+
+    /// Generate quality-profile data but do not execute the R script.
+    #[arg(long = "skip-plot")]
+    skip_plot: bool,
+
+    /// Rscript executable to use.
+    #[arg(long = "rscript", default_value = "Rscript")]
+    rscript: String,
 }
 
 fn main() -> std::process::ExitCode {
@@ -46,17 +58,23 @@ fn main() -> std::process::ExitCode {
 }
 
 fn run(args: &Args) -> std::io::Result<()> {
+    // Upstream: `print("Read BAM file ... ", end=' ')` -- the literal's
+    // own trailing space plus `end=' '` gives two spaces before "Done".
+    eprint!("Read BAM file ...  ");
     let (mut reader, _header) = rseqc_formats::open_bam(&args.input_file)?;
     let hist = compute_quality(reader.records(), args.mapq)?;
-    
-    // Write the R script to the output file
-    let r_output_path = format!("{}.qual.r", args.out_prefix.to_string_lossy());
-    let mut r_output_file = File::create(&r_output_path)?;
-    
-    let r_script_content = render_qual_r_script(&hist, args.reduce, &args.out_prefix.to_string_lossy());
-    r_output_file.write_all(r_script_content.as_bytes())?;
-    
-    eprintln!("R script written to: {}", r_output_path);
-    
+    eprintln!("Done");
+
+    let prefix = args.out_prefix.to_string_lossy().into_owned();
+    let r_path = format!("{prefix}.qual.r");
+    File::create(&r_path)?.write_all(render_qual_r_script(&hist, args.reduce, &prefix).as_bytes())?;
+
+    if !args.skip_plot {
+        let status = Command::new(&args.rscript).arg(&r_path).status()?;
+        if !status.success() {
+            return Err(std::io::Error::other(format!("R plotting failed for {r_path}")));
+        }
+    }
+
     Ok(())
 }

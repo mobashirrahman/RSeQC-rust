@@ -545,32 +545,66 @@ CASES: list[Case] = [
     ),
     Case(
         name="read_GC_basic",
+        # Found by this case (before it was formalized): read_GC.py's
+        # port never generated an R script or invoked Rscript at all
+        # (missing --skip-plot/--rscript flags entirely, plus invented
+        # stderr messages "GC table written to: ..."/"R script written
+        # to: ..." instead of upstream's real "Read BAM file ...  Done"/
+        # "writing GC content ..."/"writing R script ..." -- the exact
+        # same DIV-0005 pattern read_NVC.py had). --skip-plot on both
+        # sides here; real Rscript execution (both sides produce a
+        # real, valid PDF via the actual Rscript binary) spot-checked
+        # manually, not asserted every run.
         ensure_fixture=ensure_bam_stat_fixture,
         py_script="read_GC.py",
         rust_bin="read_GC",
         py_args=lambda scratch_dir: ["-i", _nvc_fixture_path(), "-o", str(scratch_dir / "out"), "--skip-plot"],
-        rust_args=lambda scratch_dir: ["-i", _nvc_fixture_path(), "-o", str(scratch_dir / "out")],
-        compare_stream="none",
-        compare_files=("out.GC.xls",),
+        rust_args=lambda scratch_dir: ["-i", _nvc_fixture_path(), "-o", str(scratch_dir / "out"), "--skip-plot"],
+        compare_stream="stderr",
+        stream_format="exact",
+        compare_files=("out.GC.xls", "out.GC_plot.r"),
+        normalize_paths=True,
     ),
     Case(
         name="read_duplication_basic",
+        # Found by this case (before it was formalized): (1) same
+        # DIV-0005 pattern as read_NVC.py/read_GC.py -- no --skip-plot/
+        # --rscript, no Rscript invocation, invented stderr messages;
+        # (2) a genuine, separate bug in render_dup_r_script: the
+        # pdf(...) line used double quotes, but upstream's
+        # `print("pdf(\'%s\')" % ...)` -- the `\'` is an ESCAPED SINGLE
+        # QUOTE inside the double-quoted Python literal -- renders
+        # single quotes. An earlier "cross-checked" unit test asserted
+        # the wrong (double-quote) text; only a live diff against the
+        # real upstream CLI caught it. --skip-plot on both sides here;
+        # real Rscript execution (both sides produce a real, valid PDF)
+        # spot-checked manually.
         ensure_fixture=ensure_bam_stat_fixture,
         py_script="read_duplication.py",
         rust_bin="read_duplication",
         py_args=lambda scratch_dir: ["-i", _nvc_fixture_path(), "-o", str(scratch_dir / "out"), "--skip-plot"],
-        rust_args=lambda scratch_dir: ["-i", _nvc_fixture_path(), "-o", str(scratch_dir / "out")],
-        compare_stream="none",
-        compare_files=("out.pos.DupRate.xls", "out.seq.DupRate.xls"),
+        rust_args=lambda scratch_dir: ["-i", _nvc_fixture_path(), "-o", str(scratch_dir / "out"), "--skip-plot"],
+        compare_stream="stderr",
+        stream_format="exact",
+        compare_files=("out.pos.DupRate.xls", "out.seq.DupRate.xls", "out.DupRate_plot.r"),
+        normalize_paths=True,
     ),
     Case(
         name="read_quality_basic",
+        # Found by this case (before it was formalized): read_quality.py's
+        # port never accepted --skip-plot/--rscript or invoked Rscript
+        # (a DIV-0005 instance) and was missing upstream's "Read BAM
+        # file ...  Done" progress line. --skip-plot on both sides here;
+        # real Rscript execution (both sides exit 1 and produce the same
+        # 2 PDFs -- an upstream-inherent R error with real data, not a
+        # divergence) spot-checked manually, not asserted every run.
         ensure_fixture=ensure_bam_stat_fixture,
         py_script="read_quality.py",
         rust_bin="read_quality",
         py_args=lambda scratch_dir: ["-i", _nvc_fixture_path(), "-o", str(scratch_dir / "out"), "--skip-plot"],
-        rust_args=lambda scratch_dir: ["-i", _nvc_fixture_path(), "-o", str(scratch_dir / "out")],
-        compare_stream="none",
+        rust_args=lambda scratch_dir: ["-i", _nvc_fixture_path(), "-o", str(scratch_dir / "out"), "--skip-plot"],
+        compare_stream="stderr",
+        stream_format="exact",
         # The .qual.r script embeds each side's own absolute scratch-
         # directory path in its pdf('...') line -- normalize it away,
         # see normalize_paths' docstring above.

@@ -5,10 +5,12 @@
 //! All three outputs (.seq.DupRate.xls, .pos.DupRate.xls, and .DupRate_plot.r) are generated as upstream does.
 
 use std::fs::File;
+use std::io::Write as _;
 use std::path::PathBuf;
+use std::process::Command;
 
 use clap::Parser;
-use rseqc_commands::read_duplication::{compute_duplication, render_seq_dup_table, render_pos_dup_table, render_dup_r_script};
+use rseqc_commands::read_duplication::{compute_duplication, render_dup_r_script, render_pos_dup_table, render_seq_dup_table};
 
 #[derive(Parser)]
 #[command(
@@ -31,6 +33,14 @@ struct Args {
     /// Minimum mapping quality for a read to be considered uniquely mapped.
     #[arg(short = 'q', long = "mapq", default_value_t = 30)]
     mapq: u8,
+
+    /// Generate duplication data but do not execute the R plotting script.
+    #[arg(long = "skip-plot")]
+    skip_plot: bool,
+
+    /// Rscript executable to use.
+    #[arg(long = "rscript", default_value = "Rscript")]
+    rscript: String,
 }
 
 fn main() -> std::process::ExitCode {
@@ -45,36 +55,33 @@ fn main() -> std::process::ExitCode {
 }
 
 fn run(args: &Args) -> std::io::Result<()> {
+    // Upstream: `print("Load BAM file ... ", end=' ')` -- the literal's
+    // own trailing space plus `end=' '` gives two spaces before "Done".
+    eprint!("Load BAM file ...  ");
     let (mut reader, header) = rseqc_formats::open_bam(&args.input_file)?;
     let hist = compute_duplication(reader.records(), &header, args.mapq)?;
-    
-    // Write the sequence duplication table to the output file
-    let seq_xls_output_path = format!("{}.seq.DupRate.xls", args.out_prefix.to_string_lossy());
-    let mut seq_xls_output_file = File::create(&seq_xls_output_path)?;
-    
-    let seq_table_content = render_seq_dup_table(&hist);
-    use std::io::Write;
-    seq_xls_output_file.write_all(seq_table_content.as_bytes())?;
-    
-    eprintln!("Sequence duplication table written to: {}", seq_xls_output_path);
-    
-    // Write the position duplication table to the output file
-    let pos_xls_output_path = format!("{}.pos.DupRate.xls", args.out_prefix.to_string_lossy());
-    let mut pos_xls_output_file = File::create(&pos_xls_output_path)?;
-    
-    let pos_table_content = render_pos_dup_table(&hist);
-    pos_xls_output_file.write_all(pos_table_content.as_bytes())?;
-    
-    eprintln!("Position duplication table written to: {}", pos_xls_output_path);
-    
-    // Write the R script to the output file
-    let r_output_path = format!("{}.DupRate_plot.r", args.out_prefix.to_string_lossy());
-    let mut r_output_file = File::create(&r_output_path)?;
-    
-    let r_script_content = render_dup_r_script(&hist, &args.out_prefix.to_string_lossy(), args.up_limit);
-    r_output_file.write_all(r_script_content.as_bytes())?;
-    
-    eprintln!("R script written to: {}", r_output_path);
-    
+    eprintln!("Done");
+
+    let prefix = args.out_prefix.to_string_lossy().into_owned();
+
+    eprintln!("report duplicte rate based on sequence ...");
+    let seq_path = format!("{prefix}.seq.DupRate.xls");
+    File::create(&seq_path)?.write_all(render_seq_dup_table(&hist).as_bytes())?;
+
+    eprintln!("report duplicte rate based on mapping  ...");
+    let pos_path = format!("{prefix}.pos.DupRate.xls");
+    File::create(&pos_path)?.write_all(render_pos_dup_table(&hist).as_bytes())?;
+
+    eprintln!("generate R script ...");
+    let r_path = format!("{prefix}.DupRate_plot.r");
+    File::create(&r_path)?.write_all(render_dup_r_script(&hist, &prefix, args.up_limit).as_bytes())?;
+
+    if !args.skip_plot {
+        let status = Command::new(&args.rscript).arg(&r_path).status()?;
+        if !status.success() {
+            return Err(std::io::Error::other(format!("R plotting failed for {r_path}")));
+        }
+    }
+
     Ok(())
 }
