@@ -401,6 +401,19 @@ def _regression_fixture(name: str) -> str:
     return str(REPO_ROOT / "verification" / "fixtures" / name)
 
 
+def ensure_hexamer_fixtures() -> None:
+    # Plain-text FASTA fixtures, committed directly (no generator needed,
+    # same pattern as the .bed12 fixtures).
+    fixture_dir = REPO_ROOT / "verification" / "fixtures"
+    required = (
+        fixture_dir / "regression_hexamer_reads.fa",
+        fixture_dir / "regression_hexamer_ref.fa",
+    )
+    missing = [str(p) for p in required if not p.is_file()]
+    if missing:
+        raise FileNotFoundError(f"missing committed fixture(s): {missing}")
+
+
 CASES: list[Case] = [
     Case(
         name="bam_stat_basic",
@@ -842,6 +855,30 @@ CASES: list[Case] = [
             "-n", "2", "-o", str(scratch_dir / "out"), "--seed", "42", "-s",
         ],
         compare_stream="stderr",
+        stream_format="exact",
+    ),
+    Case(
+        name="read_hexamer_basic",
+        # Found by this case (before it was formalized as a harness
+        # entry): a bare relative `-o` filename (no directory component,
+        # e.g. "result.tsv") errored out in the Rust CLI ("output path
+        # has no parent directory") but succeeds in upstream, whose
+        # `Path.parent` for such a path is `Path('.')` -- the current
+        # directory, which exists. This case uses stdout output (no -o)
+        # so it doesn't exercise that specific path, but does cover the
+        # header-name-uppercasing fix in seq_generator (dead code for
+        # this command's own output, but shared/documented-as-exact) and
+        # the whole report/progress-line pipeline end to end.
+        ensure_fixture=ensure_hexamer_fixtures,
+        py_script="read_hexamer.py",
+        rust_bin="read_hexamer",
+        py_args=lambda scratch_dir: [
+            "-i", f"{_regression_fixture('regression_hexamer_reads.fa')},{_regression_fixture('regression_hexamer_ref.fa')}",
+        ],
+        rust_args=lambda scratch_dir: [
+            "-i", f"{_regression_fixture('regression_hexamer_reads.fa')},{_regression_fixture('regression_hexamer_ref.fa')}",
+        ],
+        compare_stream="both",
         stream_format="exact",
     ),
 ]

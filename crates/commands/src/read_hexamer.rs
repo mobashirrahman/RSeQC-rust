@@ -29,15 +29,26 @@ use std::path::Path;
 use crate::python_fmt::python_g12;
 
 /// Yields `(name, sequence)` pairs from one file, replicating
-/// `seq_generator`. Each line is trimmed and uppercased. A `#`-prefixed
-/// or empty line is skipped. A `>`/`@`-prefixed line starts a new
-/// record: if a sequence was already accumulating, it is flushed first;
-/// the new record's `name` is the header line's first whitespace token
-/// with its leading `>`/`@` stripped (case preserved, extracted from
-/// the ORIGINAL line, not the uppercased copy). Any other line is
-/// appended to the current sequence only if every character is
-/// `A`/`C`/`G`/`T`/`N`. The final accumulated `(name, sequence)` is
-/// always yielded once at EOF, even if empty.
+/// `seq_generator`. Each line is trimmed and uppercased -- and, unlike a
+/// typical "just normalize the sequence" reading, upstream REASSIGNS
+/// `line` to that uppercased copy before doing anything else with it, so
+/// the header name is extracted from the uppercased text too (`name =
+/// line.split()[0][1:]` runs against the already-`.upper()`'d `line`,
+/// there is no separately preserved original-case copy anywhere in
+/// upstream). Confirmed via a live probe of the real installed
+/// `qcmodule.FrameKmer.seq_generator` against a mixed-case header: it
+/// returns `'MIXEDCASEHEADER'`, not `'MixedCaseHeader'`. Not currently
+/// observable through `read_hexamer.py`'s own output (its only caller,
+/// `kmer_freq_file`, discards the name and keeps only the sequence), but
+/// ported exactly anyway since this is a shared, documented-as-exact
+/// utility function, not a one-off formatter. A `#`-prefixed or empty
+/// line is skipped. A `>`/`@`-prefixed line starts a new record: if a
+/// sequence was already accumulating, it is flushed first; the new
+/// record's `name` is the (uppercased) header line's first whitespace
+/// token with its leading `>`/`@` stripped. Any other line is appended
+/// to the current sequence only if every character is `A`/`C`/`G`/`T`/`N`.
+/// The final accumulated `(name, sequence)` is always yielded once at
+/// EOF, even if empty.
 pub fn seq_generator(reader: impl BufRead) -> io::Result<Vec<(String, String)>> {
     let mut out = Vec::new();
     let mut name = String::new();
@@ -53,8 +64,7 @@ pub fn seq_generator(reader: impl BufRead) -> io::Result<Vec<(String, String)>> 
             if !tmpseq.is_empty() {
                 out.push((std::mem::take(&mut name), std::mem::take(&mut tmpseq)));
             }
-            let original_trimmed = raw.trim();
-            let first_token = original_trimmed.split_whitespace().next().unwrap_or(original_trimmed);
+            let first_token = upper.split_whitespace().next().unwrap_or(&upper);
             name = first_token.chars().skip(1).collect();
         } else if upper.chars().all(|c| matches!(c, 'A' | 'C' | 'G' | 'T' | 'N')) {
             tmpseq.push_str(&upper);
@@ -192,22 +202,26 @@ mod tests {
         let sequences = seq_generator(Cursor::new(text)).unwrap();
         assert_eq!(
             sequences,
-            vec![("seq1".to_string(), "ACGTACGT".to_string()), ("seq2".to_string(), "GGGNNN".to_string()), ("seq3".to_string(), "".to_string())]
+            vec![("SEQ1".to_string(), "ACGTACGT".to_string()), ("SEQ2".to_string(), "GGGNNN".to_string()), ("SEQ3".to_string(), "".to_string())]
         );
     }
 
     #[test]
-    fn seq_generator_preserves_header_case_and_skips_comments() {
+    fn seq_generator_uppercases_header_name_and_skips_comments() {
+        // Upstream reassigns `line = line.strip().upper()` before
+        // extracting the name -- confirmed via a live probe of the real
+        // qcmodule.FrameKmer.seq_generator: a ">Seq1 description" header
+        // comes back as "SEQ1", not "Seq1".
         let text = "# comment\n>Seq1 description\nacgt\n\n# another\n>seq2\nTTT\n";
         let sequences = seq_generator(Cursor::new(text)).unwrap();
-        assert_eq!(sequences, vec![("Seq1".to_string(), "ACGT".to_string()), ("seq2".to_string(), "TTT".to_string())]);
+        assert_eq!(sequences, vec![("SEQ1".to_string(), "ACGT".to_string()), ("SEQ2".to_string(), "TTT".to_string())]);
     }
 
     #[test]
     fn seq_generator_drops_non_acgtn_lines() {
         let text = ">seq1\nACGT\n+\n!@#$\nIIIIIII\n>seq2\nCCCC\n";
         let sequences = seq_generator(Cursor::new(text)).unwrap();
-        assert_eq!(sequences, vec![("seq1".to_string(), "ACGT".to_string()), ("seq2".to_string(), "CCCC".to_string())]);
+        assert_eq!(sequences, vec![("SEQ1".to_string(), "ACGT".to_string()), ("SEQ2".to_string(), "CCCC".to_string())]);
     }
 
     #[test]

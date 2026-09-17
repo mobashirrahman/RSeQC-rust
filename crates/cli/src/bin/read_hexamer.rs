@@ -5,7 +5,7 @@
 use std::collections::{HashMap, HashSet};
 use std::fs::File;
 use std::io::{self, BufReader, Write as _};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use clap::Parser;
 use rseqc_commands::read_hexamer::{kmer_freq_file, render_report, unique_display_name};
@@ -129,10 +129,17 @@ fn run(args: &Args) -> io::Result<()> {
     let report = render_report(&names, &tables, &totals);
 
     if let Some(output_path) = &args.output {
-        let output_parent = output_path
-            .parent()
-            .filter(|p| !p.as_os_str().is_empty())
-            .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, format!("output path has no parent directory: {}", output_path.display())))?;
+        // Upstream: `output_parent = args.output.parent`. For a bare
+        // relative filename like "result.tsv" (no directory component),
+        // Python's `Path.parent` is `Path('.')` -- the current directory,
+        // which exists and is a directory -- NOT an error. Confirmed via
+        // a live `python3 -c` probe. Map an empty `Path::parent()` the
+        // same way instead of treating it as "no parent directory".
+        let output_parent = match output_path.parent() {
+            Some(p) if p.as_os_str().is_empty() => Path::new("."),
+            Some(p) => p,
+            None => Path::new("."),
+        };
         if !output_parent.is_dir() {
             return Err(io::Error::new(io::ErrorKind::NotFound, format!("output directory does not exist: {}", output_parent.display())));
         }
