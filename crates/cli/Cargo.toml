@@ -132,6 +132,11 @@ path = "src/bin/read_hexamer.rs"
 name = "bam2wig"
 path = "src/bin/bam2wig.rs"
 
+[[bin]]
+# Same naming note as above: packaging aliases this to `geneBody_coverage.py`.
+name = "geneBody_coverage"
+path = "src/bin/genebody_coverage.rs"
+
 [dependencies]
 rseqc-core = { path = "../core" }
 rseqc-formats = { path = "../formats" }

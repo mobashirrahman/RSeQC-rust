@@ -14,6 +14,21 @@
 /// so this always renders the full decimal expansion instead. Not
 /// replicated -- values in that range are not expected from any current
 /// caller (TIN/FPKM/FPM scores stay well within ordinary magnitudes).
+/// Python 3's `round()`: round-half-to-even, NOT round-half-away-from-zero.
+pub fn python_round(x: f64) -> i64 {
+    let floor = x.floor();
+    let diff = x - floor;
+    if diff < 0.5 {
+        floor as i64
+    } else if diff > 0.5 {
+        floor as i64 + 1
+    } else if (floor as i64) % 2 == 0 {
+        floor as i64
+    } else {
+        floor as i64 + 1
+    }
+}
+
 pub fn python_str_float(x: f64) -> String {
     if x.is_nan() {
         return "nan".to_string();
