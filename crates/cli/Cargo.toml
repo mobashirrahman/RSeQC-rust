@@ -167,6 +167,11 @@ path = "src/bin/sc_editmatrix.rs"
 name = "sc_seqQual"
 path = "src/bin/sc_seqqual.rs"
 
+[[bin]]
+# Same naming note as above: packaging aliases this to `sc_seqLogo.py`.
+name = "sc_seqLogo"
+path = "src/bin/sc_seqlogo.rs"
+
 [dependencies]
 rseqc-core = { path = "../core" }
 rseqc-formats = { path = "../formats" }

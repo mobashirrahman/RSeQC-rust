@@ -235,3 +235,26 @@ divergences:
       rather than silently "fixing" them into different (better)
       behavior than upstream actually has.
     status: accepted
+
+  - id: DIV-0016
+    command_or_api: sc_seqLogo.py
+    description: >
+      Upstream's sequence-logo image (.logo.<format>) is rendered by
+      qcmodule.fastq.make_logo, which calls the Python logomaker library
+      directly (matplotlib-based), not R. Every other "plot" command in
+      this port defers native rendering under DIV-0005 while still
+      producing a complete, real artifact -- literal R-script text that
+      would generate the plot if Rscript were run against it. This
+      command has no such escape hatch: there is no R-script
+      intermediate for a logomaker-rendered plot. The .count_matrix.csv
+      output (a real, correct, independently useful deliverable) IS
+      fully computed and written; the .logo.<format> image is NOT
+      produced by this port at all.
+    classification: unimplemented-native-rendering
+    decision: >
+      Same underlying gap as DIV-0005 (crates/render not started), but
+      called out separately because, unlike every other DIV-0005 case,
+      there is no partial/deferred artifact for this specific output --
+      only a disclosed absence. Implement crates/render before this
+      command can be considered complete.
+    status: accepted
