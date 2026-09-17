@@ -171,7 +171,9 @@ pub fn render_mismatch_table(p: &MismatchProfile) -> String {
         }
         lines.push(row.join("\t"));
     }
-    lines.join("\n")
+    // Trailing newline: upstream's plain `print(...)` calls each add
+    // their own trailing newline.
+    format!("{}\n", lines.join("\n"))
 }
 
 pub fn render_mismatch_r_script(p: &MismatchProfile, out_prefix: &str) -> String {
@@ -216,7 +218,9 @@ pub fn render_mismatch_r_script(p: &MismatchProfile, out_prefix: &str) -> String
     ));
     lines.push("dev.off()".to_string());
 
-    lines.join("\n")
+    // Trailing newline: upstream's plain `print(...)` calls each add
+    // their own trailing newline, including the final `dev.off()`.
+    format!("{}\n", lines.join("\n"))
 }
 
 #[cfg(test)]
@@ -369,7 +373,7 @@ mod tests {
 
         let profile = MismatchProfile { count: 3, data, loop_exhausted_naturally: false };
         let output = render_mismatch_table(&profile);
-        let expected = "read_pos\tsum\tA2C\tA2G\tA2T\tC2A\tC2G\tC2T\tG2A\tG2C\tG2T\tT2A\tT2C\tT2G\n4\t2\t0\t2\t0\t0\t0\t0\t0\t0\t0\t0\t0\t0";
+        let expected = "read_pos\tsum\tA2C\tA2G\tA2T\tC2A\tC2G\tC2T\tG2A\tG2C\tG2T\tT2A\tT2C\tT2G\n4\t2\t0\t2\t0\t0\t0\t0\t0\t0\t0\t0\t0\t0\n";
         assert_eq!(output, expected);
     }
 
@@ -414,7 +418,7 @@ lines(log10(T2A+1), col=color_code[10])\n\
 lines(log10(T2C+1), col=color_code[11])\n\
 lines(log10(T2G+1), col=color_code[12])\n\
 legend(13,y_up_bound,legend=c(\"A2C\",\"A2G\",\"A2T\",\"C2A\",\"C2G\",\"C2T\",\"G2A\",\"G2C\",\"G2T\",\"T2A\",\"T2C\",\"T2G\"), fill=color_code, border=color_code, ncol=4)\n\
-dev.off()";
+dev.off()\n";
         assert_eq!(output, expected);
     }
 }

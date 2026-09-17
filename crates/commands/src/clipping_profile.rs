@@ -164,44 +164,42 @@ fn fmt_float(n: u64) -> String {
     format!("{n}.0")
 }
 
+/// Every line, including the last, ends with `\n` (upstream's plain
+/// `print(...)` calls each add their own trailing newline) -- applies
+/// to all four render functions in this module.
 pub fn render_single_table(p: &SingleEndProfile) -> String {
-    let mut lines = vec!["Position\tClipped_nt\tNon_clipped_nt".to_string()];
+    let mut out = String::from("Position\tClipped_nt\tNon_clipped_nt\n");
     for (i, &c) in p.clip_count.iter().enumerate() {
         let non_clip = p.total_read - c;
-        lines.push(format!("{i}\t{}\t{}", fmt_float(c), fmt_float(non_clip)));
+        out.push_str(&format!("{i}\t{}\t{}\n", fmt_float(c), fmt_float(non_clip)));
     }
-    lines.join("\n")
+    out
 }
 
 pub fn render_single_r_script(p: &SingleEndProfile, out_prefix: &str) -> String {
     let read_pos: Vec<String> = (0..p.clip_count.len()).map(|i| i.to_string()).collect();
     let clip_strs: Vec<String> = p.clip_count.iter().map(|&c| fmt_float(c)).collect();
 
-    let mut lines = Vec::new();
-    lines.push(format!("pdf(\"{out_prefix}.clipping_profile.pdf\")"));
-    lines.push(format!("read_pos=c({})", read_pos.join(",")));
-    lines.push(format!("clip_count=c({})", clip_strs.join(",")));
-    lines.push(format!("nonclip_count= {} - clip_count", p.total_read));
-    lines.push(
-        "plot(read_pos, nonclip_count*100/(clip_count+nonclip_count),col=\"blue\",main=\"clipping profile\",xlab=\"Position of read\",ylab=\"Non-clipped %\",type=\"b\")"
-            .to_string(),
-    );
-    lines.push("dev.off()".to_string());
-    lines.join("\n")
+    format!(
+        "pdf(\"{out_prefix}.clipping_profile.pdf\")\nread_pos=c({})\nclip_count=c({})\nnonclip_count= {} - clip_count\nplot(read_pos, nonclip_count*100/(clip_count+nonclip_count),col=\"blue\",main=\"clipping profile\",xlab=\"Position of read\",ylab=\"Non-clipped %\",type=\"b\")\ndev.off()\n",
+        read_pos.join(","),
+        clip_strs.join(","),
+        p.total_read,
+    )
 }
 
 pub fn render_paired_table(p: &PairedEndProfile) -> String {
-    let mut lines = vec!["Position\tClipped_nt\tNon_clipped_nt".to_string(), "Read-1:".to_string()];
+    let mut out = String::from("Position\tClipped_nt\tNon_clipped_nt\nRead-1:\n");
     for (i, &c) in p.r1_clip_count.iter().enumerate() {
         let non_clip = p.total_read1 - c;
-        lines.push(format!("{i}\t{}\t{}", fmt_float(c), fmt_float(non_clip)));
+        out.push_str(&format!("{i}\t{}\t{}\n", fmt_float(c), fmt_float(non_clip)));
     }
-    lines.push("Read-2:".to_string());
+    out.push_str("Read-2:\n");
     for (i, &c) in p.r2_clip_count.iter().enumerate() {
         let non_clip = p.total_read2 - c;
-        lines.push(format!("{i}\t{}\t{}", fmt_float(c), fmt_float(non_clip)));
+        out.push_str(&format!("{i}\t{}\t{}\n", fmt_float(c), fmt_float(non_clip)));
     }
-    lines.join("\n")
+    out
 }
 
 pub fn render_paired_r_script(p: &PairedEndProfile, out_prefix: &str) -> String {
@@ -211,29 +209,16 @@ pub fn render_paired_r_script(p: &PairedEndProfile, out_prefix: &str) -> String 
     let read_pos: Vec<String> = (0..p.r1_clip_count.len()).map(|i| i.to_string()).collect();
     let r1_strs: Vec<String> = p.r1_clip_count.iter().map(|&c| fmt_float(c)).collect();
     let r2_strs: Vec<String> = p.r2_clip_count.iter().map(|&c| fmt_float(c)).collect();
+    let read_pos_csv = read_pos.join(",");
 
-    let mut lines = Vec::new();
-    lines.push(format!("pdf(\"{out_prefix}.clipping_profile.R1.pdf\")"));
-    lines.push(format!("read_pos=c({})", read_pos.join(",")));
-    lines.push(format!("r1_clip_count=c({})", r1_strs.join(",")));
-    lines.push(format!("r1_nonclip_count = {} - r1_clip_count", p.total_read1));
-    lines.push(
-        "plot(read_pos, r1_nonclip_count*100/(r1_clip_count + r1_nonclip_count),col=\"blue\",main=\"clipping profile\",xlab=\"Position of read (read-1)\",ylab=\"Non-clipped %\",type=\"b\")"
-            .to_string(),
-    );
-    lines.push("dev.off()".to_string());
-
-    lines.push(format!("pdf(\"{out_prefix}.clipping_profile.R2.pdf\")"));
-    lines.push(format!("read_pos=c({})", read_pos.join(",")));
-    lines.push(format!("r2_clip_count=c({})", r2_strs.join(",")));
-    lines.push(format!("r2_nonclip_count = {} - r2_clip_count", p.total_read2));
-    lines.push(
-        "plot(read_pos, r2_nonclip_count*100/(r2_clip_count + r2_nonclip_count),col=\"blue\",main=\"clipping profile\",xlab=\"Position of read (read-2)\",ylab=\"Non-clipped %\",type=\"b\")"
-            .to_string(),
-    );
-    lines.push("dev.off()".to_string());
-
-    lines.join("\n")
+    format!(
+        "pdf(\"{out_prefix}.clipping_profile.R1.pdf\")\nread_pos=c({read_pos_csv})\nr1_clip_count=c({})\nr1_nonclip_count = {} - r1_clip_count\nplot(read_pos, r1_nonclip_count*100/(r1_clip_count + r1_nonclip_count),col=\"blue\",main=\"clipping profile\",xlab=\"Position of read (read-1)\",ylab=\"Non-clipped %\",type=\"b\")\ndev.off()\n\
+pdf(\"{out_prefix}.clipping_profile.R2.pdf\")\nread_pos=c({read_pos_csv})\nr2_clip_count=c({})\nr2_nonclip_count = {} - r2_clip_count\nplot(read_pos, r2_nonclip_count*100/(r2_clip_count + r2_nonclip_count),col=\"blue\",main=\"clipping profile\",xlab=\"Position of read (read-2)\",ylab=\"Non-clipped %\",type=\"b\")\ndev.off()\n",
+        r1_strs.join(","),
+        p.total_read1,
+        r2_strs.join(","),
+        p.total_read2,
+    )
 }
 
 #[cfg(test)]
@@ -334,7 +319,7 @@ mod tests {
         let output = render_single_table(&profile);
         assert_eq!(
             output,
-            "Position\tClipped_nt\tNon_clipped_nt\n0\t2.0\t3.0\n1\t0.0\t5.0"
+            "Position\tClipped_nt\tNon_clipped_nt\n0\t2.0\t3.0\n1\t0.0\t5.0\n"
         );
     }
 
@@ -350,7 +335,7 @@ read_pos=c(0,1)\n\
 clip_count=c(2.0,0.0)\n\
 nonclip_count= 5 - clip_count\n\
 plot(read_pos, nonclip_count*100/(clip_count+nonclip_count),col=\"blue\",main=\"clipping profile\",xlab=\"Position of read\",ylab=\"Non-clipped %\",type=\"b\")\n\
-dev.off()";
+dev.off()\n";
         assert_eq!(output, expected);
     }
 
@@ -410,7 +395,7 @@ read_pos=c(0,1)\n\
 r2_clip_count=c(0.0,2.0)\n\
 r2_nonclip_count = 2 - r2_clip_count\n\
 plot(read_pos, r2_nonclip_count*100/(r2_clip_count + r2_nonclip_count),col=\"blue\",main=\"clipping profile\",xlab=\"Position of read (read-2)\",ylab=\"Non-clipped %\",type=\"b\")\n\
-dev.off()";
+dev.off()\n";
         assert_eq!(output, expected);
     }
 

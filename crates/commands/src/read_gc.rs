@@ -79,40 +79,30 @@ where
     Ok(GcHistogram { buckets })
 }
 
-/// Renders the GC histogram as tab-separated text, matching upstream's .GC.xls format
+/// Renders the GC histogram as tab-separated text, matching upstream's
+/// `.GC.xls` format. Every line, including the last, ends with `\n`
+/// (upstream's plain `print(...)` calls each add their own trailing
+/// newline).
 pub fn render_gc_table(hist: &GcHistogram) -> String {
-    let mut lines = Vec::new();
-    
-    // Header row
-    lines.push("GC%\tread_count".to_string());
-    
-    // Data rows in first-seen order
+    let mut out = String::from("GC%\tread_count\n");
     for (gc_percent, count) in &hist.buckets {
-        lines.push(format!("{}\t{}", gc_percent, count));
+        out.push_str(&format!("{gc_percent}\t{count}\n"));
     }
-    
-    lines.join("\n")
+    out
 }
 
-/// Renders the GC histogram as an R script, matching upstream's .GC_plot.r format
+/// Renders the GC histogram as an R script, matching upstream's
+/// `.GC_plot.r` format (see `render_gc_table` for the trailing-newline
+/// note -- applies here too, including after the final `dev.off()`).
 pub fn render_gc_r_script(hist: &GcHistogram, output_prefix: &str) -> String {
-    let mut lines = Vec::new();
-    
-    // PDF output line
-    lines.push(format!("pdf(\"{}.GC_plot.pdf\")", output_prefix));
-    
-    // GC data line with comma-separated values
     let gc_values: Vec<String> = hist.buckets.iter().map(|(gc, _)| gc.clone()).collect();
     let count_values: Vec<String> = hist.buckets.iter().map(|(_, count)| count.to_string()).collect();
-    lines.push(format!("gc=rep(c({}),times=c({}))", gc_values.join(","), count_values.join(",")));
-    
-    // Histogram line
-    lines.push("hist(gc,probability=T,breaks=100,xlab=\"GC content (%)\",ylab=\"Density of Reads\",border=\"blue\",main=\"\")".to_string());
-    
-    // End PDF device
-    lines.push("dev.off()".to_string());
-    
-    lines.join("\n")
+
+    format!(
+        "pdf(\"{output_prefix}.GC_plot.pdf\")\ngc=rep(c({}),times=c({}))\nhist(gc,probability=T,breaks=100,xlab=\"GC content (%)\",ylab=\"Density of Reads\",border=\"blue\",main=\"\")\ndev.off()\n",
+        gc_values.join(","),
+        count_values.join(","),
+    )
 }
 
 #[cfg(test)]
@@ -219,8 +209,8 @@ mod tests {
         };
 
         let output = render_gc_table(&hist);
-        let expected = "GC%\tread_count\n25.00\t10\n50.00\t25\n75.00\t5";
-        
+        let expected = "GC%\tread_count\n25.00\t10\n50.00\t25\n75.00\t5\n";
+
         assert_eq!(output, expected);
     }
 
@@ -235,8 +225,8 @@ mod tests {
         };
 
         let output = render_gc_r_script(&hist, "test_output");
-        let expected = "pdf(\"test_output.GC_plot.pdf\")\ngc=rep(c(25.00,50.00,75.00),times=c(10,25,5))\nhist(gc,probability=T,breaks=100,xlab=\"GC content (%)\",ylab=\"Density of Reads\",border=\"blue\",main=\"\")\ndev.off()";
-        
+        let expected = "pdf(\"test_output.GC_plot.pdf\")\ngc=rep(c(25.00,50.00,75.00),times=c(10,25,5))\nhist(gc,probability=T,breaks=100,xlab=\"GC content (%)\",ylab=\"Density of Reads\",border=\"blue\",main=\"\")\ndev.off()\n";
+
         assert_eq!(output, expected);
     }
 

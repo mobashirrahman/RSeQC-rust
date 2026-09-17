@@ -128,34 +128,27 @@ where
     })
 }
 
-/// Renders the sequence duplication histogram as tab-separated text, matching upstream's .seq.DupRate.xls format
+/// Renders the sequence duplication histogram as tab-separated text,
+/// matching upstream's `.seq.DupRate.xls` format. Every line, including
+/// the last, ends with `\n` (upstream's plain `print(...)` calls each
+/// add their own trailing newline).
 pub fn render_seq_dup_table(hist: &DuplicationHistograms) -> String {
-    let mut lines = Vec::new();
-    
-    // Header row
-    lines.push("Occurrence\tUniqReadNumber".to_string());
-    
-    // Data rows sorted by occurrence (ascending)
+    let mut out = String::from("Occurrence\tUniqReadNumber\n");
     for (occurrence, distinct_count) in &hist.seq_occurrence_counts {
-        lines.push(format!("{}\t{}", occurrence, distinct_count));
+        out.push_str(&format!("{occurrence}\t{distinct_count}\n"));
     }
-    
-    lines.join("\n")
+    out
 }
 
-/// Renders the position duplication histogram as tab-separated text, matching upstream's .pos.DupRate.xls format
+/// Renders the position duplication histogram as tab-separated text,
+/// matching upstream's `.pos.DupRate.xls` format (see
+/// `render_seq_dup_table` for the trailing-newline note).
 pub fn render_pos_dup_table(hist: &DuplicationHistograms) -> String {
-    let mut lines = Vec::new();
-    
-    // Header row
-    lines.push("Occurrence\tUniqReadNumber".to_string());
-    
-    // Data rows sorted by occurrence (ascending)
+    let mut out = String::from("Occurrence\tUniqReadNumber\n");
     for (occurrence, distinct_count) in &hist.pos_occurrence_counts {
-        lines.push(format!("{}\t{}", occurrence, distinct_count));
+        out.push_str(&format!("{occurrence}\t{distinct_count}\n"));
     }
-    
-    lines.join("\n")
+    out
 }
 
 /// Renders the duplication histograms as an R script, matching upstream's .DupRate_plot.r format
@@ -229,8 +222,10 @@ pub fn render_dup_r_script(
     
     // End PDF device
     lines.push("dev.off()".to_string());
-    
-    lines.join("\n")
+
+    // Trailing newline: upstream's plain `print(...)` calls each add
+    // their own trailing newline, including the final `dev.off()`.
+    format!("{}\n", lines.join("\n"))
 }
 
 #[cfg(test)]
@@ -341,8 +336,8 @@ mod tests {
         };
 
         let output = render_seq_dup_table(&hist);
-        let expected = "Occurrence\tUniqReadNumber\n1\t10\n2\t5\n3\t2";
-        
+        let expected = "Occurrence\tUniqReadNumber\n1\t10\n2\t5\n3\t2\n";
+
         assert_eq!(output, expected);
     }
 
@@ -354,8 +349,8 @@ mod tests {
         };
 
         let output = render_pos_dup_table(&hist);
-        let expected = "Occurrence\tUniqReadNumber\n1\t15\n2\t3\n4\t1";
-        
+        let expected = "Occurrence\tUniqReadNumber\n1\t15\n2\t3\n4\t1\n";
+
         assert_eq!(output, expected);
     }
 
@@ -385,7 +380,7 @@ legend(300,ym,legend=c('Sequence-based','Mapping-based'),col=c('blue','red'),pch
 axis(side=2,at=0:ym,labels=0:ym)\n\
 axis(side=4,at=c(log10(pos_uniqRead[1]),log10(pos_uniqRead[2]),log10(pos_uniqRead[3]),log10(pos_uniqRead[4])), labels=c(round(pos_uniqRead[1]*100/sum(pos_uniqRead*pos_occ)),round(pos_uniqRead[2]*100/sum(pos_uniqRead*pos_occ)),round(pos_uniqRead[3]*100/sum(pos_uniqRead*pos_occ)),round(pos_uniqRead[4]*100/sum(pos_uniqRead*pos_occ))))\n\
 mtext(4, text = \"Reads %\", line = 2)\n\
-dev.off()";
+dev.off()\n";
 
         assert_eq!(output, expected);
     }

@@ -281,7 +281,9 @@ pub fn render_r_script(buckets: &[(i64, i64, u64)], step: i64, out_prefix: &str)
     ));
     lines.push(format!("lines(density(fragsize,bw={}),col='red')", 2 * step));
     lines.push("dev.off()".to_string());
-    lines.join("\n")
+    // Trailing newline: upstream's plain `print(...)` calls each add
+    // their own trailing newline, including the final `dev.off()`.
+    format!("{}\n", lines.join("\n"))
 }
 
 #[cfg(test)]
@@ -325,7 +327,7 @@ write(x=c(\"Name\",\"Mean\",\"Median\",\"sd\"), sep=\"\t\", file=stdout(),ncolum
 write(c(out_file,frag_mean,frag_median,frag_sd),sep=\"\t\", file=stdout(),ncolumns=4)\n\
 hist(fragsize,probability=T,breaks=3,xlab=\"mRNA insert size (bp)\",main=paste(c(\"Mean=\",frag_mean,\";\",\"SD=\",frag_sd),collapse=\"\"),border=\"blue\")\n\
 lines(density(fragsize,bw=10),col='red')\n\
-dev.off()";
+dev.off()\n";
         assert_eq!(output, expected);
     }
 

@@ -240,7 +240,9 @@ pub fn render_xls(result: &JunctionResult) -> String {
         // the first ending with `end=' '` instead of a newline).
         lines.push(format!("{}\t{}\t{}\t{}\t {}", row.chrom, row.start, row.end, row.count, row.annotation));
     }
-    lines.join("\n")
+    // Trailing newline: the second print() per row (the annotation
+    // word) uses the default end='\n', including for the last row.
+    format!("{}\n", lines.join("\n"))
 }
 
 /// Python 3's `round()`: round-half-to-even, NOT round-half-away-from-zero.
@@ -295,7 +297,9 @@ pub fn render_r_script(result: &JunctionResult, out_prefix: &str) -> String {
     ));
     lines.push("dev.off()".to_string());
 
-    lines.join("\n")
+    // Trailing newline: upstream's plain `print(...)` calls each add
+    // their own trailing newline, including the final `dev.off()`.
+    format!("{}\n", lines.join("\n"))
 }
 
 fn junction_color(annotation: &str) -> &'static str {
@@ -330,7 +334,9 @@ pub fn render_bed12(result: &JunctionResult, size: i64) -> String {
             block_starts,
         ));
     }
-    lines.join("\n")
+    // Trailing newline: upstream's plain `print(...)` call per row adds
+    // its own trailing newline, including for the last row.
+    format!("{}\n", lines.join("\n"))
 }
 
 /// Ports `generate_interact` (default `size=1`). `bam_file` is the input
@@ -375,7 +381,10 @@ pub fn render_interact(result: &JunctionResult, bam_file: &str, size: i64) -> St
             target_name,
         ));
     }
-    lines.join("\n")
+    // Trailing newline: upstream's plain `print(...)` call per row adds
+    // its own trailing newline, including for the last row (and the
+    // leading `track type=interact ...` line above it).
+    format!("{}\n", lines.join("\n"))
 }
 
 #[cfg(test)]
@@ -407,7 +416,7 @@ mod tests {
         let text = render_xls(&result);
         assert_eq!(
             text,
-            "chrom\tintron_st(0-based)\tintron_end(1-based)\tread_count\tannotation\nchr1\t100\t200\t5\t annotated"
+            "chrom\tintron_st(0-based)\tintron_end(1-based)\tread_count\tannotation\nchr1\t100\t200\t5\t annotated\n"
         );
     }
 
@@ -442,7 +451,7 @@ dev.off()\n\
 pdf(\"testprefix.splice_junction.pdf\")\n\
 junction=c(12.5,25,62.5)\n\
 pie(junction,col=c(2,3,4),init.angle=30,angle=c(60,120,150),density=c(70,70,70),main=\"splicing junctions\",labels=c(\"partial_novel 12%\",\"complete_novel 25%\",\"known 62%\"))\n\
-dev.off()";
+dev.off()\n";
         assert_eq!(output, expected);
     }
 
@@ -455,13 +464,13 @@ dev.off()";
         let bed = render_bed12(&result, 1);
         // start=100-1=99, end=200+1=201; block_starts second value =
         // end-size-start = 201-1-99 = 101.
-        assert_eq!(bed, "chr1\t99\t201\tannotated\t5\t.\t99\t201\t205,0,0\t2\t1,1\t0,101");
+        assert_eq!(bed, "chr1\t99\t201\tannotated\t5\t.\t99\t201\t205,0,0\t2\t1,1\t0,101\n");
 
         // Exact text, independently verified against a real Python
         // execution of generate_interact's literal expressions.
         let interact = render_interact(&result, "sample.bam", 1);
         let expected = "track type=interact name=\"Splice junctions\" description=\"Splice junctions detected from sample.bam\" maxHeightPixels=200:200:50 visibility=full\n\
-chr1\t99\t201\tchr1:99-201_annotated\t5\t5.0\tRNAseq_junction\t205,0,0\tchr1\t99\t100\tchr1:99-100\t.\tchr1\t200\t201\tchr1:200-201\t.";
+chr1\t99\t201\tchr1:99-201_annotated\t5\t5.0\tRNAseq_junction\t205,0,0\tchr1\t99\t100\tchr1:99-100\t.\tchr1\t200\t201\tchr1:200-201\t.\n";
         assert_eq!(interact, expected);
     }
 }

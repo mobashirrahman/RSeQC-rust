@@ -20,73 +20,59 @@ fn fmt_float(n: u64) -> String {
     format!("{n}.0")
 }
 
+/// Every line, including the last, ends with `\n` (upstream's plain
+/// `print(...)` calls each add their own trailing newline) -- applies
+/// to all four render functions in this module, same as
+/// clipping_profile.rs (structurally identical upstream function).
 pub fn render_single_table(p: &SingleEndProfile) -> String {
-    let mut lines = vec!["Position\tInsert_nt\tNon_insert_nt".to_string()];
+    let mut out = String::from("Position\tInsert_nt\tNon_insert_nt\n");
     for (i, &c) in p.clip_count.iter().enumerate() {
         let non_insert = p.total_read - c;
-        lines.push(format!("{i}\t{}\t{}", fmt_float(c), fmt_float(non_insert)));
+        out.push_str(&format!("{i}\t{}\t{}\n", fmt_float(c), fmt_float(non_insert)));
     }
-    lines.join("\n")
+    out
 }
 
 pub fn render_single_r_script(p: &SingleEndProfile, out_prefix: &str) -> String {
     let read_pos: Vec<String> = (0..p.clip_count.len()).map(|i| i.to_string()).collect();
     let insert_strs: Vec<String> = p.clip_count.iter().map(|&c| fmt_float(c)).collect();
 
-    let mut lines = Vec::new();
-    lines.push(format!("pdf(\"{out_prefix}.insertion_profile.pdf\")"));
-    lines.push(format!("read_pos=c({})", read_pos.join(",")));
-    lines.push(format!("insert_count=c({})", insert_strs.join(",")));
-    lines.push(format!("noninsert_count= {} - insert_count", p.total_read));
-    lines.push(
-        "plot(read_pos, insert_count*100/(insert_count+noninsert_count),col=\"blue\",main=\"Insertion profile\",xlab=\"Position of read\",ylab=\"Insertion %\",type=\"b\")"
-            .to_string(),
-    );
-    lines.push("dev.off()".to_string());
-    lines.join("\n")
+    format!(
+        "pdf(\"{out_prefix}.insertion_profile.pdf\")\nread_pos=c({})\ninsert_count=c({})\nnoninsert_count= {} - insert_count\nplot(read_pos, insert_count*100/(insert_count+noninsert_count),col=\"blue\",main=\"Insertion profile\",xlab=\"Position of read\",ylab=\"Insertion %\",type=\"b\")\ndev.off()\n",
+        read_pos.join(","),
+        insert_strs.join(","),
+        p.total_read,
+    )
 }
 
 pub fn render_paired_table(p: &PairedEndProfile) -> String {
-    let mut lines = vec!["Position\tInsert_nt\tNon_insert_nt".to_string(), "Read-1:".to_string()];
+    let mut out = String::from("Position\tInsert_nt\tNon_insert_nt\nRead-1:\n");
     for (i, &c) in p.r1_clip_count.iter().enumerate() {
         let non_insert = p.total_read1 - c;
-        lines.push(format!("{i}\t{}\t{}", fmt_float(c), fmt_float(non_insert)));
+        out.push_str(&format!("{i}\t{}\t{}\n", fmt_float(c), fmt_float(non_insert)));
     }
-    lines.push("Read-2:".to_string());
+    out.push_str("Read-2:\n");
     for (i, &c) in p.r2_clip_count.iter().enumerate() {
         let non_insert = p.total_read2 - c;
-        lines.push(format!("{i}\t{}\t{}", fmt_float(c), fmt_float(non_insert)));
+        out.push_str(&format!("{i}\t{}\t{}\n", fmt_float(c), fmt_float(non_insert)));
     }
-    lines.join("\n")
+    out
 }
 
 pub fn render_paired_r_script(p: &PairedEndProfile, out_prefix: &str) -> String {
     let read_pos: Vec<String> = (0..p.r1_clip_count.len()).map(|i| i.to_string()).collect();
     let r1_strs: Vec<String> = p.r1_clip_count.iter().map(|&c| fmt_float(c)).collect();
     let r2_strs: Vec<String> = p.r2_clip_count.iter().map(|&c| fmt_float(c)).collect();
+    let read_pos_csv = read_pos.join(",");
 
-    let mut lines = Vec::new();
-    lines.push(format!("pdf(\"{out_prefix}.insertion_profile.R1.pdf\")"));
-    lines.push(format!("read_pos=c({})", read_pos.join(",")));
-    lines.push(format!("r1_insert_count=c({})", r1_strs.join(",")));
-    lines.push(format!("r1_noninsert_count = {} - r1_insert_count", p.total_read1));
-    lines.push(
-        "plot(read_pos, r1_insert_count*100/(r1_insert_count + r1_noninsert_count),col=\"blue\",main=\"Insertion profile\",xlab=\"Position of read (read-1)\",ylab=\"Insertion %\",type=\"b\")"
-            .to_string(),
-    );
-    lines.push("dev.off()".to_string());
-
-    lines.push(format!("pdf(\"{out_prefix}.insertion_profile.R2.pdf\")"));
-    lines.push(format!("read_pos=c({})", read_pos.join(",")));
-    lines.push(format!("r2_insert_count=c({})", r2_strs.join(",")));
-    lines.push(format!("r2_noninsert_count = {} - r2_insert_count", p.total_read2));
-    lines.push(
-        "plot(read_pos, r2_insert_count*100/(r2_insert_count + r2_noninsert_count),col=\"blue\",main=\"Insertion profile\",xlab=\"Position of read (read-2)\",ylab=\"Insertion %\",type=\"b\")"
-            .to_string(),
-    );
-    lines.push("dev.off()".to_string());
-
-    lines.join("\n")
+    format!(
+        "pdf(\"{out_prefix}.insertion_profile.R1.pdf\")\nread_pos=c({read_pos_csv})\nr1_insert_count=c({})\nr1_noninsert_count = {} - r1_insert_count\nplot(read_pos, r1_insert_count*100/(r1_insert_count + r1_noninsert_count),col=\"blue\",main=\"Insertion profile\",xlab=\"Position of read (read-1)\",ylab=\"Insertion %\",type=\"b\")\ndev.off()\n\
+pdf(\"{out_prefix}.insertion_profile.R2.pdf\")\nread_pos=c({read_pos_csv})\nr2_insert_count=c({})\nr2_noninsert_count = {} - r2_insert_count\nplot(read_pos, r2_insert_count*100/(r2_insert_count + r2_noninsert_count),col=\"blue\",main=\"Insertion profile\",xlab=\"Position of read (read-2)\",ylab=\"Insertion %\",type=\"b\")\ndev.off()\n",
+        r1_strs.join(","),
+        p.total_read1,
+        r2_strs.join(","),
+        p.total_read2,
+    )
 }
 
 #[cfg(test)]
@@ -101,7 +87,7 @@ mod tests {
         };
         assert_eq!(
             render_single_table(&profile),
-            "Position\tInsert_nt\tNon_insert_nt\n0\t1.0\t3.0\n1\t3.0\t1.0"
+            "Position\tInsert_nt\tNon_insert_nt\n0\t1.0\t3.0\n1\t3.0\t1.0\n"
         );
     }
 
@@ -120,7 +106,7 @@ read_pos=c(0,1)\n\
 insert_count=c(1.0,3.0)\n\
 noninsert_count= 4 - insert_count\n\
 plot(read_pos, insert_count*100/(insert_count+noninsert_count),col=\"blue\",main=\"Insertion profile\",xlab=\"Position of read\",ylab=\"Insertion %\",type=\"b\")\n\
-dev.off()";
+dev.off()\n";
         assert_eq!(output, expected);
     }
 
@@ -146,7 +132,7 @@ read_pos=c(0,1)\n\
 r2_insert_count=c(0.0,1.0)\n\
 r2_noninsert_count = 4 - r2_insert_count\n\
 plot(read_pos, r2_insert_count*100/(r2_insert_count + r2_noninsert_count),col=\"blue\",main=\"Insertion profile\",xlab=\"Position of read (read-2)\",ylab=\"Insertion %\",type=\"b\")\n\
-dev.off()";
+dev.off()\n";
         assert_eq!(output, expected);
     }
 }

@@ -93,25 +93,27 @@ where
     Ok(DeletionProfile { count, del_counts })
 }
 
+/// Every line, including the last, ends with `\n` (upstream's plain
+/// `print(...)` calls each add their own trailing newline).
 pub fn render_deletion_table(p: &DeletionProfile) -> String {
-    let mut lines = vec!["read_position\tdeletion_count".to_string()];
+    let mut out = String::from("read_position\tdeletion_count\n");
     for (k, &c) in p.del_counts.iter().enumerate() {
-        lines.push(format!("{k}\t{c}"));
+        out.push_str(&format!("{k}\t{c}\n"));
     }
-    lines.join("\n")
+    out
 }
 
+/// See `render_deletion_table` for the trailing-newline note (applies
+/// here too, including after the final `dev.off()`).
 pub fn render_deletion_r_script(p: &DeletionProfile, out_prefix: &str) -> String {
     let pos: Vec<String> = (0..p.del_counts.len()).map(|i| i.to_string()).collect();
     let vals: Vec<String> = p.del_counts.iter().map(|c| c.to_string()).collect();
 
-    let mut lines = Vec::new();
-    lines.push(format!("pdf(\"{out_prefix}.deletion_profile.pdf\")"));
-    lines.push(format!("pos=c({})", pos.join(",")));
-    lines.push(format!("value=c({})", vals.join(",")));
-    lines.push("plot(pos,value,type='b', col='blue',xlab=\"Read position (5'->3')\", ylab='Deletion count')".to_string());
-    lines.push("dev.off()".to_string());
-    lines.join("\n")
+    format!(
+        "pdf(\"{out_prefix}.deletion_profile.pdf\")\npos=c({})\nvalue=c({})\nplot(pos,value,type='b', col='blue',xlab=\"Read position (5'->3')\", ylab='Deletion count')\ndev.off()\n",
+        pos.join(","),
+        vals.join(","),
+    )
 }
 
 #[cfg(test)]
@@ -244,7 +246,7 @@ mod tests {
         };
         assert_eq!(
             render_deletion_table(&profile),
-            "read_position\tdeletion_count\n0\t0\n1\t2\n2\t0\n3\t1"
+            "read_position\tdeletion_count\n0\t0\n1\t2\n2\t0\n3\t1\n"
         );
 
         // Independently derived by running the equivalent Python
@@ -254,7 +256,7 @@ mod tests {
 pos=c(0,1,2,3)\n\
 value=c(0,2,0,1)\n\
 plot(pos,value,type='b', col='blue',xlab=\"Read position (5'->3')\", ylab='Deletion count')\n\
-dev.off()";
+dev.off()\n";
         assert_eq!(render_deletion_r_script(&profile, "test_output"), expected);
     }
 }
