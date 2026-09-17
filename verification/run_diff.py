@@ -444,6 +444,20 @@ def ensure_sc_seqlogo_fixture() -> None:
         raise FileNotFoundError(f"missing committed fixture: {fixture}")
 
 
+def ensure_fpkm_uq_fixtures() -> None:
+    fixture_dir = REPO_ROOT / "verification" / "fixtures"
+    required = (
+        fixture_dir / "mock_htseq_count.sh",
+        fixture_dir / "regression_fpkm_uq_genes.info.txt",
+        fixture_dir / "regression_fpkm_uq_dummy.bam",
+        fixture_dir / "regression_fpkm_uq_dummy.gtf",
+    )
+    missing = [str(p) for p in required if not p.is_file()]
+    if missing:
+        raise FileNotFoundError(f"missing committed fixture(s): {missing}")
+    (fixture_dir / "mock_htseq_count.sh").chmod(0o755)
+
+
 CASES: list[Case] = [
     Case(
         name="bam_stat_basic",
@@ -1020,6 +1034,46 @@ CASES: list[Case] = [
         compare_stream="none",
         compare_files=("out.count_matrix.csv",),
         expected_exit_code=1,
+    ),
+    Case(
+        name="fpkm_uq_basic",
+        # The real `htseq-count` isn't in this sandbox's toolchain, so
+        # both sides run against a committed mock script (--htseq-count
+        # points at it directly, no PATH/subprocess-discovery magic
+        # needed) that ignores its real arguments and prints a fixed
+        # count table -- what's under test is calculate_fpkm's own
+        # post-processing, not a real per-alignment scan. Found by this
+        # case: several stderr progress lines were completely missing
+        # (only the summary-table stats were ported, not the earlier
+        # "Read gene information file ..."/"Total genes: N"/"Total
+        # protein-coding genes: N" trio from read_gene_information, nor
+        # the later un-timestamped "Read gene count file to calculate
+        # FPKM and FPKM-UQ: ..." line). Stream comparison isn't used
+        # here (upstream's `printlog` lines carry a LOCAL-time timestamp
+        # this port deliberately renders in UTC instead, an accepted,
+        # disclosed simplification -- see crates/cli/src/bin/fpkm_uq.rs
+        # module docs -- so byte-exact stderr comparison isn't
+        # meaningful); the two DATA files are what actually matter and
+        # both are verified byte-identical.
+        ensure_fixture=ensure_fpkm_uq_fixtures,
+        py_script="FPKM-UQ.py",
+        rust_bin="FPKM_UQ",
+        py_args=lambda scratch_dir: [
+            "--bam", _regression_fixture("regression_fpkm_uq_dummy.bam"),
+            "--gtf", _regression_fixture("regression_fpkm_uq_dummy.gtf"),
+            "--info", _regression_fixture("regression_fpkm_uq_genes.info.txt"),
+            "-o", str(scratch_dir / "out"),
+            "--htseq-count", _regression_fixture("mock_htseq_count.sh"),
+        ],
+        rust_args=lambda scratch_dir: [
+            "--bam", _regression_fixture("regression_fpkm_uq_dummy.bam"),
+            "--gtf", _regression_fixture("regression_fpkm_uq_dummy.gtf"),
+            "--info", _regression_fixture("regression_fpkm_uq_genes.info.txt"),
+            "-o", str(scratch_dir / "out"),
+            "--htseq-count", _regression_fixture("mock_htseq_count.sh"),
+        ],
+        compare_stream="none",
+        compare_files=("out.FPKM-UQ.txt", "out.htseq.counts.txt"),
     ),
 ]
 

@@ -1,0 +1,4 @@
+gene_id	symbol	chrom	start	end	strand	gene_type	x	y	z	exon_length
+ENSG1	GENE1	chr1	0	1000	+	protein_coding	a	b	c	1000
+ENSG2	GENE2	chr1	2000	3000	-	protein_coding	a	b	c	500
+ENSG3	GENE3	chr1	4000	5000	+	lincRNA	a	b	c	200

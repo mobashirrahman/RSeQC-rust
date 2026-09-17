@@ -139,13 +139,25 @@ fn run(args: &Args) -> std::io::Result<()> {
         printlog("Calculate FPKM and FPKM-UQ ...");
     }
 
+    // Upstream: `read_gene_information` itself prints a `printlog` line
+    // plus two plain `\tTotal ...` lines BEFORE returning -- these are
+    // ported here at the call site since the Rust function is pure (no
+    // I/O side effects), but the message sequence must match exactly.
+    printlog(&format!("Read gene information file: {}", args.info_file.display()));
     let gene_info = read_gene_information(BufReader::new(File::open(&args.info_file)?))?;
+    eprintln!("\tTotal genes: {}", gene_info.sizes.len());
+    eprintln!("\tTotal protein-coding genes: {}", gene_info.protein_coding.len());
+
+    printlog(&format!("Read gene count file to calculate 75 percentile count and total count: {count_file}"));
     let all_counts = read_htseq_counts(BufReader::new(File::open(&count_file)?))?;
     let (rows, summary) = calculate_fpkm(&gene_info, &all_counts, args.log_scale)?;
 
     eprintln!("\tTotal protein-coding genes: {}", summary.protein_coding_counts_len);
     eprintln!("\tThe 75 percentile count of protein-coding genes: {:.6}", summary.uq_count);
     eprintln!("\tThe total count of protein-coding genes: {:.6}", summary.total_count as f64);
+    // Upstream: plain `print(..., file=sys.stderr)`, NOT `printlog` --
+    // no timestamp prefix on this one line, unlike its neighbors.
+    eprintln!("Read gene count file to calculate FPKM and FPKM-UQ: {count_file}");
 
     File::create(&fpkm_file)?.write_all(render_fpkm_uq_table(&rows, args.log_scale).as_bytes())?;
 
