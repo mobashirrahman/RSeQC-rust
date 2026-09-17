@@ -7,12 +7,19 @@
 //! qcmodule.SAM method).
 //!
 //! `overlaps_point`: upstream calls `Intersecter.find(position, position)`
-//! -- a literal zero-width query -- but documents it as "whether a 1-bp
-//! interval at position overlaps a region". Implemented here as the
-//! natural reading of that docstring: standard half-open point
-//! containment, `interval.start <= position < interval.end`, since
-//! bx-python's own `Intersecter.find` internals aren't inspectable from
-//! this repo and the docstring is the clearest statement of intent.
+//! -- a literal zero-width query. Despite the docstring's "whether a 1-bp
+//! interval at position overlaps a region", bx-python's actual overlap
+//! test for a zero-width query is `interval.start < position <
+//! interval.end` -- STRICT on both ends, not half-open containment.
+//! Confirmed empirically via `PYTHONPATH=oracle/upstream-src/src
+//! oracle/venv/bin/python3 -c "from bx.intervals.intersection import
+//! Intersecter, Interval; ..."`: `Intersecter().add_interval(Interval(100,
+//! 200)).find(100, 100)` returns `[]` (the start boundary itself is
+//! excluded), while `find(101, 101)`..`find(199, 199)` all match. A
+//! genuinely surprising consequence: a width-1 region (`Interval(100,
+//! 101)`) can NEVER match any point query, since no integer is strictly
+//! between 100 and 101 -- reproduced here exactly, not "fixed", since this
+//! command's whole precedence cascade depends on it.
 
 use std::collections::HashMap;
 use std::io;
@@ -50,13 +57,16 @@ impl RegionSet {
     fn overlaps_point(&self, chrom: &str, position: i64) -> bool {
         let Some(ivs) = self.by_chrom.get(chrom) else { return false };
         // Intervals here are already merged (non-overlapping, sorted), so
-        // binary search for the last interval starting at or before `position`.
+        // binary search for the interval starting at or before `position`.
         match ivs.binary_search_by(|&(s, _)| s.cmp(&position)) {
-            Ok(_) => true,
+            // `position == s` exactly: never overlaps (strict `position >
+            // s` below always fails here), regardless of interval width --
+            // see module docs.
+            Ok(_) => false,
             Err(0) => false,
             Err(idx) => {
                 let (s, e) = ivs[idx - 1];
-                position >= s && position < e
+                position > s && position < e
             }
         }
     }
@@ -316,16 +326,36 @@ mod tests {
     }
 
     #[test]
-    fn overlaps_point_half_open_containment() {
+    fn overlaps_point_strict_both_ends() {
         // Queries use the uppercased form, matching how
         // count_read_distribution() actually calls this (see the
         // uppercasing regression test below for why).
+        //
+        // Verified against real bx-python: `Intersecter().add_interval(
+        // Interval(100, 200)).find(position, position)` for each position
+        // below, via `PYTHONPATH=oracle/upstream-src/src oracle/venv/
+        // bin/python3 -c`. The start boundary itself (100) does NOT
+        // overlap -- bx-python's zero-width point query is strict on
+        // both ends, not half-open containment.
         let rs = region_set(vec![("chr1".to_string(), 100, 200)]);
         assert!(!rs.overlaps_point("CHR1", 99));
-        assert!(rs.overlaps_point("CHR1", 100));
+        assert!(!rs.overlaps_point("CHR1", 100));
+        assert!(rs.overlaps_point("CHR1", 101));
         assert!(rs.overlaps_point("CHR1", 199));
         assert!(!rs.overlaps_point("CHR1", 200));
         assert!(!rs.overlaps_point("CHR2", 150));
+    }
+
+    #[test]
+    fn overlaps_point_width_one_interval_never_matches() {
+        // A genuinely surprising bx-python consequence: no integer is
+        // strictly between 100 and 101, so a single-base region can never
+        // match any point query. Verified via the same real bx-python
+        // probe as above.
+        let rs = region_set(vec![("chr1".to_string(), 100, 101)]);
+        assert!(!rs.overlaps_point("CHR1", 99));
+        assert!(!rs.overlaps_point("CHR1", 100));
+        assert!(!rs.overlaps_point("CHR1", 101));
     }
 
     #[test]

@@ -651,6 +651,71 @@ CASES: list[Case] = [
         compare_files=("out.insertion_profile.xls", "out.insertion_profile.r"),
         normalize_paths=True,
     ),
+    Case(
+        name="bam2fq_single_end",
+        ensure_fixture=ensure_bam_stat_fixture,
+        py_script="bam2fq.py",
+        rust_bin="bam2fq",
+        py_args=lambda scratch_dir: ["-i", _nvc_fixture_path(), "-o", str(scratch_dir / "out"), "-s"],
+        rust_args=lambda scratch_dir: ["-i", _nvc_fixture_path(), "-o", str(scratch_dir / "out"), "-s"],
+        compare_stream="none",
+        compare_files=("out.fastq",),
+    ),
+    Case(
+        name="split_bam_basic",
+        ensure_fixture=ensure_regression_fixtures,
+        py_script="split_bam.py",
+        rust_bin="split_bam",
+        py_args=lambda scratch_dir: [
+            "-i", _nvc_fixture_path(), "-r", _regression_fixture("regression_single_exon.bed12"),
+            "-o", str(scratch_dir / "out"),
+        ],
+        rust_args=lambda scratch_dir: [
+            "-i", _nvc_fixture_path(), "-r", _regression_fixture("regression_single_exon.bed12"),
+            "-o", str(scratch_dir / "out"),
+        ],
+        compare_stream="stdout",
+        required_labels=("Total records",),
+        # BAM byte output is not a fair comparison here: noodles' BGZF
+        # writer and pysam/htslib's produce different compressed bytes
+        # (block boundaries, @PG header line) for logically identical
+        # content -- the stdout record-count report is the real
+        # compatibility signal for this case.
+    ),
+    Case(
+        name="infer_experiment_basic",
+        ensure_fixture=ensure_regression_fixtures,
+        py_script="infer_experiment.py",
+        rust_bin="infer_experiment",
+        py_args=lambda scratch_dir: [
+            "-i", _nvc_fixture_path(), "-r", _regression_fixture("regression_single_exon.bed12"),
+        ],
+        rust_args=lambda scratch_dir: [
+            "-i", _nvc_fixture_path(), "-r", _regression_fixture("regression_single_exon.bed12"),
+        ],
+        compare_stream="both",
+        allow_empty_stream=True,
+    ),
+    Case(
+        name="read_distribution_basic",
+        # stdout only (not "both"): upstream additionally writes
+        # "Processing ... Done"/"Finished" progress lines to stderr that
+        # this port's CLI does not -- a disclosed, accepted difference,
+        # not part of the actual report this case checks. The report
+        # itself has no "label: value" colons (fixed-width columns), so
+        # it needs exact text comparison rather than the labels parser.
+        ensure_fixture=ensure_regression_fixtures,
+        py_script="read_distribution.py",
+        rust_bin="read_distribution",
+        py_args=lambda scratch_dir: [
+            "-i", _nvc_fixture_path(), "-r", _regression_fixture("regression_single_exon.bed12"),
+        ],
+        rust_args=lambda scratch_dir: [
+            "-i", _nvc_fixture_path(), "-r", _regression_fixture("regression_single_exon.bed12"),
+        ],
+        compare_stream="stdout",
+        stream_format="exact",
+    ),
 ]
 
 
