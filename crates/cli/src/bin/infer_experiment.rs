@@ -15,7 +15,8 @@ use rseqc_commands::infer_experiment::{compute_experiment, render_results, GeneR
     about = "Infer RNA-seq library layout and strandedness from a SAM/BAM file."
 )]
 struct Args {
-    /// Input BAM file (SAM-text input is not yet supported).
+    /// Input alignment file in BAM or plain-text SAM format (dispatched by
+    /// the `.bam`/`.sam` extension).
     #[arg(short = 'i', long = "input-file")]
     input_file: PathBuf,
 
@@ -49,8 +50,8 @@ fn run(args: &Args) -> std::io::Result<()> {
         eprintln!("[NOTE: input bed must be 12-column] skipped {skipped} line(s)");
     }
 
-    let (mut reader, header) = rseqc_formats::open_bam(&args.input_file)?;
-    let result = compute_experiment(reader.records(), &header, &gene_ranges, args.sample_size, args.mapq)?;
+    let (header, records) = rseqc_formats::open_alignments(&args.input_file)?;
+    let result = compute_experiment(records, &header, &gene_ranges, args.sample_size, args.mapq)?;
 
     println!("{}", render_results(&result));
     Ok(())

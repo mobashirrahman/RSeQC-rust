@@ -1003,6 +1003,22 @@ CASES: list[Case] = [
         allow_empty_stream=True,
     ),
     Case(
+        name="infer_experiment_sam_text",
+        # DIV-0002/0004: SAM-text input, closed for infer_experiment.py via
+        # open_alignments.
+        ensure_fixture=lambda: (ensure_regression_fixtures(), ensure_bam_stat_sam_fixture()),
+        py_script="infer_experiment.py",
+        rust_bin="infer_experiment",
+        py_args=lambda scratch_dir: [
+            "-i", _bam_stat_sam_fixture_path(), "-r", _regression_fixture("regression_single_exon.bed12"),
+        ],
+        rust_args=lambda scratch_dir: [
+            "-i", _bam_stat_sam_fixture_path(), "-r", _regression_fixture("regression_single_exon.bed12"),
+        ],
+        compare_stream="both",
+        allow_empty_stream=True,
+    ),
+    Case(
         name="split_paired_bam_basic",
         ensure_fixture=ensure_bam_stat_fixture,
         py_script="split_paired_bam.py",
@@ -1123,6 +1139,22 @@ CASES: list[Case] = [
         ],
         rust_args=lambda scratch_dir: [
             "-i", _nvc_fixture_path(), "-r", _regression_fixture("regression_single_exon.bed12"),
+        ],
+        compare_stream="stdout",
+        stream_format="exact",
+    ),
+    Case(
+        name="read_distribution_sam_text",
+        # DIV-0002/0004: SAM-text input, closed for read_distribution.py
+        # via open_alignments.
+        ensure_fixture=lambda: (ensure_regression_fixtures(), ensure_bam_stat_sam_fixture()),
+        py_script="read_distribution.py",
+        rust_bin="read_distribution",
+        py_args=lambda scratch_dir: [
+            "-i", _bam_stat_sam_fixture_path(), "-r", _regression_fixture("regression_single_exon.bed12"),
+        ],
+        rust_args=lambda scratch_dir: [
+            "-i", _bam_stat_sam_fixture_path(), "-r", _regression_fixture("regression_single_exon.bed12"),
         ],
         compare_stream="stdout",
         stream_format="exact",

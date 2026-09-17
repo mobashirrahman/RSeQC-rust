@@ -13,7 +13,8 @@ use rseqc_commands::read_distribution::{count_read_distribution, process_gene_mo
     about = "Summarize read distribution across genomic annotation categories."
 )]
 struct Args {
-    /// Input BAM file (SAM-text input is not yet supported).
+    /// Input alignment file in BAM or plain-text SAM format (dispatched by
+    /// the `.bam`/`.sam` extension).
     #[arg(short = 'i', long = "input-file")]
     input_file: PathBuf,
 
@@ -35,8 +36,8 @@ fn main() -> std::process::ExitCode {
 
 fn run(args: &Args) -> std::io::Result<()> {
     let model = process_gene_model(&args.refgene)?;
-    let (mut reader, header) = rseqc_formats::open_bam(&args.input_file)?;
-    let counts = count_read_distribution(reader.records(), &header, &model)?;
+    let (header, records) = rseqc_formats::open_alignments(&args.input_file)?;
+    let counts = count_read_distribution(records, &header, &model)?;
     println!("{}", render_report(&model, &counts));
     Ok(())
 }

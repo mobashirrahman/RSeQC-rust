@@ -57,19 +57,23 @@ divergences:
 
   - id: DIV-0004
     command_or_api: >
-      Open (8): clipping_profile.py, infer_experiment.py,
-      inner_distance.py, insertion_profile.py, junction_annotation.py,
-      junction_saturation.py, read_distribution.py, RPKM_saturation.py.
-      Closed (4, 2026-09-17): read_NVC.py, read_GC.py, read_duplication.py,
-      read_quality.py -- all migrated to rseqc_formats::open_alignments;
-      each has the identical
-      `if self.bam_format: print("<Read|Load> BAM file ...") else:
-      print("<Read|Load> SAM file ...")` dead-code-else pattern in its
-      own qcmodule/SAM.py function (readsNVC/readGC/readDupRate/
+      Open (6): clipping_profile.py, inner_distance.py,
+      insertion_profile.py, junction_annotation.py, junction_saturation.py,
+      RPKM_saturation.py.
+      Closed (6, 2026-09-17): read_NVC.py, read_GC.py, read_duplication.py,
+      read_quality.py, infer_experiment.py, read_distribution.py -- all
+      migrated to rseqc_formats::open_alignments; the first four share the
+      identical `if self.bam_format: print("<Read|Load> BAM file ...")
+      else: print("<Read|Load> SAM file ...")` dead-code-else pattern in
+      their own qcmodule/SAM.py function (readsNVC/readGC/readDupRate/
       readsQual_boxplot), so each prints "BAM file" even for .sam input,
-      same as bam_stat.py/bam2fq.py. See verification/run_diff.py cases
-      read_NVC_sam_text, read_GC_sam_text, read_duplication_sam_text,
-      read_quality_sam_text.
+      same as bam_stat.py/bam2fq.py; infer_experiment.py/
+      read_distribution.py have no such message at all (custom
+      standalone scripts, not qcmodule.SAM methods), so their migration
+      was a pure open_bam -> open_alignments swap. See
+      verification/run_diff.py cases read_NVC_sam_text, read_GC_sam_text,
+      read_duplication_sam_text, read_quality_sam_text,
+      infer_experiment_sam_text, read_distribution_sam_text.
     description: >
       A first pass at this entry (2026-09-17, superseded within the same
       day) wrongly listed every command whose CLI calls `rseqc_formats::
