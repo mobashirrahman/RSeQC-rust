@@ -106,8 +106,11 @@ upstream, for every case currently exercised. It does **not** mean every possibl
 combination has been tried — see [Limitations](#limitations).
 
 `sc_seqLogo.py` is ⚠️ **partial**: its `.count_matrix.csv` output is fully computed and verified
-correct, but the `.logo.<pdf|png|svg>` sequence-logo image itself is not rendered (no native
-plotting backend implemented yet — see DIV-0016 in `compatibility/divergences.yaml`).
+correct, and `--oformat svg` now produces real, valid sequence-logo images via a native
+from-scratch renderer (`crates/render`) — but `--oformat pdf`/`png` are not yet implemented, and
+the SVG renderer's own known gaps (approximate glyph placement, no `shade_below`/`fade_below`
+support) are documented in `crates/render/src/seqlogo.rs`. See DIV-0016 in
+`compatibility/divergences.yaml`.
 
 Every known, intentional behavioral difference from upstream — including ones that are permanent
 by design (e.g. RNG algorithm differences, timestamped log lines) — is recorded in
@@ -116,11 +119,12 @@ this table, is the authoritative compatibility record.
 
 ## Limitations
 
-- **`sc_seqLogo.py`'s sequence-logo image is not rendered** (DIV-0016) — the single largest
-  remaining feature gap. Needs a native vector-graphics/font-rendering implementation; a real
-  reference to diff against isn't currently available either (the upstream oracle used during
-  development can't produce one in its own environment, due to an unrelated `logomaker`/`pandas`
-  version incompatibility).
+- **`sc_seqLogo.py`'s sequence-logo image rendering is partial** (DIV-0016) — `--oformat svg` is
+  implemented; `pdf`/`png` are not (need real rasterization/font-embedding crates). No two
+  independent renderers can byte-match matplotlib's own image output regardless; a real reference
+  image to visually compare against isn't currently available either (the upstream oracle used
+  during development can't produce one in its own environment, due to an unrelated
+  `logomaker`/`pandas` version incompatibility).
 - **`.cram` input is not supported.** Twelve commands advertise `.bam`/`.sam`/`.cram` upstream;
   this port supports the first two (DIV-0002/0004) but has no CRAM reader yet.
 - **Real biological / held-out dataset validation has not been performed.** Verification so far
