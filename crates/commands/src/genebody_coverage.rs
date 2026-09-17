@@ -21,7 +21,7 @@
 //!   implemented: the CLI enforces `--minimum-length >= 100`, and
 //!   `genebody_percentile` only keeps transcripts whose base count is
 //!   >= that cutoff, so `percentile_list`'s `len(N) < 100` early return
-//!   is unreachable from this command and intentionally not ported.
+//!   > is unreachable from this command and intentionally not ported.
 //! - Distinct genomic positions among the 100 percentile picks are
 //!   DEDUPLICATED (`{position: 0.0 for position in positions}` is a
 //!   Python dict keyed by position) before coverage is computed and
@@ -115,6 +115,7 @@ pub fn genebody_percentile(reader: impl BufRead, mrna_length_cutoff: i64) -> io:
             continue;
         }
 
+        #[allow(clippy::type_complexity)]
         let parsed: Option<(String, String, String, Vec<i64>, Vec<i64>)> = (|| {
             let fields: Vec<&str> = line.split_whitespace().collect();
             if fields.len() < 12 {
@@ -290,7 +291,16 @@ pub fn render_coverage_txt(samples: &[(String, Vec<i64>)]) -> String {
         out.push_str(name);
         for v in values {
             out.push('\t');
-            out.push_str(&v.to_string());
+            // The upstream coverage dictionary starts each requested
+            // position as `0.0`; positions observed by pileup are replaced
+            // with an integer count.  Preserve that visible Python `str()`
+            // distinction for the common no-column case rather than
+            // rendering every zero as an integer.
+            if *v == 0 {
+                out.push_str("0.0");
+            } else {
+                out.push_str(&v.to_string());
+            }
         }
         out.push('\n');
     }

@@ -129,22 +129,22 @@ divergences:
       min_base_quality=13 (bases below phred 13 excluded from coverage --
       replicated); and ignore_overlaps=True (overlapping paired-end mates
       at a shared reference position are deduplicated, counting only the
-      higher-quality base once -- NOT replicated in the Rust port, which
-      double-counts such positions). Also, query_length used by
+      higher-quality base once -- now replicated in the Rust port by
+      template-name grouping). The default max_depth=8000 is also enforced
+      per pileup column. Also, query_length used by
       estimate_bg_noise is taken from the read's SEQ length rather than
       reproducing pysam's CIGAR-based inference fallback for a missing SEQ
       ("*"), a case expected to be rare in practice.
     classification: unimplemented-pysam-default
     decision: >
-      flag_filter and min_base_quality defaults are replicated exactly
-      since they are simple, well-defined per-read/per-base checks.
-      ignore_overlaps mate-pair deduplication is NOT implemented -- it
-      requires pairing reads by QNAME and position, a substantially larger
-      undertaking than the rest of this command, and getting it subtly
-      wrong would be worse than a disclosed gap. TIN scores on paired-end
-      BAMs with an appreciable insert-size overlap will run somewhat high
-      relative to upstream until this is implemented.
-    status: accepted
+      flag_filter, min_base_quality, max_depth, and ignore_overlaps are now
+      implemented in the working tree and covered by deterministic oracle
+      regressions. The implementation groups paired pileup bases by QNAME and
+      retains the higher-quality base. This closes the reproduced overlap and
+      depth mismatches for the tested profile, but malformed pairing, unusual
+      QNAME reuse, and exact htslib admission order remain outside the current
+      tiny fixture; retain this item for independent real-data review.
+    status: fixed-working-tree
 
   - id: DIV-0012
     command_or_api: RPKM_saturation.py

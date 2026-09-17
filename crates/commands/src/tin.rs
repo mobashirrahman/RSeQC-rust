@@ -11,13 +11,13 @@
 //! `IndexedReads` pattern as `RNA_fragment_size.py`), not real htslib
 //! random access.
 //!
-//! **Disclosed divergence from `pysam.AlignmentFile.pileup()`'s default
+//! **Pileup defaults are mirrored from `pysam.AlignmentFile.pileup()`**:
 //! behavior**, used un-overridden by upstream's `genebody_coverage`:
 //! `ignore_overlaps=True` (pysam's own default) deduplicates overlapping
 //! paired-end mates at a shared reference position, counting only the
-//! higher-quality base once. This port does NOT implement that
-//! deduplication -- overlapping mate pairs are counted twice here where
-//! upstream counts them once. See `compatibility/divergences.yaml`. The
+//! higher-quality base once. The implementation also applies the default
+//! depth cap and minimum base quality while retaining duplicates in the
+//! fetch-based helpers below.
 //! other two `pileup()` defaults upstream implicitly relies on ARE
 //! replicated: `flag_filter` excludes duplicate-flagged reads (BAM_FDUP)
 //! from coverage -- note this differs from `check_min_reads`/
@@ -46,6 +46,10 @@ use crate::python_fmt::python_str_float;
 /// on whether duplicates count -- see module docs.
 #[derive(Debug, Clone)]
 pub struct IndexedRead {
+    /// Query/template name used to identify paired mates for pileup's
+    /// `ignore_overlaps=True` behavior.
+    pub query_name: String,
+    pub is_paired: bool,
     pub start: i64,
     pub end: i64,
     pub is_duplicate: bool,
@@ -104,6 +108,8 @@ where
         }
 
         by_chrom.entry(chrom).or_default().push(IndexedRead {
+            query_name: record.name().map(|n| n.to_string()).unwrap_or_default(),
+            is_paired: flags.is_segmented(),
             start,
             end: ref_pos,
             is_duplicate: flags.is_duplicate(),
@@ -178,15 +184,50 @@ pub fn genebody_coverage(reads: &[IndexedRead], positions: &[i64], bg_level: f64
     for p1 in distinct {
         let p0 = p1 - 1;
         let mut covered = 0.0;
+        // pysam's pileup() default max_depth is 8000.  The cap is applied
+        // per genomic column before RSeQC filters duplicate/low-quality
+        // pileups, so a deeply stacked locus must not silently contribute
+        // an unbounded count in this in-memory implementation.
+        let mut pileup_depth = 0usize;
+        let mut paired_bases: HashMap<String, (u8, bool)> = HashMap::new();
+        let mut unpaired_bases: Vec<bool> = Vec::new();
         for read in &overlapping {
             for &(bs, be, qstart) in &read.match_blocks {
                 if p0 >= bs && p0 < be {
                     let qidx = qstart + (p0 - bs) as usize;
-                    if read.qualities.get(qidx).is_none_or(|&q| q >= 13) {
-                        covered += 1.0;
+                    let quality = read.qualities.get(qidx).copied().unwrap_or(255);
+                    let passes_quality = quality >= 13;
+                    if read.is_paired && !read.query_name.is_empty() {
+                        let entry = paired_bases.entry(read.query_name.clone()).or_insert((quality, passes_quality));
+                        if quality > entry.0 {
+                            *entry = (quality, passes_quality);
+                        }
+                    } else {
+                        unpaired_bases.push(passes_quality);
                     }
                     break;
                 }
+            }
+        }
+        // Count each unpaired read and each paired template once. The
+        // higher-quality mate wins when both mates cover the same base,
+        // matching pysam's ignore_overlaps=True rule.
+        for passes_quality in unpaired_bases {
+            if pileup_depth >= 8000 {
+                break;
+            }
+            pileup_depth += 1;
+            if passes_quality {
+                covered += 1.0;
+            }
+        }
+        for (_, (_, passes_quality)) in paired_bases {
+            if pileup_depth >= 8000 {
+                break;
+            }
+            pileup_depth += 1;
+            if passes_quality {
+                covered += 1.0;
             }
         }
         coverage.push(covered);
@@ -647,6 +688,54 @@ chr1\t0\t100\ttx2\t0\t+\t0\t100\t0\t1\t100,\t0,
         // Only read_a counts at every position: read_b is a duplicate
         // (excluded), read_c's bases are all below min_base_quality=13.
         assert_eq!(coverage, vec![1.0, 1.0, 1.0]);
+    }
+
+    #[test]
+    fn genebody_coverage_honors_pysam_default_max_depth() {
+        let reads: Vec<IndexedRead> = (0..8001)
+            .map(|_| IndexedRead {
+                query_name: "synthetic".to_string(),
+                is_paired: false,
+                start: 0,
+                end: 20,
+                is_duplicate: false,
+                match_blocks: vec![(0, 20, 0)],
+                qualities: vec![40; 20],
+                query_length: 20,
+            })
+            .collect();
+
+        // pysam.AlignmentFile.pileup() defaults max_depth to 8000.
+        assert_eq!(genebody_coverage(&reads, &[1], 0.0), vec![8000.0]);
+    }
+
+    #[test]
+    fn genebody_coverage_deduplicates_overlapping_mates() {
+        let reads = vec![
+            IndexedRead {
+                query_name: "pair".to_string(),
+                is_paired: true,
+                start: 0,
+                end: 20,
+                is_duplicate: false,
+                match_blocks: vec![(0, 20, 0)],
+                qualities: vec![40; 20],
+                query_length: 20,
+            },
+            IndexedRead {
+                query_name: "pair".to_string(),
+                is_paired: true,
+                start: 10,
+                end: 30,
+                is_duplicate: false,
+                match_blocks: vec![(10, 30, 0)],
+                qualities: vec![40; 20],
+                query_length: 20,
+            },
+        ];
+
+        // The overlap at reference position 11 is one pileup base, not two.
+        assert_eq!(genebody_coverage(&reads, &[11], 0.0), vec![1.0]);
     }
 
     #[test]
