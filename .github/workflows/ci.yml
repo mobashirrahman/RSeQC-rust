@@ -1,0 +1,73 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build-test-lint:
+    name: Build, test, and lint (locked)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      # rust-toolchain.toml pins the exact channel/components (rustfmt,
+      # clippy) this workspace builds with; rustup picks it up
+      # automatically once the toolchain file is present in the checkout.
+      - name: Install pinned Rust toolchain
+        run: rustup show
+
+      - name: Cache cargo registry and build artifacts
+        uses: actions/cache@v6
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-
+
+      # --locked: fail if Cargo.lock is out of date rather than silently
+      # re-resolving dependencies in CI (PORTING_PLAN Step 10: "locked
+      # workspace builds").
+      - name: cargo build --workspace --locked
+        run: cargo build --workspace --locked --release
+
+      - name: cargo test --workspace --locked
+        run: cargo test --workspace --locked
+
+      - name: cargo clippy --workspace --all-targets --locked
+        run: cargo clippy --workspace --all-targets --locked -- -D warnings
+
+      # Exercises scripts/install-aliases.sh end to end (Gate G7's
+      # "commands work without source-tree paths") and confirms an
+      # original-name alias actually runs the compiled binary, not just
+      # that the script exits 0.
+      - name: Install PATH aliases and smoke-test one by original name
+        run: |
+          scripts/install-aliases.sh target/release --copy
+          "$(pwd)/target/release/bam_stat.py" --help >/dev/null
+          echo "bam_stat.py alias smoke test passed"
+
+  fmt-check:
+    name: cargo fmt (advisory, non-blocking)
+    runs-on: ubuntu-latest
+    # Pre-existing formatting drift predates this workflow (see project
+    # notes: `cargo fmt --all -- --check` is not clean repo-wide across
+    # many files untouched by any single change). This job reports drift
+    # without failing the required build-test-lint job above, so PRs
+    # aren't blocked on unrelated files; tighten this once the drift is
+    # cleaned up in its own dedicated change.
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v7
+      - name: Install pinned Rust toolchain
+        run: rustup show
+      - name: cargo fmt --all -- --check
+        run: cargo fmt --all -- --check
