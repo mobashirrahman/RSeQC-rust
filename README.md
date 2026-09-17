@@ -125,8 +125,12 @@ this table, is the authoritative compatibility record.
   image to visually compare against isn't currently available either (the upstream oracle used
   during development can't produce one in its own environment, due to an unrelated
   `logomaker`/`pandas` version incompatibility).
-- **`.cram` input is not supported.** Twelve commands advertise `.bam`/`.sam`/`.cram` upstream;
-  this port supports the first two (DIV-0002/0004) but has no CRAM reader yet.
+- **`.cram` input is now supported** (all 14 commands that accept `.bam`/`.sam` also accept
+  `.cram`), decoded with no external reference file — the common case, matching what `pysam`/
+  `htslib` themselves fall back to when writing CRAM without one configured. A CRAM file that
+  genuinely requires external reference resolution will fail to decode rather than silently
+  producing wrong data; this port does not fetch references over the network the way `htslib` can,
+  by design (see DIV-0002/0004).
 - **Real biological / held-out dataset validation has not been performed.** Verification so far
   is fixture-based differential testing against the real upstream CLI, not large real-world
   datasets. See `testing.md` sections 10-11.
