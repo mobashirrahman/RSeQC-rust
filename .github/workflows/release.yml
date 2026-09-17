@@ -1,0 +1,51 @@
+name: Release
+
+# Triggered by pushing a version tag (e.g. `v0.1.0`). Builds a checksummed
+# distribution archive via scripts/build-release-archive.sh and attaches
+# it to a GitHub Release. Part of PORTING_PLAN.md Step 10/11 ("Produce
+# versioned source archives, supported binary distributions...", "push a
+# reviewable release candidate, and publish the versioned release after
+# gates pass").
+#
+# Single-platform (Linux x86_64, the runner's host triple) only for now
+# -- see build-release-archive.sh's own header comment for what's not
+# covered yet (multi-platform builds, clean-room testing without
+# Python/R/wigToBigWig, a bundled LICENSE file pending DIV-0003).
+
+on:
+  push:
+    tags:
+      - "v*"
+
+env:
+  CARGO_TERM_COLOR: always
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-release:
+    name: Build archive and publish release
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install pinned Rust toolchain
+        run: rustup show
+
+      - name: cargo test --workspace --locked
+        run: cargo test --workspace --locked
+
+      - name: cargo clippy --workspace --all-targets --locked
+        run: cargo clippy --workspace --all-targets --locked -- -D warnings
+
+      - name: Build distribution archive
+        run: scripts/build-release-archive.sh dist
+
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist/*.tar.gz
+            dist/*.tar.gz.sha256
+          generate_release_notes: true
