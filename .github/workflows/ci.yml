@@ -12,13 +12,32 @@ env:
 jobs:
   build-test-lint:
     name: Build, test, and lint (locked)
-    runs-on: ubuntu-latest
+    # Multi-platform matrix (PORTING_PLAN Step 10's "supported binary
+    # distributions" -- this is the build/test/lint slice of that;
+    # scripts/build-release-archive.sh and release.yml remain Linux
+    # x86_64-only for now, see their own doc comments). Each OS's own
+    # native runner, not cross-compilation, since cross-compiling and
+    # testing in one step isn't possible anyway -- native runners also
+    # catch genuine platform-specific bugs (path separators, line
+    # endings, case-sensitivity assumptions) that cross-compilation
+    # alone wouldn't. NOT verified end-to-end in this development
+    # sandbox (which only has a Linux x86_64 toolchain) -- verified
+    # instead by checking each step against documented GitHub Actions
+    # runner behavior; the macOS/Windows legs may need follow-up fixes
+    # once they actually run for the first time.
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v7
 
       # rust-toolchain.toml pins the exact channel/components (rustfmt,
       # clippy) this workspace builds with; rustup picks it up
-      # automatically once the toolchain file is present in the checkout.
+      # automatically once the toolchain file is present in the checkout,
+      # on all three platforms (rustup itself is preinstalled on all of
+      # GitHub's hosted runner images).
       - name: Install pinned Rust toolchain
         run: rustup show
 
@@ -48,8 +67,11 @@ jobs:
       # Exercises scripts/install-aliases.sh end to end (Gate G7's
       # "commands work without source-tree paths") and confirms an
       # original-name alias actually runs the compiled binary, not just
-      # that the script exits 0.
+      # that the script exits 0. Linux-only for now: the script assumes
+      # a bash shell and Linux-style executable names (no `.exe`), and
+      # Windows binary aliasing needs its own handling, not yet written.
       - name: Install PATH aliases and smoke-test one by original name
+        if: runner.os == 'Linux'
         run: |
           scripts/install-aliases.sh target/release --copy
           "$(pwd)/target/release/bam_stat.py" --help >/dev/null
