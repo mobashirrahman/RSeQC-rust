@@ -163,13 +163,13 @@ divergences:
     status: fixed-working-tree
 
   - id: DIV-0006
-    command_or_api: split_paired_bam.py, divide_bam.py
+    command_or_api: split_paired_bam.py, divide_bam.py, split_bam.py
     description: >
       CLOSED 2026-09-17 (with a documented sub-caveat for
-      split_paired_bam.py, see below). Both commands now write a real
-      `.bai` index for each output BAM via a new shared
-      `rseqc_formats::write_bai_index` (uses noodles_bam::fs::index +
-      noodles_bam::bai::fs::write). The `.bai` CONTAINER bytes are never
+      split_paired_bam.py and split_bam.py, see below). All three
+      commands now write a real `.bai` index for each output BAM via a
+      shared `rseqc_formats::write_bai_index` (uses noodles_bam::fs::index
+      + noodles_bam::bai::fs::write). The `.bai` CONTAINER bytes are never
       identical to htslib's own output (different binning-index encoder
       implementation detail) -- verified instead by reading the Rust-
       produced index back with real pysam (`AlignmentFile(...).fetch()`)
@@ -185,25 +185,38 @@ divergences:
       `expect_files` Case field (not byte comparison, for the reason
       above).
 
-      split_paired_bam.py's `--index-output` has NO working live-diff
-      counterpart: upstream's own `index_bam()` calls
-      `pysam.index("-f", str(path))`, and `-f` is not a valid
-      `samtools index` option in any samtools/htslib version (it has
-      never had a force/overwrite flag for this subcommand) -- so
-      `--index-output` crashes on EVERY invocation of the real upstream
-      CLI in this sandbox with "index: invalid option -- 'f'" /
-      "could not index ...; the output BAM may not be coordinate-sorted"
-      regardless of input data. This looks like a genuine upstream typo/
-      bug (perhaps confused with a different tool's `-f` flag), not an
-      intentional behavior worth replicating -- reproducing a universal
-      crash would make the whole flag permanently non-functional in this
-      port for no benefit. This port instead implements the working,
-      intended behavior and discloses the upstream crash here rather
-      than silently diverging.
+      split_paired_bam.py's `--index-output` AND split_bam.py's
+      `--index-output` have NO working live-diff counterpart: both
+      upstream scripts' `index_bam()` helper calls
+      `pysam.index("-f", str(path))` (evidently copy-pasted between the
+      two scripts), and `-f` is not a valid `samtools index` option in
+      any samtools/htslib version (it has never had a force/overwrite
+      flag for this subcommand) -- so `--index-output` crashes on EVERY
+      invocation of both real upstream CLIs in this sandbox with
+      "index: invalid option -- 'f'" / "could not index ...; the output
+      BAM may not be coordinate-sorted" regardless of input data. This
+      looks like a genuine upstream typo/bug (perhaps confused with a
+      different tool's `-f` flag), not an intentional behavior worth
+      replicating -- reproducing a universal crash would make the whole
+      flag permanently non-functional in this port for no benefit. This
+      port instead implements the working, intended behavior and
+      discloses the upstream crash here rather than silently diverging.
+      split_bam.py's migration also fixed two unrelated pre-existing
+      bugs found along the way: "Reading gene model .../Splitting .../
+      Done." were wrongly gated behind `--verbose` (upstream's
+      `logging.info` calls are unconditional at INFO level, same
+      "verbose only raises DEBUG threshold" mistake as
+      split_paired_bam.py had), and a "Loaded exon intervals for N
+      chromosome(s)" line was missing entirely. Verified via live diff
+      (content matches exactly after stripping upstream's timestamp
+      prefix, same DIV-0019-style verification -- not asserted in the
+      automated harness since the timestamp itself can never be
+      byte-reproduced regardless of message content).
     classification: >
       explicit-compatibility-exception (divide_bam.py's --index);
-      upstream-bug (split_paired_bam.py's --index-output crash, see above)
-    decision: Both flags implemented and functional in this port. divide_bam.py's --index verified via live diff against real upstream. split_paired_bam.py's --index-output cannot be live-diffed against a permanently-crashing upstream CLI in this environment; verified instead via a real pysam indexed-fetch probe against the Rust-produced .bai. If a future upstream release fixes the -f typo, re-verify with a live diff at that point.
+      upstream-bug (split_paired_bam.py's and split_bam.py's
+      --index-output crash, see above)
+    decision: All three flags implemented and functional in this port. divide_bam.py's --index verified via live diff against real upstream. split_paired_bam.py's/split_bam.py's --index-output cannot be live-diffed against a permanently-crashing upstream CLI in this environment; verified instead via a real pysam indexed-fetch probe against the Rust-produced .bai. If a future upstream release fixes the -f typo, re-verify with a live diff at that point.
     status: fixed-working-tree
 
   - id: DIV-0007

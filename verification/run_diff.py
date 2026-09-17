@@ -916,6 +916,43 @@ CASES: list[Case] = [
         compare_files=("regression_overlap_pair.tin.xls", "regression_overlap_pair.summary.txt"),
     ),
     Case(
+        name="tin_subtract_background",
+        # -s/--subtract-background branch, not exercised by
+        # tin_pair_overlap above (only the default no-background-
+        # subtraction path). Verified via live diff before formalizing.
+        ensure_fixture=ensure_regression_fixtures,
+        py_script="tin.py",
+        rust_bin="tin",
+        py_args=lambda scratch_dir: [
+            "-i",
+            _regression_fixture("regression_overlap_pair.bam"),
+            "-r",
+            _regression_fixture("regression_single_exon.bed12"),
+            "-c",
+            "0",
+            "-n",
+            "100",
+            "-s",
+            "-o",
+            str(scratch_dir),
+        ],
+        rust_args=lambda scratch_dir: [
+            "-i",
+            _regression_fixture("regression_overlap_pair.bam"),
+            "-r",
+            _regression_fixture("regression_single_exon.bed12"),
+            "-c",
+            "0",
+            "-n",
+            "100",
+            "-s",
+            "-o",
+            str(scratch_dir),
+        ],
+        compare_stream="none",
+        compare_files=("regression_overlap_pair.tin.xls", "regression_overlap_pair.summary.txt"),
+    ),
+    Case(
         name="clipping_profile_basic",
         # Regression case for the defaultdict(int)-vs-float duck-typing
         # bug: an untouched position's Clipped_nt must render as bare "0",

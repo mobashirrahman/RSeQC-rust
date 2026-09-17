@@ -14,9 +14,10 @@
 //! see the read_distribution.py case-normalization bug in project memory
 //! for why both sides matter.
 //!
-//! Known gap: `--index-output` (BAI generation) is accepted by the CLI
-//! but not implemented here -- disclosed follow-up, no BAI writer support
-//! yet (same gap as divide_bam.py/RNA_fragment_size.py).
+//! `.bai` index generation (DIV-0006, closed) is implemented at the CLI
+//! layer via `rseqc_formats::write_bai_index`; this module's own
+//! functions are unaffected -- they only ever write the plain BAM
+//! records.
 
 use std::io;
 
