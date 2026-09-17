@@ -72,6 +72,14 @@ class Case:
     # remains the default, while numeric tables do not fail on Python's
     # harmless `0` versus `0.0` rendering difference.
     numeric_files: tuple[str, ...] = ()
+    # Files whose content should be gunzip-decompressed before comparison
+    # (e.g. bam2fq.py's -c/--compress output). The gzip CONTAINER itself
+    # (compressed bytes, header) is never byte-comparable between the two
+    # implementations regardless of correctness: Python's `gzip.open`
+    # stamps the current wall-clock time into the header on every run, so
+    # even upstream's own output isn't reproducible run-to-run for that
+    # reason -- only the decompressed content is a fair comparison.
+    gzip_files: tuple[str, ...] = ()
     # Exit status expected from both implementations.  A positive
     # compatibility case must therefore not pass merely because both sides
     # failed in the same way.
@@ -298,6 +306,11 @@ def compare_results(case: Case, py_result: RunResult, rust_result: RunResult, py
             continue
         py_bytes = py_file.read_bytes()
         rust_bytes = rust_file.read_bytes()
+        if rel_path in case.gzip_files:
+            import gzip as _gzip
+
+            py_bytes = _gzip.decompress(py_bytes)
+            rust_bytes = _gzip.decompress(rust_bytes)
         if case.normalize_paths:
             py_bytes = py_bytes.replace(str(py_dir).encode(), b"<SCRATCH_DIR>")
             rust_bytes = rust_bytes.replace(str(rust_dir).encode(), b"<SCRATCH_DIR>")
@@ -1015,6 +1028,25 @@ CASES: list[Case] = [
         compare_stream="stderr",
         stream_format="exact",
         compare_files=("out.fastq",),
+    ),
+    Case(
+        name="bam2fq_compress",
+        # DIV-0007: -c/--compress, closed. Uses flate2 at compression
+        # level 9 (matches Python's gzip.open default compresslevel).
+        # The .gz container's own bytes are never comparable (Python's
+        # gzip.open stamps the current wall time into the header on
+        # every run) -- gzip_files decompresses both sides first so only
+        # the actual FASTQ content is compared.
+        ensure_fixture=ensure_bam_stat_fixture,
+        py_script="bam2fq.py",
+        rust_bin="bam2fq",
+        py_args=lambda scratch_dir: ["-i", _nvc_fixture_path(), "-o", str(scratch_dir / "out"), "-s", "-c"],
+        rust_args=lambda scratch_dir: ["-i", _nvc_fixture_path(), "-o", str(scratch_dir / "out"), "-s", "-c"],
+        compare_stream="stderr",
+        stream_format="exact",
+        normalize_paths=True,
+        compare_files=("out.fastq.gz",),
+        gzip_files=("out.fastq.gz",),
     ),
     Case(
         name="split_bam_basic",

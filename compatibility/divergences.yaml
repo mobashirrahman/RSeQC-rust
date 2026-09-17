@@ -175,11 +175,22 @@ divergences:
   - id: DIV-0007
     command_or_api: bam2fq.py
     description: >
-      Upstream's -c/--compress flag gzips the output FASTQ file(s) after
-      writing. Not implemented in the Rust port yet.
+      CLOSED 2026-09-17. `-c/--compress` gzips each output FASTQ file
+      after writing, via the `flate2` crate at compression level 9
+      (matches Python's `gzip.open` default `compresslevel`). Verified
+      via live diff: stderr's "Compressing <path> ..."/"Compression
+      complete." lines match exactly, and the DECOMPRESSED content of
+      both sides' .gz output is byte-identical (see
+      verification/run_diff.py case bam2fq_compress). The .gz
+      CONTAINER's own bytes are not, and cannot be, byte-identical
+      between the two sides: Python's `gzip.open(path, 'wb')` stamps the
+      current wall-clock time into the gzip header on every run, so even
+      two runs of the real upstream CLI never produce identical .gz
+      bytes for the same input -- this is not a divergence to fix, just
+      an inherent property of the format upstream itself has.
     classification: explicit-compatibility-exception
-    decision: Disclosed follow-up (likely via the `flate2` crate); not a scientific-correctness gap, low priority.
-    status: open
+    decision: Closed. Compressed FASTQ/FASTA INPUT (a separate, still-open gap for sc_seqQual.py/sc_seqLogo.py, not covered by this entry) can reuse the same flate2 dependency once undertaken.
+    status: fixed-working-tree
 
   - id: DIV-0008
     command_or_api: read_NVC.py

@@ -9,10 +9,13 @@
 //! reads are reverse-complemented; in paired mode, a record that is neither
 //! read1 nor read2 is silently dropped (no `else` branch upstream).
 //!
-//! Known gap: `-c/--compress` (gzip output) is not implemented here yet —
-//! disclosed follow-up (DIV-0007). SAM-text input (DIV-0002/0004) is
-//! supported at the CLI layer via `rseqc_formats::open_alignments`; this
-//! module's own functions were unaffected (already generic over
+//! `-c/--compress` (DIV-0007, closed) is implemented at the CLI layer
+//! (gzips each output file post-write via `flate2`, matching upstream's
+//! `gzip_outputs`); this module's own functions are unaffected -- they
+//! only ever write the plain, uncompressed FASTQ text. SAM-text input
+//! (DIV-0002/0004) is supported at the CLI layer via
+//! `rseqc_formats::open_alignments`; this module's own functions were
+//! unaffected (already generic over
 //! `IntoIterator<Item = io::Result<bam::Record>>`).
 
 use std::io::{self, Write};
