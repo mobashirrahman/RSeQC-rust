@@ -1278,6 +1278,33 @@ CASES: list[Case] = [
         compare_files=("out.eRPKM.xls", "out.rawCount.xls", "out.saturation.r"),
         normalize_paths=True,
     ),
+    Case(
+        name="genebody_coverage2_basic",
+        # Found by this case: the per-gene progress line
+        # ("\t<n> genes finished\r", end=' ') was missing its trailing
+        # space from `end=' '` -- the literal's own `\r` was already
+        # correctly ported, just not the separate end-of-print space
+        # that follows it. Exercises both track_model.bed12 transcripts
+        # (a single-exon 100bp-boundary one and a two-exon one whose
+        # first exon alone clears the legacy 100bp filter, see DIV-0014
+        # in make_track_fixtures.py's own docstring) against real
+        # signal data.
+        ensure_fixture=ensure_track_fixtures,
+        py_script="geneBody_coverage2.py",
+        rust_bin="geneBody_coverage2",
+        py_args=lambda scratch_dir: [
+            "-i", _track_fixture("track_signal.bw"), "-r", _track_fixture("track_model.bed12"),
+            "-o", str(scratch_dir / "out"), "--skip-plot",
+        ],
+        rust_args=lambda scratch_dir: [
+            "-i", _track_fixture("track_signal.bw"), "-r", _track_fixture("track_model.bed12"),
+            "-o", str(scratch_dir / "out"), "--skip-plot",
+        ],
+        compare_stream="stderr",
+        stream_format="exact",
+        compare_files=("out.geneBodyCoverage.txt", "out.geneBodyCoverage_plot.r"),
+        normalize_paths=True,
+    ),
 ]
 
 

@@ -122,7 +122,9 @@ pub fn coverage_gene_body_bigwig(bw: &mut BigWigReader, refbed: impl BufRead) ->
             coverage[index] += if v.is_nan() { 0.0 } else { v as f64 };
         }
 
-        eprint!("\t{gene_count} genes finished\r");
+        // Upstream: `print(f"\t{gene_count} genes finished\r", end=' ')`
+        // -- the literal's own `\r` plus a trailing space from `end`.
+        eprint!("\t{gene_count} genes finished\r ");
     }
     eprintln!();
 
