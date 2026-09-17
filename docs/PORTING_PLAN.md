@@ -1,7 +1,17 @@
 # RSeQC full-port execution plan
 
-Status: planning only; no implementation or GitHub publication has been performed.
-Prepared: 2026-09-16.
+Original roadmap prepared: 2026-09-16. Implementation has since begun; the
+numbered steps below describe required work, not completed gates.
+
+For the 2026-09-17 implementation audit, scientific validation protocol,
+all-command test matrix, and publication/performance acceptance criteria, see
+[testing.md](../testing.md). Current compatibility evidence and limitations are
+summarized in [compatibility.md](compatibility.md).
+
+The working tree has completed only the first executable regression slice: the
+fail-closed differential runner, its harness tests, and focused regressions for
+the currently repaired FPKM/CIGAR-span/gene-body/TIN behaviors. Treat the
+remaining numbered gates as open until their stated evidence is produced.
 
 ## Objective and decisions
 

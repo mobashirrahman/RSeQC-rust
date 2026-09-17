@@ -29,14 +29,35 @@ explicitly rather than collapsed into a single "compatible" claim.
 
 ## Status
 
-No command has passed a differential verification run yet — the verification
-harness (`verification/`, PORTING_PLAN.md Step 4) does not exist yet. The
-`bam_stat` vertical slice (Step 5) is in progress: a from-scratch Rust
-implementation exists and has its own independent unit tests (hand-computed
-expected values from synthetic fixtures), but it has NOT been differentially
-compared against the oracle. Do not read "has a Rust implementation" as "is
-compatibility-verified" anywhere in this repo until Step 4/5 gates close.
+As reviewed on 2026-09-17 at implementation commit
+`b52114315e98e84b201dc769ddf750125570b1a0`, all 33 commands have implementation
+attempts, the locked release build succeeds, and 224 Rust unit tests pass.
+The [differential runner](../verification/run_diff.py) exists and its five basic
+cases pass against the local oracle: bam_stat, read_NVC, read_GC,
+read_duplication, and read_quality. These cases reuse one small BAM and check
+selected outputs; they do not establish full compatibility for those commands.
+
+The deeper audit reproduced false-pass paths in the runner and scientific
+mismatches in FPKM_count, RNA_fragment_size, and geneBody_coverage. Native
+rendering, standalone execution of all commands, and Python API compatibility
+remain incomplete. No publication, full-compatibility, or speedup claim is
+established by the current test results.
+
+The [scientific testing plan](../testing.md) records the audit evidence,
+reproducer recipes, all-command test matrix, and separate acceptance gates for
+scientific validity, compatibility, performance, and released artifacts.
+
+Since that historical audit, the working tree has an executable first regression
+gate: 11 differential cases pass against the pinned local oracle, including
+focused FPKM, CIGAR-span, gene-body, and TIN overlap/depth fixtures; the
+runner's eight unit tests pass; and strict workspace Clippy is clean. These are
+restricted regression results, not evidence that the full 33-command/API,
+standalone, real-data, or publication gates are complete. See the working-tree
+gate note in [testing.md](../testing.md) and retain the historical revision
+numbers above when comparing reports.
 
 See `compatibility/commands.yaml` and `compatibility/api.yaml` for the full
 inventory, and `compatibility/divergences.yaml` for the known-divergence
-ledger.
+ledger. Newly audited issues in `testing.md` must also be reviewed and migrated
+into the versioned issue/divergence records as the plan is implemented; the
+existing ledger is not yet an exhaustive account of known risks.
