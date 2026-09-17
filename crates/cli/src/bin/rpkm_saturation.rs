@@ -48,7 +48,8 @@ fn parse_strand_rule(rule: &str) -> Result<std::collections::HashMap<String, cha
 #[derive(Parser)]
 #[command(name = "RPKM_saturation.py", about = "Assess whether transcript RPKM estimates have reached sequencing saturation.")]
 struct Args {
-    /// Input alignment file in BAM format. SAM is not supported.
+    /// Input alignment file in BAM or plain-text SAM format (dispatched by
+    /// the `.bam`/`.sam` extension).
     #[arg(short = 'i', long = "input-file")]
     input_file: PathBuf,
 
@@ -111,13 +112,16 @@ fn run(args: &Args) -> std::io::Result<()> {
     };
     let strand_rule_active = args.strand_rule.is_some();
 
-    // Upstream: `print("Load BAM file ... ", end=' ')` -- the literal's
-    // own trailing space plus `end=' '` gives TWO spaces before "Done"
-    // (verified via a live python3 -c probe), then a separate
-    // `print("Done")` on the same line.
+    // Upstream: `if self.bam_format: print("Load BAM file ... ", end=' ')
+    // else: print("Load SAM file ... ", end=' ')` -- dead-code else
+    // branch, same as bam_stat.py and others (pysam.Samfile(path, 'rb')
+    // succeeds for genuine .sam content too). The literal's own trailing
+    // space plus `end=' '` gives TWO spaces before "Done" (verified via
+    // a live python3 -c probe), then a separate `print("Done")` on the
+    // same line.
     eprint!("Load BAM file ...  ");
-    let (mut reader, header) = rseqc_formats::open_bam(&args.input_file)?;
-    let mut lists = build_block_lists(reader.records(), &header, true, args.map_qual, strand_rule_active, &strand_map)?;
+    let (header, records) = rseqc_formats::open_alignments(&args.input_file)?;
+    let mut lists = build_block_lists(records, &header, true, args.map_qual, strand_rule_active, &strand_map)?;
     eprintln!("Done");
 
     eprint!("shuffling alignments ... ");

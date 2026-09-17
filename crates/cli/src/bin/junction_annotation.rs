@@ -18,7 +18,8 @@ use rseqc_commands::junction_annotation::{
     about = "Annotate splice junctions against a reference gene model."
 )]
 struct Args {
-    /// Input BAM file (SAM-text input is not yet supported).
+    /// Input alignment file in BAM or plain-text SAM format (dispatched by
+    /// the `.bam`/`.sam` extension).
     #[arg(short = 'i', long = "input-file")]
     input_file: PathBuf,
 
@@ -77,9 +78,13 @@ fn run(args: &Args) -> std::io::Result<ExitCode> {
     let model = build_model(BufReader::new(refgene_file))?;
     eprintln!("Done");
 
+    // Upstream: `if self.bam_format: print("Load BAM file ... ", end=' ')
+    // else: print("Load SAM file ... ", end=' ')` -- dead-code else
+    // branch, same as bam_stat.py and others (pysam.Samfile(path, 'rb')
+    // succeeds for genuine .sam content too).
     eprint!("Load BAM file ...  ");
-    let (mut reader, header) = rseqc_formats::open_bam(&args.input_file)?;
-    let result = compute_junction_annotation(reader.records(), &header, &model, args.mapq, args.min_intron)?;
+    let (header, records) = rseqc_formats::open_alignments(&args.input_file)?;
+    let result = compute_junction_annotation(records, &header, &model, args.mapq, args.min_intron)?;
     eprintln!("Done");
 
     // Upstream: `print("total = " + str(total_junc))` -- unconditional,

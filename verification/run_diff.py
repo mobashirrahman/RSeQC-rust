@@ -495,6 +495,19 @@ def ensure_rpkm_saturation_fixture() -> None:
     subprocess.run([str(ORACLE_PYTHON), str(generator), str(fixture_dir / "rpkm_saturation_basic.bam")], cwd=REPO_ROOT, check=True)
 
 
+def ensure_rpkm_saturation_sam_fixture() -> None:
+    # Same single alignment as rpkm_saturation_basic.bam, re-encoded as
+    # plain-text SAM -- preserves the "exactly one qualifying alignment"
+    # shuffle-order-independence property (see make_rpkm_saturation_
+    # fixture.py's docstring).
+    ensure_rpkm_saturation_fixture()
+    fixture = REPO_ROOT / "verification" / "fixtures" / "rpkm_saturation_basic.sam"
+    if fixture.is_file():
+        return
+    generator = REPO_ROOT / "verification" / "fixtures" / "make_rpkm_saturation_sam_fixture.py"
+    subprocess.run([str(ORACLE_PYTHON), str(generator), str(fixture)], cwd=REPO_ROOT, check=True)
+
+
 def ensure_track_fixtures() -> None:
     """BigWig/WIG-family fixtures (bam2wig.py, geneBody_coverage2.py,
     normalize_bigwig.py, overlay_bigwig.py). Regenerated via pyBigWig +
@@ -907,6 +920,24 @@ CASES: list[Case] = [
         normalize_paths=True,
     ),
     Case(
+        name="clipping_profile_sam_text",
+        # DIV-0002/0004: SAM-text input, closed for clipping_profile.py
+        # via open_alignments.
+        ensure_fixture=ensure_bam_stat_sam_fixture,
+        py_script="clipping_profile.py",
+        rust_bin="clipping_profile",
+        py_args=lambda scratch_dir: [
+            "-i", _bam_stat_sam_fixture_path(), "-o", str(scratch_dir / "out"), "-s", "SE", "--skip-plot",
+        ],
+        rust_args=lambda scratch_dir: [
+            "-i", _bam_stat_sam_fixture_path(), "-o", str(scratch_dir / "out"), "-s", "SE", "--skip-plot",
+        ],
+        compare_stream="stderr",
+        stream_format="exact",
+        compare_files=("out.clipping_profile.xls", "out.clipping_profile.r"),
+        normalize_paths=True,
+    ),
+    Case(
         name="insertion_profile_basic",
         # Same DIV-0005 fix pattern as clipping_profile.py (identical
         # code structure upstream): missing --skip-plot/--rscript,
@@ -919,6 +950,24 @@ CASES: list[Case] = [
             "-i", _nvc_fixture_path(), "-o", str(scratch_dir / "out"), "-s", "SE", "--skip-plot",
         ],
         rust_args=lambda scratch_dir: ["-i", _nvc_fixture_path(), "-o", str(scratch_dir / "out"), "-s", "SE", "--skip-plot"],
+        compare_stream="stderr",
+        stream_format="exact",
+        compare_files=("out.insertion_profile.xls", "out.insertion_profile.r"),
+        normalize_paths=True,
+    ),
+    Case(
+        name="insertion_profile_sam_text",
+        # DIV-0002/0004: SAM-text input, closed for insertion_profile.py
+        # via open_alignments.
+        ensure_fixture=ensure_bam_stat_sam_fixture,
+        py_script="insertion_profile.py",
+        rust_bin="insertion_profile",
+        py_args=lambda scratch_dir: [
+            "-i", _bam_stat_sam_fixture_path(), "-o", str(scratch_dir / "out"), "-s", "SE", "--skip-plot",
+        ],
+        rust_args=lambda scratch_dir: [
+            "-i", _bam_stat_sam_fixture_path(), "-o", str(scratch_dir / "out"), "-s", "SE", "--skip-plot",
+        ],
         compare_stream="stderr",
         stream_format="exact",
         compare_files=("out.insertion_profile.xls", "out.insertion_profile.r"),
@@ -1085,6 +1134,25 @@ CASES: list[Case] = [
         compare_files=("out.junction.xls", "out.junction_plot.r"),
     ),
     Case(
+        name="junction_annotation_sam_text",
+        # DIV-0002/0004: SAM-text input, closed for junction_annotation.py
+        # via open_alignments.
+        ensure_fixture=lambda: (ensure_regression_fixtures(), ensure_bam_stat_sam_fixture()),
+        py_script="junction_annotation.py",
+        rust_bin="junction_annotation",
+        py_args=lambda scratch_dir: [
+            "-i", _bam_stat_sam_fixture_path(), "-r", _regression_fixture("regression_single_exon.bed12"),
+            "-o", str(scratch_dir / "out"),
+        ],
+        rust_args=lambda scratch_dir: [
+            "-i", _bam_stat_sam_fixture_path(), "-r", _regression_fixture("regression_single_exon.bed12"),
+            "-o", str(scratch_dir / "out"),
+        ],
+        compare_stream="both",
+        stream_format="exact",
+        compare_files=("out.junction.xls", "out.junction_plot.r"),
+    ),
+    Case(
         name="junction_annotation_with_junction",
         # Real splice read (20M100N20M) against a single-exon model with
         # no annotated introns -- exercises the "complete_novel"
@@ -1116,6 +1184,26 @@ CASES: list[Case] = [
         ],
         rust_args=lambda scratch_dir: [
             "-i", _nvc_fixture_path(), "-r", _regression_fixture("regression_single_exon.bed12"),
+            "-o", str(scratch_dir / "out"),
+        ],
+        compare_stream="stderr",
+        stream_format="exact",
+        compare_files=("out.inner_distance.txt", "out.inner_distance_freq.txt", "out.inner_distance_plot.r"),
+        normalize_paths=True,
+    ),
+    Case(
+        name="inner_distance_sam_text",
+        # DIV-0002/0004: SAM-text input, closed for inner_distance.py via
+        # open_alignments.
+        ensure_fixture=lambda: (ensure_regression_fixtures(), ensure_bam_stat_sam_fixture()),
+        py_script="inner_distance.py",
+        rust_bin="inner_distance",
+        py_args=lambda scratch_dir: [
+            "-i", _bam_stat_sam_fixture_path(), "-r", _regression_fixture("regression_single_exon.bed12"),
+            "-o", str(scratch_dir / "out"),
+        ],
+        rust_args=lambda scratch_dir: [
+            "-i", _bam_stat_sam_fixture_path(), "-r", _regression_fixture("regression_single_exon.bed12"),
             "-o", str(scratch_dir / "out"),
         ],
         compare_stream="stderr",
@@ -1233,6 +1321,35 @@ CASES: list[Case] = [
             "-i", _regression_fixture("regression_fpkm_fetch_span.bam"),
             "-r", _regression_fixture("regression_splice_fetch.bed12"),
             "-m", "10", "-o", str(scratch_dir / "out"), "--skip-plot",
+        ],
+        compare_stream="both",
+        stream_format="exact",
+        compare_files=("out.junctionSaturation_plot.r",),
+        normalize_paths=True,
+    ),
+    Case(
+        name="junction_saturation_sam_text",
+        # DIV-0002/0004: SAM-text input, closed for junction_saturation.py
+        # via open_alignments. Reuses bam_stat_basic.sam (no spliced
+        # reads against this BED) rather than a dedicated .sam conversion
+        # of regression_fpkm_fetch_span.bam -- the SAM-text round-trip
+        # risk is data-independent (already exercised by 8 other
+        # commands' cases), so this only needs to prove the code path
+        # runs and matches real upstream, not re-exercise the splice
+        # counting logic itself (already covered by junction_saturation_
+        # basic on the .bam fixture).
+        ensure_fixture=lambda: (ensure_regression_fixtures(), ensure_bam_stat_sam_fixture()),
+        py_script="junction_saturation.py",
+        rust_bin="junction_saturation",
+        py_args=lambda scratch_dir: [
+            "-i", _bam_stat_sam_fixture_path(),
+            "-r", _regression_fixture("regression_single_exon.bed12"),
+            "-o", str(scratch_dir / "out"), "--skip-plot",
+        ],
+        rust_args=lambda scratch_dir: [
+            "-i", _bam_stat_sam_fixture_path(),
+            "-r", _regression_fixture("regression_single_exon.bed12"),
+            "-o", str(scratch_dir / "out"), "--skip-plot",
         ],
         compare_stream="both",
         stream_format="exact",
@@ -1518,6 +1635,32 @@ CASES: list[Case] = [
         ],
         rust_args=lambda scratch_dir: [
             "-i", _regression_fixture("rpkm_saturation_basic.bam"),
+            "-r", _regression_fixture("rpkm_saturation_model.bed12"),
+            "-o", str(scratch_dir / "out"), "--skip-plot",
+        ],
+        compare_stream="stderr",
+        stream_format="exact",
+        compare_files=("out.eRPKM.xls", "out.rawCount.xls", "out.saturation.r"),
+        normalize_paths=True,
+    ),
+    Case(
+        name="rpkm_saturation_sam_text",
+        # DIV-0002/0004: SAM-text input, closed for RPKM_saturation.py via
+        # open_alignments. Must reuse the dedicated one-alignment fixture
+        # (not bam_stat_basic.sam, which has 10 alignments and is NOT
+        # shuffle-order-independent -- confirmed by this case genuinely
+        # FAILING intermittently the first time it was tried with that
+        # fixture, a fixture-choice mistake, not a code bug).
+        ensure_fixture=ensure_rpkm_saturation_sam_fixture,
+        py_script="RPKM_saturation.py",
+        rust_bin="RPKM_saturation",
+        py_args=lambda scratch_dir: [
+            "-i", str(REPO_ROOT / "verification" / "fixtures" / "rpkm_saturation_basic.sam"),
+            "-r", _regression_fixture("rpkm_saturation_model.bed12"),
+            "-o", str(scratch_dir / "out"), "--skip-plot",
+        ],
+        rust_args=lambda scratch_dir: [
+            "-i", str(REPO_ROOT / "verification" / "fixtures" / "rpkm_saturation_basic.sam"),
             "-r", _regression_fixture("rpkm_saturation_model.bed12"),
             "-o", str(scratch_dir / "out"), "--skip-plot",
         ],

@@ -10,6 +10,11 @@
 //! the read scan is purely sequential, matching upstream's own
 //! `next(self.samfile)` loop.
 //!
+//! SAM-text input (DIV-0002/0004) is supported at the CLI layer via
+//! `rseqc_formats::open_alignments`; this module's own functions were
+//! unaffected (already generic over
+//! `IntoIterator<Item = io::Result<bam::Record>>`).
+//!
 //! **Preserves several deliberate upstream quirks, do not "fix"**:
 //! - Exon coordinates contribute a SINGLE MIDPOINT per exon block
 //!   (`exon_start + (exon_len // 2)`), not the full exon span, to the

@@ -18,7 +18,8 @@ use rseqc_commands::inner_distance::{
     about = "Estimate the inner distance between paired-end RNA-seq reads."
 )]
 struct Args {
-    /// Input BAM file (SAM-text input is not yet supported).
+    /// Input alignment file in BAM or plain-text SAM format (dispatched by
+    /// the `.bam`/`.sam` extension).
     #[arg(short = 'i', long = "input-file")]
     input_file: PathBuf,
 
@@ -76,12 +77,17 @@ fn run(args: &Args) -> std::io::Result<()> {
     eprintln!("Get exon regions from {} ...", args.refgene.display());
     let model = build_model(&args.refgene)?;
 
-    // Upstream: `print("Load BAM file ... ", end=' ', file=sys.stderr)`,
-    // then (only on natural iterator exhaustion, not on hitting
-    // `sample_size`) `print("Done", file=sys.stderr)`.
+    // Upstream: `if self.bam_format: print("Load BAM file ... ", end=' ')
+    // else: print("Load SAM file ... ", end=' ')`, then (only on natural
+    // iterator exhaustion, not on hitting `sample_size`) `print("Done",
+    // file=sys.stderr)`. `self.bam_format` comes from `pysam.Samfile(path,
+    // 'rb')` succeeding, which it does even for genuine plain-text SAM
+    // content (htslib auto-detects, ignoring the 'b' mode hint; confirmed
+    // via a live diff for bam_stat.py and others, same underlying pysam
+    // call here) -- the "Load SAM file" branch is practically dead code.
     eprint!("Load BAM file ...  ");
-    let (mut reader, header) = rseqc_formats::open_bam(&args.input_file)?;
-    let result = compute_inner_distance(reader.records(), &header, &model, args.mapq, args.sample_size)?;
+    let (header, records) = rseqc_formats::open_alignments(&args.input_file)?;
+    let result = compute_inner_distance(records, &header, &model, args.mapq, args.sample_size)?;
     if result.loop_exhausted_naturally {
         eprintln!("Done");
     }

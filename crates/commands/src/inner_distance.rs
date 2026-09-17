@@ -4,6 +4,16 @@
 //! in `oracle/upstream-src/src/qcmodule/SAM.py` (lines 3578-3750). The most
 //! involved command ported so far -- see module-level notes on each
 //! preserved upstream quirk below.
+//!
+//! SAM-text input (DIV-0002/0004) is supported at the CLI layer via
+//! `rseqc_formats::open_alignments`; this module's own functions were
+//! unaffected (already generic over
+//! `IntoIterator<Item = io::Result<bam::Record>>`). Note `open_alignments`
+//! decodes the whole file eagerly, so the `sample_size` early-exit no
+//! longer avoids reading records past the cap for large inputs -- a
+//! documented, accepted tradeoff (see `open_alignments`'s own doc
+//! comment), not a correctness gap: the computed result is identical
+//! either way.
 
 use std::collections::{HashMap, HashSet};
 use std::io;

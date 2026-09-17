@@ -20,7 +20,8 @@ use rseqc_commands::junction_saturation::{
     about = "Assess whether splice-junction discovery has reached sequencing saturation."
 )]
 struct Args {
-    /// Input BAM file (SAM-text input is not yet supported).
+    /// Input alignment file in BAM or plain-text SAM format (dispatched by
+    /// the `.bam`/`.sam` extension).
     #[arg(short = 'i', long = "input-file")]
     input_file: PathBuf,
 
@@ -87,12 +88,14 @@ fn run(args: &Args) -> std::io::Result<()> {
     let (known_sites, chrom_list) = build_known_splice_sites(BufReader::new(refgene_file))?;
     eprintln!("Done! Total {} known splicing junctions.", known_sites.len());
 
-    // Upstream: `print("Load BAM file ... ", end=' ')` (BAM-only in this
-    // port, so always the BAM branch, never "Load SAM file").
+    // Upstream: `if self.bam_format: print("Load BAM file ... ", end=' ')
+    // else: print("Load SAM file ... ", end=' ')` -- dead-code else
+    // branch, same as bam_stat.py and others (pysam.Samfile(path, 'rb')
+    // succeeds for genuine .sam content too).
     eprint!("Load BAM file ...  ");
-    let (mut reader, header) = rseqc_formats::open_bam(&args.input_file)?;
+    let (header, records) = rseqc_formats::open_alignments(&args.input_file)?;
     let mut sites = collect_splice_sites(
-        reader.records(),
+        records,
         &header,
         &chrom_list,
         args.map_qual,
