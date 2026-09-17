@@ -9,6 +9,7 @@ pub mod divide_bam;
 pub mod fpkm_count;
 pub mod fpkm_uq;
 pub mod genebody_coverage;
+pub mod genebody_coverage2;
 pub mod clipping_profile;
 pub mod deletion_profile;
 pub mod infer_experiment;

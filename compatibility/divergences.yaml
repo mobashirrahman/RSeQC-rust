@@ -188,3 +188,26 @@ divergences:
       --percentile-step >= --percentile-ceiling - --percentile-floor).
       Not writing a broken partial file is strictly better behavior.
     status: accepted
+
+  - id: DIV-0014
+    command_or_api: geneBody_coverage2.py
+    description: >
+      The "skip transcripts shorter than 100bp" check in
+      coverage_gene_body_bigwig() is misplaced INSIDE the per-exon
+      accumulation loop (checked and breaking immediately after each
+      exon is added) rather than after the full loop completes (contrast
+      geneBody_coverage.py's sibling function, which checks the total
+      length only once, after accumulating every exon). Because the
+      running total only ever grows, a multi-exon transcript is skipped
+      entirely unless its FIRST exon alone already has >=100 bases, even
+      if the full spliced transcript is well over 100bp. Most real
+      multi-exon transcripts with small individual exons therefore fail
+      this filter and are silently excluded, regardless of total mRNA
+      length.
+    classification: upstream-bug
+    decision: >
+      Preserved exactly, same rationale as DIV-0008/DIV-0009/DIV-0010:
+      this project replicates upstream algorithmic behavior faithfully,
+      including bugs, and documents them here rather than silently
+      "fixing" them.
+    status: accepted

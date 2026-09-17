@@ -137,6 +137,11 @@ path = "src/bin/bam2wig.rs"
 name = "geneBody_coverage"
 path = "src/bin/genebody_coverage.rs"
 
+[[bin]]
+# Same naming note as above: packaging aliases this to `geneBody_coverage2.py`.
+name = "geneBody_coverage2"
+path = "src/bin/genebody_coverage2.rs"
+
 [dependencies]
 rseqc-core = { path = "../core" }
 rseqc-formats = { path = "../formats" }
