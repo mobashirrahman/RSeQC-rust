@@ -84,8 +84,7 @@ fn ensure_r_dependencies(rscript: &str, install_missing: bool, cran_mirror: &str
         return Ok(());
     }
     if !install_missing {
-        return Err(std::io::Error::new(
-            std::io::ErrorKind::Other,
+        return Err(std::io::Error::other(
             "R package 'pheatmap' is not installed. Install it with \"Rscript -e \\\"install.packages('pheatmap', repos='https://cloud.r-project.org')\\\"\", rerun with --install-r-deps, or use --skip-heatmap.",
         ));
     }

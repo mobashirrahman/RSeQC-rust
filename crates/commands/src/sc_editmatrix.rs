@@ -193,6 +193,7 @@ pub fn render_edit_matrix_csv(corrected_bases: &BTreeMap<i64, BTreeMap<String, i
 /// Renders the `pheatmap` R script. Ports `heatmap.make_heatmap`'s
 /// R-code-generation half (the `Rscript`-invocation half is a CLI
 /// concern, not part of this pure function).
+#[allow(clippy::too_many_arguments)]
 pub fn render_heatmap_r_script(infile: &str, outfile_prefix: &str, filetype: &str, cell_width: i64, cell_height: i64, col_angle: i64, font_size: i64, text_color: &str, no_numbers: bool, log2_scale: bool) -> String {
     let mut out = String::new();
     out.push_str("if(!require(pheatmap)){install.packages(\"pheatmap\")}\n");

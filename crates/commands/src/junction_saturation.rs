@@ -298,7 +298,7 @@ too short line
         let known_j = ("CHR1".to_string(), 100, 200);
         let novel_j = ("CHR1".to_string(), 500, 600);
         let sites: Vec<Junction> =
-            std::iter::repeat(known_j.clone()).take(5).chain(std::iter::repeat(novel_j.clone()).take(5)).collect();
+            std::iter::repeat_n(known_j.clone(), 5).chain(std::iter::repeat_n(novel_j.clone(), 5)).collect();
 
         // sample_start=50, sample_end=100, sample_step=50 -> percentiles [50, 100].
         let counts = compute_saturation(&sites, &known_sites, 2, 50, 100, 50);

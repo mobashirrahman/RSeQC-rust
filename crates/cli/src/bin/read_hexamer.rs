@@ -86,6 +86,7 @@ fn validate_optional_file(path: &Option<PathBuf>, label: &str) -> io::Result<()>
     Ok(())
 }
 
+#[allow(clippy::type_complexity)]
 fn collect_inputs(
     read_files: &[PathBuf],
     ref_genome: &Option<PathBuf>,

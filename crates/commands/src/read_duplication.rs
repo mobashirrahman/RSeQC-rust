@@ -60,10 +60,7 @@ where
         seq_dup.insert(rna_read.clone(), seq_dup.get(&rna_read).unwrap_or(&0) + 1);
 
         // Get reference sequence name
-        let ref_id = match record.reference_sequence_id().transpose() {
-            Ok(id) => id,
-            Err(e) => return Err(e),
-        };
+        let ref_id = record.reference_sequence_id().transpose()?;
         let ref_seqs = header.reference_sequences();
         let ref_index = match ref_id {
             Some(id) => id,

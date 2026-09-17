@@ -301,6 +301,7 @@ mod tests {
         assert_eq!(read_match_type(&[(Insertion, 3), (Match, 50)]), "Others");
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn confident_record(name: &str, chrom_id: usize, reverse: bool, dup: bool, cb: bool, umi: bool, re: Option<char>, tx: bool, an: bool) -> RecordBuf {
         let mut data = Data::default();
         data.insert(tag("xf"), BufValue::from(1i32));

@@ -103,8 +103,7 @@ fn ensure_r_dependencies(rscript: &str, install_missing: bool, cran_mirror: &str
         return Ok(());
     }
     if !install_missing {
-        return Err(std::io::Error::new(
-            std::io::ErrorKind::Other,
+        return Err(std::io::Error::other(
             "R package 'pheatmap' is not installed. Install it with \"Rscript -e \\\"install.packages('pheatmap', repos='https://cloud.r-project.org')\\\"\", rerun with --install-r-deps, or use --skip-heatmap.",
         ));
     }
@@ -123,6 +122,7 @@ fn ensure_r_dependencies(rscript: &str, install_missing: bool, cran_mirror: &str
 /// The actual Rscript invocation is hardcoded to the literal `"Rscript"`
 /// (not `args.rscript`), matching upstream's own inconsistency -- see
 /// crates/commands/src/sc_editmatrix.rs module docs.
+#[allow(clippy::too_many_arguments)]
 fn generate_heatmap(matrix_file: &str, out_prefix: &str, file_type: &str, cell_width: i64, cell_height: i64, col_angle: i64, font_size: i64, text_color: &str, no_numbers: bool) -> std::io::Result<()> {
     let script = render_heatmap_r_script(matrix_file, out_prefix, file_type, cell_width, cell_height, col_angle, font_size, text_color, no_numbers, true);
     let r_path = format!("{out_prefix}.r");

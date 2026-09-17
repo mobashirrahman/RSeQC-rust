@@ -88,7 +88,7 @@ pub fn word_generator(seq: &str, word_size: usize, step_size: usize, frame: usiz
 /// 'C','G','T','N'], repeat=word_size)` produces once `N`-containing
 /// tuples are filtered out (see module docs).
 pub fn all_possible_kmer(word_size: usize) -> Vec<String> {
-    let bases = [b'A', b'C', b'G', b'T'];
+    let bases = *b"ACGT";
     let mut out = vec![String::new()];
     for _ in 0..word_size {
         let mut next = Vec::with_capacity(out.len() * 4);

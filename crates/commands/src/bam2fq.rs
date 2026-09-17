@@ -80,7 +80,7 @@ fn fastq_values(record: &bam::Record) -> io::Result<(String, Vec<u8>, Vec<u8>)> 
 }
 
 fn write_fastq_record<W: Write>(w: &mut W, name: &str, seq: &[u8], qual: &[u8]) -> io::Result<()> {
-    write!(w, "@{name}\n")?;
+    writeln!(w, "@{name}")?;
     w.write_all(seq)?;
     w.write_all(b"\n+\n")?;
     w.write_all(qual)?;
