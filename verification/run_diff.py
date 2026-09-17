@@ -619,6 +619,20 @@ CASES: list[Case] = [
         normalize_paths=True,
     ),
     Case(
+        name="read_GC_sam_text",
+        # DIV-0002/0004: SAM-text input, closed for read_GC.py via
+        # open_alignments.
+        ensure_fixture=ensure_bam_stat_sam_fixture,
+        py_script="read_GC.py",
+        rust_bin="read_GC",
+        py_args=lambda scratch_dir: ["-i", _bam_stat_sam_fixture_path(), "-o", str(scratch_dir / "out"), "--skip-plot"],
+        rust_args=lambda scratch_dir: ["-i", _bam_stat_sam_fixture_path(), "-o", str(scratch_dir / "out"), "--skip-plot"],
+        compare_stream="stderr",
+        stream_format="exact",
+        compare_files=("out.GC.xls", "out.GC_plot.r"),
+        normalize_paths=True,
+    ),
+    Case(
         name="read_duplication_basic",
         # Found by this case (before it was formalized): (1) same
         # DIV-0005 pattern as read_NVC.py/read_GC.py -- no --skip-plot/
@@ -643,6 +657,20 @@ CASES: list[Case] = [
         normalize_paths=True,
     ),
     Case(
+        name="read_duplication_sam_text",
+        # DIV-0002/0004: SAM-text input, closed for read_duplication.py via
+        # open_alignments.
+        ensure_fixture=ensure_bam_stat_sam_fixture,
+        py_script="read_duplication.py",
+        rust_bin="read_duplication",
+        py_args=lambda scratch_dir: ["-i", _bam_stat_sam_fixture_path(), "-o", str(scratch_dir / "out"), "--skip-plot"],
+        rust_args=lambda scratch_dir: ["-i", _bam_stat_sam_fixture_path(), "-o", str(scratch_dir / "out"), "--skip-plot"],
+        compare_stream="stderr",
+        stream_format="exact",
+        compare_files=("out.pos.DupRate.xls", "out.seq.DupRate.xls", "out.DupRate_plot.r"),
+        normalize_paths=True,
+    ),
+    Case(
         name="read_quality_basic",
         # Found by this case (before it was formalized): read_quality.py's
         # port never accepted --skip-plot/--rscript or invoked Rscript
@@ -661,6 +689,20 @@ CASES: list[Case] = [
         # The .qual.r script embeds each side's own absolute scratch-
         # directory path in its pdf('...') line -- normalize it away,
         # see normalize_paths' docstring above.
+        compare_files=("out.qual.r",),
+        normalize_paths=True,
+    ),
+    Case(
+        name="read_quality_sam_text",
+        # DIV-0002/0004: SAM-text input, closed for read_quality.py via
+        # open_alignments.
+        ensure_fixture=ensure_bam_stat_sam_fixture,
+        py_script="read_quality.py",
+        rust_bin="read_quality",
+        py_args=lambda scratch_dir: ["-i", _bam_stat_sam_fixture_path(), "-o", str(scratch_dir / "out"), "--skip-plot"],
+        rust_args=lambda scratch_dir: ["-i", _bam_stat_sam_fixture_path(), "-o", str(scratch_dir / "out"), "--skip-plot"],
+        compare_stream="stderr",
+        stream_format="exact",
         compare_files=("out.qual.r",),
         normalize_paths=True,
     ),

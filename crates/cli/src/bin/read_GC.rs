@@ -16,7 +16,8 @@ use rseqc_commands::read_gc::{compute_gc, render_gc_r_script, render_gc_table};
     about = "Calculate the GC-content distribution of aligned reads."
 )]
 struct Args {
-    /// Input BAM file (SAM-text input is not yet supported).
+    /// Input alignment file in BAM or plain-text SAM format (dispatched by
+    /// the `.bam`/`.sam` extension).
     #[arg(short = 'i', long = "input-file")]
     input_file: PathBuf,
 
@@ -49,11 +50,18 @@ fn main() -> std::process::ExitCode {
 }
 
 fn run(args: &Args) -> std::io::Result<()> {
-    // Upstream: `print("Read BAM file ... ", end=' ')` -- the literal's
-    // own trailing space plus `end=' '` gives two spaces before "Done".
+    // Upstream: `if self.bam_format: print("Read BAM file ... ", end=' ')
+    // else: print("Read SAM file ... ", end=' ')` -- `self.bam_format`
+    // comes from `pysam.Samfile(path, 'rb')` succeeding, which it does
+    // even for genuine plain-text SAM content (htslib auto-detects,
+    // ignoring the 'b' mode hint; confirmed via a live diff for
+    // bam_stat.py/read_NVC.py, same underlying pysam.Samfile call here).
+    // The "Read SAM file" branch is practically dead code for any valid
+    // input. The literal's own trailing space plus `end=' '` gives two
+    // spaces before "Done".
     eprint!("Read BAM file ...  ");
-    let (mut reader, _header) = rseqc_formats::open_bam(&args.input_file)?;
-    let hist = compute_gc(reader.records(), args.mapq)?;
+    let (_header, records) = rseqc_formats::open_alignments(&args.input_file)?;
+    let hist = compute_gc(records, args.mapq)?;
     eprintln!("Done");
 
     eprintln!("writing GC content ...");

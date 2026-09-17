@@ -15,6 +15,11 @@
 //! CLI.) Quality scores are aggregated per position; the output table's
 //! row count equals the last processed read's length (not the max
 //! length seen across all records) -- same quirk as read_NVC.py.
+//!
+//! SAM-text input (DIV-0002/0004) is supported at the CLI layer via
+//! `rseqc_formats::open_alignments`; this module's own functions were
+//! unaffected (already generic over
+//! `IntoIterator<Item = io::Result<bam::Record>>`).
 
 use std::collections::HashMap;
 use std::io;

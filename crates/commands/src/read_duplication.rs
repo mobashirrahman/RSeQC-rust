@@ -6,6 +6,11 @@
 //! Notable upstream behavior preserved exactly: unmapped reads, QC-fail reads,
 //! and low MAPQ reads are filtered out; three outputs are generated: sequence-based
 //! and position-based duplication rate tables, plus an R script for plotting.
+//!
+//! SAM-text input (DIV-0002/0004) is supported at the CLI layer via
+//! `rseqc_formats::open_alignments`; this module's own functions were
+//! unaffected (already generic over
+//! `IntoIterator<Item = io::Result<bam::Record>>`).
 
 use std::collections::HashMap;
 use std::io;
