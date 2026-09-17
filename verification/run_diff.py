@@ -817,6 +817,33 @@ CASES: list[Case] = [
         compare_stream="stdout",
         stream_format="exact",
     ),
+    Case(
+        name="divide_bam_basic",
+        # Both sides seed their own RNG deterministically, but Python's
+        # random.Random and Rust's rand::StdRng are different algorithms
+        # (DIV-0017) -- the per-file query-name assignment legitimately
+        # differs, so stdout (the "<path>\t<count>" per-file table) is NOT
+        # compared, and the output BAMs are not byte-compared for the same
+        # reason split_bam_basic's aren't (different bgzf writers, and
+        # here also different record distribution). What IS a fair,
+        # bug-catching check: the stderr progress/summary lines, which
+        # don't depend on the RNG stream at all -- this is exactly the
+        # text the CLI used to omit entirely (a raw `{:?}` Debug dump of
+        # the counts struct instead of upstream's report).
+        ensure_fixture=ensure_bam_stat_fixture,
+        py_script="divide_bam.py",
+        rust_bin="divide_bam",
+        py_args=lambda scratch_dir: [
+            "-i", str(REPO_ROOT / "verification" / "fixtures" / "bam_stat_basic.bam"),
+            "-n", "2", "-o", str(scratch_dir / "out"), "--seed", "42", "-s",
+        ],
+        rust_args=lambda scratch_dir: [
+            "-i", str(REPO_ROOT / "verification" / "fixtures" / "bam_stat_basic.bam"),
+            "-n", "2", "-o", str(scratch_dir / "out"), "--seed", "42", "-s",
+        ],
+        compare_stream="stderr",
+        stream_format="exact",
+    ),
 ]
 
 

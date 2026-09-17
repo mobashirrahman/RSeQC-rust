@@ -20,6 +20,26 @@ pub struct DivideCounts {
     pub per_file: Vec<u64>,
 }
 
+/// Mirrors upstream `main()`'s final report:
+/// `print(f"{path}\t{count}")` (stdout, one line per output file) followed
+/// by `print(f"Total alignments written: {n}", file=sys.stderr)` and,
+/// only when `--skip-unmap` was given, `print(f"Unmapped alignments
+/// skipped: {n}", file=sys.stderr)`.
+pub fn render_report(paths: &[String], counts: &DivideCounts, skip_unmap: bool) -> (String, String) {
+    let mut stdout = String::new();
+    for (path, count) in paths.iter().zip(counts.per_file.iter()) {
+        stdout.push_str(&format!("{path}\t{count}\n"));
+    }
+
+    let mut stderr = String::new();
+    stderr.push_str(&format!("Total alignments written: {}\n", counts.retained));
+    if skip_unmap {
+        stderr.push_str(&format!("Unmapped alignments skipped: {}\n", counts.skipped));
+    }
+
+    (stdout, stderr)
+}
+
 /// Divides `records` (in file order) across multiple BAM writers using the same
 /// header/template as the input. Pure logic over generic writers so it's
 /// testable with in-memory sinks; no file handling here.
@@ -280,5 +300,22 @@ mod tests {
         if let Err(ref e) = result {
             assert_eq!(e.kind(), io::ErrorKind::InvalidData);
         }
+    }
+
+    #[test]
+    fn render_report_matches_upstream_format() {
+        let counts = DivideCounts {
+            retained: 7,
+            skipped: 2,
+            per_file: vec![3, 4],
+        };
+        let paths = vec!["out_0.bam".to_string(), "out_1.bam".to_string()];
+
+        let (stdout, stderr) = render_report(&paths, &counts, true);
+        assert_eq!(stdout, "out_0.bam\t3\nout_1.bam\t4\n");
+        assert_eq!(stderr, "Total alignments written: 7\nUnmapped alignments skipped: 2\n");
+
+        let (_, stderr_no_skip) = render_report(&paths, &counts, false);
+        assert_eq!(stderr_no_skip, "Total alignments written: 7\n");
     }
 }

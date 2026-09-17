@@ -258,3 +258,24 @@ divergences:
       only a disclosed absence. Implement crates/render before this
       command can be considered complete.
     status: accepted
+
+  - id: DIV-0017
+    command_or_api: divide_bam.py
+    description: >
+      Upstream seeds Python's `random.Random(seed)` and calls
+      `rng.randrange(n)` once per distinct query name to assign it to an
+      output file. The Rust port seeds `rand::rngs::StdRng::seed_from_u64`
+      and calls `rng.gen_range(0..n)`. Both are deterministic given the
+      same seed (same-language, same-run reproducibility is preserved),
+      but the two RNG algorithms and their stream-to-integer mappings are
+      different implementations, so `--seed N` does NOT assign the same
+      query names to the same output-file indices across the Python and
+      Rust builds -- only within one implementation across repeated runs.
+    classification: permitted-serialization-difference
+    decision: >
+      Cross-language bit-for-bit RNG stream reproduction is out of scope
+      (no user-facing contract depends on the assignment itself, only on
+      "paired mates stay together" and "roughly equal subset sizes",
+      both of which hold in either implementation). Not planned for
+      closure.
+    status: accepted

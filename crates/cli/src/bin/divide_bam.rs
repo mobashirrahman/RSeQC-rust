@@ -4,6 +4,11 @@
 //!
 //! `--index` (BAM indexing) is not implemented yet — disclosed gap, see
 //! crates/commands/src/divide_bam.rs module docs.
+//!
+//! Upstream has no `--overwrite` flag for this command: it always refuses
+//! to run if any `<prefix>_<index>.bam` output already exists
+//! (`main()`'s `existing = [... path.exists() ...]` check before any
+//! writer is opened).
 
 use std::fs::File;
 use std::io;
@@ -11,7 +16,7 @@ use std::path::PathBuf;
 
 use clap::Parser;
 use noodles_bam as bam;
-use rseqc_commands::divide_bam::{DivideCounts, divide_bam};
+use rseqc_commands::divide_bam::{divide_bam, render_report};
 use rand::SeedableRng;
 use rand::rngs::StdRng;
 
@@ -45,10 +50,7 @@ struct Args {
 fn main() -> std::process::ExitCode {
     let args = Args::parse();
     match run(&args) {
-        Ok(counts) => {
-            eprintln!("{counts:?}");
-            std::process::ExitCode::SUCCESS
-        }
+        Ok(()) => std::process::ExitCode::SUCCESS,
         Err(err) => {
             eprintln!("error: {err}");
             std::process::ExitCode::FAILURE
@@ -56,9 +58,11 @@ fn main() -> std::process::ExitCode {
     }
 }
 
-fn run(args: &Args) -> std::io::Result<DivideCounts> {
-    let (reader, header) = rseqc_formats::open_bam(&args.input_file)?;
+fn output_paths(prefix: &str, subset_num: usize) -> Vec<String> {
+    (0..subset_num).map(|i| format!("{prefix}_{i}.bam")).collect()
+}
 
+fn run(args: &Args) -> std::io::Result<()> {
     if args.subset_num == 0 {
         return Err(io::Error::new(
             io::ErrorKind::InvalidInput,
@@ -67,29 +71,44 @@ fn run(args: &Args) -> std::io::Result<DivideCounts> {
     }
 
     let prefix = args.out_prefix.to_string_lossy();
-    let mut outputs = Vec::new();
+    let paths = output_paths(&prefix, args.subset_num);
 
-    for i in 0..args.subset_num {
-        let path = format!("{}_{}.bam", prefix, i);
-        let file = File::create(&path)?;
+    // Upstream's `main()` refuses to run (before opening any writer) if
+    // any output path already exists; there is no `--overwrite` escape
+    // hatch for this command.
+    let existing: Vec<&String> = paths.iter().filter(|p| std::path::Path::new(p).exists()).collect();
+    if !existing.is_empty() {
+        let listed = existing.iter().map(|s| s.as_str()).collect::<Vec<_>>().join(", ");
+        return Err(io::Error::new(
+            io::ErrorKind::AlreadyExists,
+            format!("refusing to overwrite existing output file(s): {listed}"),
+        ));
+    }
+
+    let (reader, header) = rseqc_formats::open_bam(&args.input_file)?;
+
+    let mut outputs = Vec::new();
+    for path in &paths {
+        let file = File::create(path)?;
         let writer = bam::io::Writer::new(file);
         outputs.push(writer);
     }
 
-    // Write headers to all outputs
     for output in &mut outputs {
         output.write_header(&header)?;
     }
 
     let mut reader = reader;
 
-    // Initialize RNG
     let mut rng = if let Some(seed) = args.seed {
         StdRng::seed_from_u64(seed)
     } else {
         StdRng::from_entropy()
     };
 
+    // Upstream: `print(f"Dividing {input_file} ...", file=sys.stderr)`
+    // before the read loop, `print("Done", file=sys.stderr)` after it.
+    eprintln!("Dividing {} ...", args.input_file.display());
     let counts = divide_bam(
         reader.records(),
         &header,
@@ -97,10 +116,25 @@ fn run(args: &Args) -> std::io::Result<DivideCounts> {
         args.skip_unmap,
         &mut rng,
     )?;
+    eprintln!("Done");
 
-    // Close all writers to ensure data is flushed
     drop(outputs);
     drop(reader);
 
-    Ok(counts)
+    let (stdout, stderr) = render_report(&paths, &counts, args.skip_unmap);
+    print!("{stdout}");
+    eprint!("{stderr}");
+
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn output_paths_use_prefix_index_suffix() {
+        let paths = output_paths("out/sample", 3);
+        assert_eq!(paths, vec!["out/sample_0.bam", "out/sample_1.bam", "out/sample_2.bam"]);
+    }
 }
