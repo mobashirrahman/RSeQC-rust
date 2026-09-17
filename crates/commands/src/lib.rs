@@ -3,6 +3,7 @@
 //! — no argument parsing or plot rendering lives here.
 
 pub mod bam2fq;
+pub mod bam2wig;
 pub mod bam_stat;
 pub mod divide_bam;
 pub mod fpkm_count;

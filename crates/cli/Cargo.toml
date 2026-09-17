@@ -127,6 +127,11 @@ path = "src/bin/fpkm_uq.rs"
 name = "read_hexamer"
 path = "src/bin/read_hexamer.rs"
 
+[[bin]]
+# Same naming note as above: packaging aliases this to `bam2wig.py`.
+name = "bam2wig"
+path = "src/bin/bam2wig.rs"
+
 [dependencies]
 rseqc-core = { path = "../core" }
 rseqc-formats = { path = "../formats" }
