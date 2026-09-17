@@ -58,12 +58,14 @@ class Case:
     # to byte-compare between the two sides' output, e.g. ["out.NVC.xls"].
     compare_files: tuple[str, ...] = ()
     # When True, each side's own scratch-directory absolute path is
-    # stripped from compare_files' content before comparing -- needed
-    # for R scripts that embed their own output path (e.g. `pdf('...')`),
-    # which legitimately differs between the two sides' separate scratch
-    # directories even when the actual data is identical. This is the
-    # "explicitly named normalization for paths" PORTING_PLAN.md's Step 4
-    # table allows, not a way to hide a real difference.
+    # stripped from compare_files' content AND from the compared stream
+    # text before comparing -- needed for R scripts that embed their own
+    # output path (e.g. `pdf('...')`) or console reports that echo their
+    # own output file paths (e.g. split_bam-style "<path> (Read 1): N"
+    # lines), which legitimately differ between the two sides' separate
+    # scratch directories even when the actual data is identical. This is
+    # the "explicitly named normalization for paths" PORTING_PLAN.md's
+    # Step 4 table allows, not a way to hide a real difference.
     normalize_paths: bool = False
     # Files whose whitespace-delimited table cells should be compared as
     # numbers where possible.  This is explicit per case: byte comparison
@@ -235,6 +237,9 @@ def compare_results(case: Case, py_result: RunResult, rust_result: RunResult, py
     if case.compare_stream != "none":
         py_text = stream_for(py_result, case.compare_stream)
         rust_text = stream_for(rust_result, case.compare_stream)
+        if case.normalize_paths:
+            py_text = py_text.replace(str(py_dir), "<SCRATCH_DIR>")
+            rust_text = rust_text.replace(str(rust_dir), "<SCRATCH_DIR>")
         if case.stream_format == "exact":
             if not py_text and not case.allow_empty_stream:
                 print("  FAIL stream comparison: both streams are empty")
@@ -695,6 +700,102 @@ CASES: list[Case] = [
         ],
         compare_stream="both",
         allow_empty_stream=True,
+    ),
+    Case(
+        name="split_paired_bam_basic",
+        ensure_fixture=ensure_bam_stat_fixture,
+        py_script="split_paired_bam.py",
+        rust_bin="split_paired_bam",
+        py_args=lambda scratch_dir: ["-i", _nvc_fixture_path(), "-o", str(scratch_dir / "out")],
+        rust_args=lambda scratch_dir: ["-i", _nvc_fixture_path(), "-o", str(scratch_dir / "out")],
+        compare_stream="stdout",
+        stream_format="exact",
+        normalize_paths=True,
+    ),
+    Case(
+        name="deletion_profile_no_deletions",
+        # bam_stat_basic.bam's reads are all plain 20M (no deletions), so
+        # this exercises the "0 qualifying reads" path -- still a real,
+        # oracle-verified case, not a dummy. stdout is intentionally not
+        # compared: deletion_profile.py has no --skip-plot flag, so the
+        # real upstream CLI always spawns Rscript and its console noise
+        # ("null device"/"1") leaks into stdout, an already-accepted
+        # architecture difference (this port never invokes Rscript).
+        ensure_fixture=ensure_bam_stat_fixture,
+        py_script="deletion_profile.py",
+        rust_bin="deletion_profile",
+        py_args=lambda scratch_dir: ["-i", _nvc_fixture_path(), "-l", "20", "-o", str(scratch_dir / "out")],
+        rust_args=lambda scratch_dir: ["-i", _nvc_fixture_path(), "-l", "20", "-o", str(scratch_dir / "out")],
+        compare_stream="none",
+        compare_files=("out.deletion_profile.txt", "out.deletion_profile.r"),
+        normalize_paths=True,
+    ),
+    Case(
+        name="mismatch_profile_no_mismatches",
+        ensure_fixture=ensure_bam_stat_fixture,
+        py_script="mismatch_profile.py",
+        rust_bin="mismatch_profile",
+        py_args=lambda scratch_dir: ["-i", _nvc_fixture_path(), "-l", "20", "-o", str(scratch_dir / "out")],
+        rust_args=lambda scratch_dir: ["-i", _nvc_fixture_path(), "-l", "20", "-o", str(scratch_dir / "out")],
+        compare_stream="stdout",
+        stream_format="exact",
+        compare_files=("out.mismatch_profile.xls", "out.mismatch_profile.r"),
+    ),
+    Case(
+        name="junction_annotation_no_junctions",
+        ensure_fixture=ensure_regression_fixtures,
+        py_script="junction_annotation.py",
+        rust_bin="junction_annotation",
+        py_args=lambda scratch_dir: [
+            "-i", _nvc_fixture_path(), "-r", _regression_fixture("regression_single_exon.bed12"),
+            "-o", str(scratch_dir / "out"),
+        ],
+        rust_args=lambda scratch_dir: [
+            "-i", _nvc_fixture_path(), "-r", _regression_fixture("regression_single_exon.bed12"),
+            "-o", str(scratch_dir / "out"),
+        ],
+        compare_stream="both",
+        stream_format="exact",
+        compare_files=("out.junction.xls", "out.junction_plot.r"),
+    ),
+    Case(
+        name="junction_annotation_with_junction",
+        # Real splice read (20M100N20M) against a single-exon model with
+        # no annotated introns -- exercises the "complete_novel"
+        # classification path plus the .bed/.Interact.bed outputs.
+        ensure_fixture=ensure_regression_fixtures,
+        py_script="junction_annotation.py",
+        rust_bin="junction_annotation",
+        py_args=lambda scratch_dir: [
+            "-i", _regression_fixture("regression_fpkm_fetch_span.bam"),
+            "-r", _regression_fixture("regression_splice_fetch.bed12"),
+            "-m", "10", "-o", str(scratch_dir / "out"),
+        ],
+        rust_args=lambda scratch_dir: [
+            "-i", _regression_fixture("regression_fpkm_fetch_span.bam"),
+            "-r", _regression_fixture("regression_splice_fetch.bed12"),
+            "-m", "10", "-o", str(scratch_dir / "out"),
+        ],
+        compare_stream="none",
+        compare_files=("out.junction.xls", "out.junction.bed", "out.junction.Interact.bed"),
+    ),
+    Case(
+        name="inner_distance_basic",
+        ensure_fixture=ensure_regression_fixtures,
+        py_script="inner_distance.py",
+        rust_bin="inner_distance",
+        py_args=lambda scratch_dir: [
+            "-i", _nvc_fixture_path(), "-r", _regression_fixture("regression_single_exon.bed12"),
+            "-o", str(scratch_dir / "out"),
+        ],
+        rust_args=lambda scratch_dir: [
+            "-i", _nvc_fixture_path(), "-r", _regression_fixture("regression_single_exon.bed12"),
+            "-o", str(scratch_dir / "out"),
+        ],
+        compare_stream="stderr",
+        stream_format="exact",
+        compare_files=("out.inner_distance.txt", "out.inner_distance_freq.txt", "out.inner_distance_plot.r"),
+        normalize_paths=True,
     ),
     Case(
         name="read_distribution_basic",
