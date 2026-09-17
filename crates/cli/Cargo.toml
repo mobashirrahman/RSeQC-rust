@@ -116,6 +116,12 @@ path = "src/bin/fpkm_count.rs"
 name = "RPKM_saturation"
 path = "src/bin/rpkm_saturation.rs"
 
+[[bin]]
+# Same naming note as above: packaging aliases this to `FPKM-UQ.py`
+# (upstream's own name has a hyphen, which cargo bin names also reject).
+name = "FPKM_UQ"
+path = "src/bin/fpkm_uq.rs"
+
 [dependencies]
 rseqc-core = { path = "../core" }
 rseqc-formats = { path = "../formats" }

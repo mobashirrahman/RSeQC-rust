@@ -5,6 +5,7 @@
 pub mod bam2fq;
 pub mod bam_stat;
 pub mod fpkm_count;
+pub mod fpkm_uq;
 pub mod clipping_profile;
 pub mod deletion_profile;
 pub mod mismatch_profile;
