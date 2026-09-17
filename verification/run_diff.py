@@ -1182,6 +1182,43 @@ CASES: list[Case] = [
         compare_files=("out.wig",),
         normalize_paths=True,
     ),
+    Case(
+        name="overlay_bigwig_geometric_mean",
+        # Found by this case: Python's f"{nan:.2f}" renders lowercase
+        # "nan", but Rust's default `{:.2}` renders "NaN". A NaN
+        # geometricMean result (sqrt of a negative product) IS reachable
+        # and printed by upstream -- not filtered by the `value != 0.0`
+        # check, since NaN never equals anything, including 0.0 --  and
+        # the two track_signal*.bw fixtures happen to have an interval
+        # where signal1 is negative and signal2 is positive (or vice
+        # versa), exercising exactly this path. Add/Subtract/Product/
+        # Max/Min/Average all matched upstream already (verified
+        # manually before formalizing this case); Division is a
+        # confirmed-broken upstream action (DIV-0015, both sides hard
+        # error, not covered by a passing case). compare_stream is
+        # "none" here (not "stderr" like the other overlay/normalize
+        # cases): computing a NaN also makes numpy itself emit an
+        # interpreter-internal `RuntimeWarning: invalid value
+        # encountered in sqrt` to stderr, which is not something RSeQC
+        # prints and isn't part of this port's contract to replicate
+        # (its exact text is a numpy-version implementation detail).
+        # The .wig file -- the actual data output, including the
+        # lowercase "nan" this case exists to test -- is what matters
+        # and is verified byte-identical.
+        ensure_fixture=ensure_track_fixtures,
+        py_script="overlay_bigwig.py",
+        rust_bin="overlay_bigwig",
+        py_args=lambda scratch_dir: [
+            "-i", _track_fixture("track_signal.bw"), "-j", _track_fixture("track_signal2.bw"),
+            "-a", "geometricMean", "-o", str(scratch_dir / "out.wig"), "-c", "100000",
+        ],
+        rust_args=lambda scratch_dir: [
+            "-i", _track_fixture("track_signal.bw"), "-j", _track_fixture("track_signal2.bw"),
+            "-a", "geometricMean", "-o", str(scratch_dir / "out.wig"), "-c", "100000",
+        ],
+        compare_stream="none",
+        compare_files=("out.wig",),
+    ),
 ]
 
 

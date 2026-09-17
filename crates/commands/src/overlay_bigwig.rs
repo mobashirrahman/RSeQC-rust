@@ -116,6 +116,18 @@ fn interval_values(bw: &mut BigWigReader, chrom_set: &HashSet<String>, chrom: &s
     Ok(values.iter().map(|&v| if v.is_nan() { 0.0 } else { v as f64 }).collect())
 }
 
+/// Ports Python's `f"{value:.2f}"` for the one case where it diverges
+/// from Rust's default `{:.2}`: NaN. Python renders lowercase "nan";
+/// Rust's Display renders "NaN". (Infinity is NOT special-cased: both
+/// languages render "inf"/"-inf" lowercase already, confirmed via a
+/// live `python3 -c` probe.) A NaN geometricMean result (sqrt of a
+/// negative product) is genuinely reachable and printed by upstream,
+/// not filtered out by the `value != 0.0` check (NaN never equals
+/// anything, including 0.0).
+fn format_value_2dp(value: f64) -> String {
+    if value.is_nan() { "nan".to_string() } else { format!("{value:.2}") }
+}
+
 /// Runs the full chunked overlay pass, returning the rendered
 /// variableStep WIG text. Ports `overlay_bigwigs`.
 pub fn overlay_bigwigs(bw1: &mut BigWigReader, bw2: &mut BigWigReader, action: Action, chunk_size: i64) -> io::Result<String> {
@@ -145,8 +157,12 @@ pub fn overlay_bigwigs(bw1: &mut BigWigReader, bw2: &mut BigWigReader, action: A
             let mut coordinate = start;
             for value in result {
                 coordinate += 1;
+                // `value != 0.0` is true for NaN too (NaN never equals
+                // anything, including 0.0), so a NaN geometricMean
+                // result (sqrt of a negative product) DOES get printed
+                // -- matching upstream.
                 if value != 0.0 {
-                    out.push_str(&format!("{coordinate}\t{value:.2}\n"));
+                    out.push_str(&format!("{coordinate}\t{}\n", format_value_2dp(value)));
                 }
             }
         }
@@ -214,6 +230,26 @@ mod tests {
     fn fixture_reader() -> BigWigReader {
         let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../formats/tests/fixtures/pybigwig_test.bw");
         BigWigReader::open(&path).unwrap()
+    }
+
+    #[test]
+    fn format_value_2dp_renders_nan_lowercase_matching_python() {
+        // Cross-checked against a real `python3 -c "print(f'{float(\"nan\"):.2f}')"`.
+        assert_eq!(format_value_2dp(f64::NAN), "nan");
+        assert_eq!(format_value_2dp(1.5), "1.50");
+        assert_eq!(format_value_2dp(f64::INFINITY), "inf");
+        assert_eq!(format_value_2dp(f64::NEG_INFINITY), "-inf");
+    }
+
+    #[test]
+    fn geometric_mean_of_a_negative_product_is_nan() {
+        // (-1)*(4) = -4, sqrt(-4) = NaN -- a genuinely reachable
+        // geometricMean result upstream prints (not filtered by the
+        // `value != 0.0` check, since NaN never equals anything).
+        let v1 = vec![-1.0];
+        let v2 = vec![4.0];
+        let result = apply_action(Action::GeometricMean, &v1, &v2).unwrap();
+        assert!(result[0].is_nan());
     }
 
     #[test]
