@@ -94,6 +94,21 @@ where
     Ok(counts)
 }
 
+/// Ports `print_report()`'s exact stdout format (upstream: `print(f"{'Total
+/// records:':<55}{counts.total}")` etc, one call per line) -- each label is
+/// left-padded to 55 characters before the count, matching
+/// `split_bam.rs::render_report`'s identical convention.
+pub fn render_report(read1_bam: &str, read2_bam: &str, unmapped_bam: &str, counts: &SplitCounts) -> String {
+    let total_label = "Total records:".to_string();
+    let r1_label = format!("{read1_bam} (Read 1):");
+    let r2_label = format!("{read2_bam} (Read 2):");
+    let unmap_label = format!("{unmapped_bam} (Unmapped):");
+    format!(
+        "{total_label:<55}{}\n{r1_label:<55}{}\n{r2_label:<55}{}\n{unmap_label:<55}{}\n",
+        counts.total, counts.read1, counts.read2, counts.unmapped,
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -197,5 +212,20 @@ mod tests {
         let r1_record = r1_reader.records().next().unwrap().unwrap();
         let expected_flags = Flags::from_bits_truncate(0x0010 | 0x0400);
         assert_eq!(r1_record.flags(), expected_flags);
+    }
+
+    #[test]
+    fn render_report_exact_text() {
+        // Verified via python3 -c against the literal upstream f-string
+        // expressions in print_report().
+        let counts = SplitCounts { total: 100, unmapped: 5, read1: 40, read2: 55 };
+        let report = render_report("out.R1.bam", "out.R2.bam", "out.unmap.bam", &counts);
+        let expected = "\
+Total records:                                         100
+out.R1.bam (Read 1):                                   40
+out.R2.bam (Read 2):                                   55
+out.unmap.bam (Unmapped):                              5
+";
+        assert_eq!(report, expected);
     }
 }
