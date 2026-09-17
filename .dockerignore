@@ -1,0 +1,13 @@
+# Keeps the Docker build context small and avoids invalidating layer
+# caches on unrelated file changes. oracle/ in particular can be large
+# (a full upstream Python checkout + venv) and is never needed to
+# build the Rust workspace.
+.git/
+.env
+.opencode/
+oracle/
+target/
+dist/
+__pycache__/
+*.pyc
+verification/failures/

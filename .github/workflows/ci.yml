@@ -77,6 +77,23 @@ jobs:
           "$(pwd)/target/release/bam_stat.py" --help >/dev/null
           echo "bam_stat.py alias smoke test passed"
 
+  docker-build:
+    name: Build container image and smoke-test it
+    runs-on: ubuntu-latest
+    # This is the first REAL verification the Dockerfile gets: this
+    # development sandbox has no `docker` available, so the Dockerfile
+    # itself was only checked by hand (base image tags confirmed to
+    # exist, no C-toolchain build deps in the workspace) before this
+    # workflow existed. If this job fails on its first run, that's
+    # expected -- fix forward here, not by assuming the Dockerfile is
+    # already correct.
+    steps:
+      - uses: actions/checkout@v7
+      - name: docker build
+        run: docker build -t rseqc-rust:ci .
+      - name: Smoke-test one command by its original upstream name
+        run: docker run --rm rseqc-rust:ci bam_stat.py --help
+
   fmt-check:
     name: cargo fmt (advisory, non-blocking)
     runs-on: ubuntu-latest
