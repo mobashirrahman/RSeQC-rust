@@ -26,6 +26,8 @@ use std::collections::{HashMap, HashSet};
 use std::io::{self, BufRead};
 use std::path::Path;
 
+use crate::python_fmt::python_g12;
+
 /// Yields `(name, sequence)` pairs from one file, replicating
 /// `seq_generator`. Each line is trimmed and uppercased. A `#`-prefixed
 /// or empty line is skipped. A `>`/`@`-prefixed line starts a new
@@ -158,50 +160,6 @@ pub fn normalized_frequency(counts: &HashMap<String, i64>, total: f64, kmer: &st
     *counts.get(kmer).unwrap_or(&0) as f64 / total
 }
 
-/// Formats `value` the way Python's `f"{value:.12g}"` does (C's
-/// `%.12g`): 12 significant digits, fixed notation when the decimal
-/// exponent `X` satisfies `-4 <= X < 12`, otherwise scientific notation
-/// with a lowercase `e`, a sign, and a minimum-2-digit (not
-/// zero-truncated beyond that) exponent. Trailing zeros (and a bare
-/// trailing decimal point) are stripped in both cases.
-pub fn python_g12(value: f64) -> String {
-    if value == 0.0 {
-        return "0".to_string();
-    }
-    if value.is_nan() {
-        return "nan".to_string();
-    }
-    if value.is_infinite() {
-        return if value > 0.0 { "inf".to_string() } else { "-inf".to_string() };
-    }
-
-    const PRECISION: i32 = 12;
-    let neg = value < 0.0;
-    let abs = value.abs();
-
-    // Use Rust's own scientific-notation rounding (via LowerExp) to
-    // determine the correctly-rounded decimal exponent and mantissa,
-    // rather than hand-rolling log10-based exponent math (which is
-    // prone to off-by-one errors right at power-of-ten boundaries).
-    let sci = format!("{:.*e}", (PRECISION - 1) as usize, abs);
-    let e_pos = sci.find('e').expect("LowerExp always emits 'e'");
-    let mantissa_str = &sci[..e_pos];
-    let exp: i32 = sci[e_pos + 1..].parse().expect("LowerExp exponent is always a valid integer");
-
-    let sign_str = if neg { "-" } else { "" };
-
-    if exp >= -4 && exp < PRECISION {
-        let decimals = (PRECISION - 1 - exp).max(0) as usize;
-        let fixed = format!("{abs:.decimals$}");
-        let trimmed = if fixed.contains('.') { fixed.trim_end_matches('0').trim_end_matches('.') } else { fixed.as_str() };
-        format!("{sign_str}{trimmed}")
-    } else {
-        let mantissa = if mantissa_str.contains('.') { mantissa_str.trim_end_matches('0').trim_end_matches('.') } else { mantissa_str };
-        let exp_sign = if exp < 0 { '-' } else { '+' };
-        format!("{sign_str}{mantissa}e{exp_sign}{:02}", exp.abs())
-    }
-}
-
 /// Renders the `Hexamer\t<name>...` report: one row per non-`N` 6-mer
 /// (in `all_possible_kmer` order), each column normalized against that
 /// file's own total. Ports `write_report`.
@@ -311,23 +269,12 @@ mod tests {
     }
 
     #[test]
-    fn python_g12_matches_cpython_format_spec() {
-        // Cross-checked against real `python3 -c "print(f'{value:.12g}')"`.
-        assert_eq!(python_g12(0.0), "0");
+    fn python_g12_reexport_smoke_check() {
+        // Full python3-cross-checked coverage lives with the
+        // implementation now, in python_fmt.rs::tests -- this just
+        // confirms the re-export wires up correctly.
         assert_eq!(python_g12(1.0), "1");
-        assert_eq!(python_g12(0.030029296875), "0.030029296875");
-        assert_eq!(python_g12(0.3333333333333333), "0.333333333333");
-        assert_eq!(python_g12(123456789.123456), "123456789.123");
-        assert_eq!(python_g12(0.0001234567891234), "0.000123456789123");
-        assert_eq!(python_g12(100.0), "100");
         assert_eq!(python_g12(0.5), "0.5");
-        assert_eq!(python_g12(1.0 / 30000.0), "3.33333333333e-05");
-        assert_eq!(python_g12(1e15), "1e+15");
-        assert_eq!(python_g12(1e20), "1e+20");
-        assert_eq!(python_g12(1e-15), "1e-15");
-        assert_eq!(python_g12(1.23456 * 1e-9), "1.23456e-09");
-        assert_eq!(python_g12(1.23456 * 1e11), "123456000000");
-        assert_eq!(python_g12(1.23456 * 1e12), "1.23456e+12");
     }
 
     #[test]
