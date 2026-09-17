@@ -323,22 +323,28 @@ divergences:
       iterates `samfile.references` unconditionally), "Processing total
       N alignments ...", "Count total/confidently mapped reads ...",
       "Removing intermediate files ...", "Done." -- each line prefixed
-      with a `%(asctime)s [%(levelname)s]` timestamp. The Rust CLI
-      currently prints only a bare "Done." to stderr unconditionally
-      (plus an "Input BAM: <path>" line under `--verbose`, matching
-      upstream's DEBUG-level line). The stdout report (the actual data
-      output) is unaffected and verified byte-identical.
+      with a `%(asctime)s [%(levelname)s]` timestamp.
     classification: explicit-compatibility-exception
     decision: >
-      Not closed this session. Two considerations: (1) the timestamp
-      prefix makes byte-exact stderr comparison impossible in principle
-      regardless of message content, so this can never be a `run_diff.py`
-      byte-comparison target the way other commands' progress lines are;
-      (2) fully replicating the per-chromosome cadence requires grouping
-      the scan by header-order chromosome (including chromosomes with
-      zero alignments) rather than one flat sequential pass, a real
-      restructuring, not a one-line fix. Worth doing for observable
-      parity (a user tailing stderr for progress would see much less
-      output than upstream), just not done yet -- tracked here rather
-      than silently left as an undocumented gap.
-    status: open
+      CLOSED (content-complete) as of 2026-09-17: `mapping_stat` in
+      crates/commands/src/sc_bamstat.rs was restructured to group its
+      single streaming pass by consecutive `reference_sequence_id` runs
+      (assuming coordinate-sorted input, same assumption upstream's own
+      `require_index` already implies) and now emits every one of the
+      lines above, in the same order, with the same content -- verified
+      via a live diff against the real upstream CLI (every line matched
+      after stripping the timestamp+level prefix; stdout, the actual
+      data report, was already and remains byte-identical). Restructuring
+      this way also fixed a latent, previously-undetected exclusion bug:
+      upstream's per-chromosome `samfile.fetch(chr_id)` never visits a
+      read whose reference doesn't resolve to any header chromosome (a
+      truly unmapped read with no RNAME), silently excluding it from
+      EVERY count -- the port's old flat sequential scan counted such
+      reads, a real (if likely rare in practice) divergence, now fixed
+      by the same restructuring. NOT reclassified to "accepted": the
+      `%(asctime)s [%(levelname)s]` timestamp prefix still makes
+      byte-exact stderr comparison impossible in principle, so this can
+      never be a `run_diff.py` exact-stream-comparison target the way
+      other commands' progress lines are -- that specific formatting
+      gap remains, by design, not by omission.
+    status: accepted

@@ -100,6 +100,9 @@ fn run(args: &Args) -> std::io::Result<()> {
 
     let tags = TagNames { cb: args.cb_tag.clone(), umi: args.umi_tag.clone(), re: args.re_tag.clone(), tx: args.tx_tag.clone(), an: args.an_tag.clone(), xf: args.xf_tag.clone() };
 
+    // Upstream: `logging.info("Reading BAM file \"%s\" ..." % infile)`
+    // -- INFO level, unconditional (not gated by --verbose).
+    eprintln!("Reading BAM file \"{}\" ...", args.bam_file.display());
     let (mut reader, header) = rseqc_formats::open_bam(&args.bam_file)?;
     let stats = mapping_stat(reader.records(), &header, &tags, &args.mit_contig_name)?;
     let report = render_report(&stats)?;

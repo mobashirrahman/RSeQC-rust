@@ -3,15 +3,19 @@
 //! mapping_stat` (`oracle/upstream-src/src/qcmodule/scbam.py`,
 //! `read_match_type`/`list2str`).
 //!
-//! No BAI index needed: upstream's per-chromosome `samfile.fetch(chr_id)`
-//! loop is replicated as a single sequential BAM scan (the per-chrom
-//! grouping only affects upstream's OWN intermediate temp-file writes,
-//! not the final aggregate counts). The intermediate
-//! `<chrom>.all_reads_id.txt`/`<chrom>.confident_reads_id.txt` files plus
-//! the `awk '!a[$0]++' ... | wc -l` subprocess dedup-count are skipped
-//! entirely: they exist only to count DISTINCT read (QNAME) values, which
-//! a plain `HashSet<String>` computes directly and losslessly (same
-//! final `total_reads_n`/`confi_reads_n`, no behavior change).
+//! No REAL BAI index is opened or queried: upstream's per-chromosome
+//! `samfile.fetch(chr_id)` loop is replicated as a SINGLE streaming
+//! pass over the input, grouped by consecutive `reference_sequence_id`
+//! runs assumed to already be coordinate-sorted (see `mapping_stat`'s
+//! own doc comment for the full reasoning, including DIV-0019's
+//! now-closed per-chromosome progress-message requirement). The
+//! intermediate `<chrom>.all_reads_id.txt`/`<chrom>.confident_reads_id
+//! .txt` files plus the `awk '!a[$0]++' ... | wc -l` subprocess
+//! dedup-count are skipped entirely: they exist only to count DISTINCT
+//! read (QNAME) values, which a plain `HashSet<String>` computes
+//! directly and losslessly (same final `total_reads_n`/`confi_reads_n`,
+//! no behavior change) -- see DIV-0018 for the CWD-pollution-file
+//! aspect specifically (still accepted, not replicated).
 //!
 //! **Preserves a real, confirmed upstream bug, do not "fix"**: the
 //! region-type tally is
@@ -100,7 +104,23 @@ pub struct MappingStats {
     pub read_type: HashMap<String, i64>,
 }
 
-/// Runs the full per-alignment counting pass. Ports `mapping_stat`.
+/// Runs the full per-alignment counting pass. Ports `mapping_stat`,
+/// INCLUDING its per-chromosome iteration shape (DIV-0019, now
+/// closed): upstream visits every chromosome in `samfile.references`
+/// order via `samfile.fetch(chr_id)` (no start/end -- the whole
+/// chromosome), printing `logging.info` "Processing"/"Processed"
+/// lines around each one, EVEN chromosomes with zero alignments (the
+/// header-chromosome loop is unconditional). A read whose
+/// `reference_sequence_id` doesn't resolve to any header chromosome at
+/// all (a truly unmapped read with no RNAME) is therefore never
+/// visited by any per-chromosome fetch and silently excluded from
+/// EVERY count upstream computes -- replicated here by skipping such
+/// records entirely, not counting them toward `total_alignments`.
+/// Assumes coordinate-sorted input (same assumption `require_index`
+/// already implies upstream), so a single streaming pass grouped by
+/// consecutive `reference_sequence_id` matches per-chromosome fetch
+/// order without needing real BAI-indexed queries (no BAI support
+/// anywhere in this port, see crates/cli/src/bin/sc_bamstat.rs docs).
 pub fn mapping_stat<I>(records: I, header: &sam::Header, tags: &TagNames, chrm_id: &str) -> io::Result<MappingStats>
 where
     I: IntoIterator<Item = io::Result<bam::Record>>,
@@ -116,82 +136,110 @@ where
     let mut all_reads: HashSet<String> = HashSet::new();
     let mut confi_reads: HashSet<String> = HashSet::new();
 
-    for item in records {
-        let record = item?;
-        s.total_alignments += 1;
+    let ref_names: Vec<String> = header.reference_sequences().keys().map(|k| k.to_string()).collect();
+    let mut iter = records.into_iter().peekable();
 
-        let read_id = record.name().map(|n| String::from_utf8_lossy(n).into_owned()).unwrap_or_default();
-        all_reads.insert(read_id.clone());
+    for (chrom_idx, chrom_name_ref) in ref_names.iter().enumerate() {
+        eprintln!("Processing \"{chrom_name_ref}\" ...");
+        let mut chrom_count: i64 = 0;
 
-        let data = record.data();
-
-        let is_confident = data.get(&xf_tag).and_then(|r| r.ok()).and_then(|v| v.as_int()).map(|n| n & 1 != 0).unwrap_or(false);
-
-        if is_confident {
-            s.confi_alignments += 1;
-            confi_reads.insert(read_id);
-
-            let chrom_name = record
-                .reference_sequence_id()
-                .transpose()?
-                .and_then(|id| header.reference_sequences().get_index(id))
-                .map(|(name, _)| name.to_string())
-                .unwrap_or_default();
-            if chrom_name == chrm_id {
-                s.chrm_reads += 1;
+        loop {
+            let is_current_chrom = match iter.peek() {
+                Some(Ok(record)) => record.reference_sequence_id().transpose()?.map(|id| id == chrom_idx).unwrap_or(false),
+                Some(Err(_)) => true, // surface the error by consuming it below
+                None => false,
+            };
+            if !is_current_chrom {
+                break;
             }
 
-            if data.get(&cb_tag).is_some() {
-                s.confi_cb += 1;
-            }
-            if data.get(&umi_tag).is_some() {
-                s.confi_ub += 1;
-            }
+            let record = iter.next().unwrap()?;
+            chrom_count += 1;
+            s.total_alignments += 1;
 
-            let flags = record.flags();
-            if flags.is_duplicate() {
-                s.confi_reads_dup += 1;
-            } else {
-                s.confi_reads_nondup += 1;
-            }
-            if flags.is_reverse_complemented() {
-                s.confi_reads_rev += 1;
-            } else {
-                s.confi_reads_fwd += 1;
-            }
+            let read_id = record.name().map(|n| String::from_utf8_lossy(n).into_owned()).unwrap_or_default();
+            all_reads.insert(read_id.clone());
 
-            match data.get(&re_tag) {
-                Some(v) => {
-                    let value = v?;
-                    let ch = match value {
-                        sam::alignment::record::data::field::Value::Character(c) => Some(c as char),
-                        sam::alignment::record::data::field::Value::String(s) => s.first().map(|&b| b as char),
-                        _ => None,
-                    };
-                    match ch {
-                        Some('E') => s.exon_reads += 1,
-                        Some('I') => s.intron_reads += 1,
-                        _ => {} // present but neither E nor I: silent no-op (see module docs)
+            let data = record.data();
+
+            let is_confident = data.get(&xf_tag).and_then(|r| r.ok()).and_then(|v| v.as_int()).map(|n| n & 1 != 0).unwrap_or(false);
+
+            if is_confident {
+                s.confi_alignments += 1;
+                confi_reads.insert(read_id);
+
+                if chrom_name_ref == chrm_id {
+                    s.chrm_reads += 1;
+                }
+
+                if data.get(&cb_tag).is_some() {
+                    s.confi_cb += 1;
+                }
+                if data.get(&umi_tag).is_some() {
+                    s.confi_ub += 1;
+                }
+
+                let flags = record.flags();
+                if flags.is_duplicate() {
+                    s.confi_reads_dup += 1;
+                } else {
+                    s.confi_reads_nondup += 1;
+                }
+                if flags.is_reverse_complemented() {
+                    s.confi_reads_rev += 1;
+                } else {
+                    s.confi_reads_fwd += 1;
+                }
+
+                match data.get(&re_tag) {
+                    Some(v) => {
+                        let value = v?;
+                        let ch = match value {
+                            sam::alignment::record::data::field::Value::Character(c) => Some(c as char),
+                            sam::alignment::record::data::field::Value::String(s) => s.first().map(|&b| b as char),
+                            _ => None,
+                        };
+                        match ch {
+                            Some('E') => s.exon_reads += 1,
+                            Some('I') => s.intron_reads += 1,
+                            _ => {} // present but neither E nor I: silent no-op (see module docs)
+                        }
+                    }
+                    None => {
+                        return Err(io::Error::new(io::ErrorKind::NotFound, format!("'{}'", tags.re)));
                     }
                 }
-                None => {
-                    return Err(io::Error::new(io::ErrorKind::NotFound, format!("'{}'", tags.re)));
+
+                if data.get(&tx_tag).is_some() {
+                    s.sense_reads += 1;
+                } else if data.get(&an_tag).is_some() {
+                    s.anti_reads += 1;
+                } else {
+                    s.other_reads2 += 1;
                 }
-            }
 
-            if data.get(&tx_tag).is_some() {
-                s.sense_reads += 1;
-            } else if data.get(&an_tag).is_some() {
-                s.anti_reads += 1;
-            } else {
-                s.other_reads2 += 1;
+                let ops: Vec<(sam::alignment::record::cigar::op::Kind, usize)> = record.cigar().iter().map(|r| r.map(|op| (op.kind(), op.len()))).collect::<Result<_, _>>()?;
+                let mt = read_match_type(&ops);
+                *s.read_type.entry(mt.to_string()).or_insert(0) += 1;
             }
-
-            let ops: Vec<(sam::alignment::record::cigar::op::Kind, usize)> = record.cigar().iter().map(|r| r.map(|op| (op.kind(), op.len()))).collect::<Result<_, _>>()?;
-            let mt = read_match_type(&ops);
-            *s.read_type.entry(mt.to_string()).or_insert(0) += 1;
         }
+
+        eprintln!("Processed {chrom_count} alignments from \"{chrom_name_ref}\"");
     }
+
+    // Records whose reference doesn't match any (remaining) header
+    // chromosome in order -- e.g. a truly unmapped read with no RNAME,
+    // or one appearing out of coordinate-sorted order -- are drained
+    // and skipped, matching upstream's silent per-chromosome-fetch
+    // exclusion. Errors are still surfaced.
+    for item in iter {
+        item?;
+    }
+
+    eprintln!("Processing total {} alignments mapped to all chromosomes.", s.total_alignments);
+    eprintln!("Count total mapped reads ...");
+    eprintln!("Count confidently mapped reads ...");
+    eprintln!("Removing intermediate files ...");
 
     s.total_reads_n = all_reads.len() as i64;
     s.confi_reads_n = confi_reads.len() as i64;
@@ -415,6 +463,40 @@ mod tests {
         assert_eq!(stats.total_reads_n, 2); // both distinct QNAMEs counted
         assert_eq!(stats.confi_reads_n, 1);
         assert_eq!(stats.chrm_reads, 1);
+    }
+
+    #[test]
+    fn mapping_stat_excludes_reads_with_no_header_chromosome() {
+        // DIV-0019 restructuring fix: upstream's per-chromosome
+        // `samfile.fetch(chr_id)` never visits a read whose reference
+        // doesn't resolve to any header chromosome (a truly unmapped
+        // read with no RNAME) -- it's silently excluded from EVERY
+        // count, not just skipped as "unmapped but tallied". Confirmed
+        // by grouping the scan by header-chromosome order instead of a
+        // flat sequential pass.
+        let header = header_with_chrom("chr1", 1000);
+        let mapped = confident_record("r1", 0, false, false, false, false, Some('E'), true, false);
+        // No reference_sequence_id set at all (stays unset/None) -- a
+        // truly unmapped read with no RNAME, unlike a positioned-but-
+        // flagged-unmapped mate.
+        let mut data = Data::default();
+        data.insert(tag("xf"), BufValue::from(1i32));
+        let no_rname = RecordBuf::builder()
+            .set_name("r2")
+            .set_flags(Flags::UNMAPPED)
+            .set_data(data)
+            .build();
+
+        let bam_records = to_bam_records(&header, &[mapped, no_rname]);
+        let tags = TagNames::default();
+        let stats = mapping_stat(bam_records.into_iter().map(Ok), &header, &tags, "chrM").unwrap();
+
+        // Only "r1" (on chr1, a real header chromosome) is counted;
+        // "r2" (no RNAME at all) is invisible to every per-chromosome
+        // fetch and contributes nothing.
+        assert_eq!(stats.total_alignments, 1);
+        assert_eq!(stats.total_reads_n, 1);
+        assert_eq!(stats.confi_alignments, 1);
     }
 
     #[test]
