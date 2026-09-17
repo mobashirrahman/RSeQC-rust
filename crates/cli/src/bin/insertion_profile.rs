@@ -58,15 +58,11 @@ fn run(args: &Args) -> std::io::Result<()> {
     let (mut reader, _header) = rseqc_formats::open_bam(&args.input_file)?;
     let prefix = args.out_prefix.to_string_lossy();
 
-    let table_text;
-    let r_script_text;
-
-    match args.sequencing {
+    let (table_text, r_script_text) = match args.sequencing {
         Layout::SingleEnd => {
             let profile = compute_single_end(reader.records(), args.mapq, b'I')?;
             eprintln!("Total reads used: {}", profile.total_read);
-            table_text = render_single_table(&profile);
-            r_script_text = render_single_r_script(&profile, &prefix);
+            (render_single_table(&profile), render_single_r_script(&profile, &prefix))
         }
         Layout::PairedEnd => {
             let profile = compute_paired_end(reader.records(), args.mapq, b'I')?;
@@ -74,10 +70,9 @@ fn run(args: &Args) -> std::io::Result<()> {
                 "Total read-1 used: {}, read-2 used: {}",
                 profile.total_read1, profile.total_read2
             );
-            table_text = render_paired_table(&profile);
-            r_script_text = render_paired_r_script(&profile, &prefix);
+            (render_paired_table(&profile), render_paired_r_script(&profile, &prefix))
         }
-    }
+    };
 
     let mut xls = File::create(format!("{prefix}.insertion_profile.xls"))?;
     xls.write_all(table_text.as_bytes())?;

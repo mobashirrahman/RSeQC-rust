@@ -12,10 +12,13 @@
 //! filtering; `total_read`(s) count every filter-passing record, including
 //! ones with no clip operation at all; the output row count follows the
 //! LAST filter-passing record's expanded-CIGAR length, same quirk pattern
-//! as DIV-0008/0009 (see DIV-0010). Upstream's per-position counts are
-//! Python floats (`+= 1.0`) and print with a trailing `.0`; reproduced here
-//! via an explicit formatter rather than using floats internally, since the
-//! values are always whole numbers.
+//! as DIV-0008/0009 (see DIV-0010). Upstream's per-position clip counts come
+//! from a raw `collections.defaultdict(int)`: an untouched position is
+//! still the bare Python `int` default and prints `"0"`, while a touched
+//! position was promoted to `float` by `+= 1.0` and prints `"N.0"` --
+//! reproduced exactly via `fmt_clip_count` below (NOT via `fmt_float`,
+//! which is only correct for `Non_clipped_nt`, always float since
+//! `total_read` is itself always a float).
 
 use std::collections::HashMap;
 use std::io;
@@ -164,6 +167,19 @@ fn fmt_float(n: u64) -> String {
     format!("{n}.0")
 }
 
+/// Matches Python's `str()` on the RAW `collections.defaultdict(int)` value
+/// upstream's `soft_clip_profile`/`insert_size_profile` dict holds: a
+/// position never incremented is still the bare `int()` default `0` (prints
+/// `"0"`), while an incremented position was promoted to `float` by `+=
+/// 1.0` (prints `"N.0"`). Unlike `Non_clipped_nt`/`nonclip_count` (always
+/// `total_read - x`, and `total_read` is itself always a Python float, so
+/// float-minus-anything is always float), this duck-typing quirk applies
+/// ONLY to the raw clip/insert count itself. Verified via `python3 -c`
+/// against the literal `defaultdict(int)` + `+= 1.0` pattern.
+fn fmt_clip_count(n: u64) -> String {
+    if n == 0 { "0".to_string() } else { format!("{n}.0") }
+}
+
 /// Every line, including the last, ends with `\n` (upstream's plain
 /// `print(...)` calls each add their own trailing newline) -- applies
 /// to all four render functions in this module.
@@ -171,14 +187,14 @@ pub fn render_single_table(p: &SingleEndProfile) -> String {
     let mut out = String::from("Position\tClipped_nt\tNon_clipped_nt\n");
     for (i, &c) in p.clip_count.iter().enumerate() {
         let non_clip = p.total_read - c;
-        out.push_str(&format!("{i}\t{}\t{}\n", fmt_float(c), fmt_float(non_clip)));
+        out.push_str(&format!("{i}\t{}\t{}\n", fmt_clip_count(c), fmt_float(non_clip)));
     }
     out
 }
 
 pub fn render_single_r_script(p: &SingleEndProfile, out_prefix: &str) -> String {
     let read_pos: Vec<String> = (0..p.clip_count.len()).map(|i| i.to_string()).collect();
-    let clip_strs: Vec<String> = p.clip_count.iter().map(|&c| fmt_float(c)).collect();
+    let clip_strs: Vec<String> = p.clip_count.iter().map(|&c| fmt_clip_count(c)).collect();
 
     format!(
         "pdf(\"{out_prefix}.clipping_profile.pdf\")\nread_pos=c({})\nclip_count=c({})\nnonclip_count= {} - clip_count\nplot(read_pos, nonclip_count*100/(clip_count+nonclip_count),col=\"blue\",main=\"clipping profile\",xlab=\"Position of read\",ylab=\"Non-clipped %\",type=\"b\")\ndev.off()\n",
@@ -192,12 +208,12 @@ pub fn render_paired_table(p: &PairedEndProfile) -> String {
     let mut out = String::from("Position\tClipped_nt\tNon_clipped_nt\nRead-1:\n");
     for (i, &c) in p.r1_clip_count.iter().enumerate() {
         let non_clip = p.total_read1 - c;
-        out.push_str(&format!("{i}\t{}\t{}\n", fmt_float(c), fmt_float(non_clip)));
+        out.push_str(&format!("{i}\t{}\t{}\n", fmt_clip_count(c), fmt_float(non_clip)));
     }
     out.push_str("Read-2:\n");
     for (i, &c) in p.r2_clip_count.iter().enumerate() {
         let non_clip = p.total_read2 - c;
-        out.push_str(&format!("{i}\t{}\t{}\n", fmt_float(c), fmt_float(non_clip)));
+        out.push_str(&format!("{i}\t{}\t{}\n", fmt_clip_count(c), fmt_float(non_clip)));
     }
     out
 }
@@ -207,8 +223,8 @@ pub fn render_paired_r_script(p: &PairedEndProfile, out_prefix: &str) -> String 
     // and reuses it for both the R1 and R2 sections; r1/r2_clip_count have
     // the same length by construction (both built over 0..last_len).
     let read_pos: Vec<String> = (0..p.r1_clip_count.len()).map(|i| i.to_string()).collect();
-    let r1_strs: Vec<String> = p.r1_clip_count.iter().map(|&c| fmt_float(c)).collect();
-    let r2_strs: Vec<String> = p.r2_clip_count.iter().map(|&c| fmt_float(c)).collect();
+    let r1_strs: Vec<String> = p.r1_clip_count.iter().map(|&c| fmt_clip_count(c)).collect();
+    let r2_strs: Vec<String> = p.r2_clip_count.iter().map(|&c| fmt_clip_count(c)).collect();
     let read_pos_csv = read_pos.join(",");
 
     format!(
@@ -317,9 +333,27 @@ mod tests {
             clip_count: vec![2, 0],
         };
         let output = render_single_table(&profile);
+        // Verified via python3 -c against the literal defaultdict(int) +
+        // `+= 1.0` pattern: an untouched position (index 1, count 0) prints
+        // bare "0" for Clipped_nt, while Non_clipped_nt is always float.
         assert_eq!(
             output,
-            "Position\tClipped_nt\tNon_clipped_nt\n0\t2.0\t3.0\n1\t0.0\t5.0\n"
+            "Position\tClipped_nt\tNon_clipped_nt\n0\t2.0\t3.0\n1\t0\t5.0\n"
+        );
+    }
+
+    #[test]
+    fn render_single_table_untouched_position_prints_bare_zero() {
+        // The defaultdict(int)-vs-float duck-typing quirk: an untouched
+        // position's Clipped_nt is Python's bare int 0 ("0"), not "0.0",
+        // while Non_clipped_nt is always float. Verified via python3 -c.
+        let profile = SingleEndProfile {
+            total_read: 3,
+            clip_count: vec![0, 3, 0],
+        };
+        assert_eq!(
+            render_single_table(&profile),
+            "Position\tClipped_nt\tNon_clipped_nt\n0\t0\t3.0\n1\t3.0\t0.0\n2\t0\t3.0\n"
         );
     }
 
@@ -332,7 +366,7 @@ mod tests {
         let output = render_single_r_script(&profile, "test_output");
         let expected = "pdf(\"test_output.clipping_profile.pdf\")\n\
 read_pos=c(0,1)\n\
-clip_count=c(2.0,0.0)\n\
+clip_count=c(2.0,0)\n\
 nonclip_count= 5 - clip_count\n\
 plot(read_pos, nonclip_count*100/(clip_count+nonclip_count),col=\"blue\",main=\"clipping profile\",xlab=\"Position of read\",ylab=\"Non-clipped %\",type=\"b\")\n\
 dev.off()\n";
@@ -386,13 +420,13 @@ dev.off()\n";
         let output = render_paired_r_script(&profile, "test_output");
         let expected = "pdf(\"test_output.clipping_profile.R1.pdf\")\n\
 read_pos=c(0,1)\n\
-r1_clip_count=c(1.0,0.0)\n\
+r1_clip_count=c(1.0,0)\n\
 r1_nonclip_count = 3 - r1_clip_count\n\
 plot(read_pos, r1_nonclip_count*100/(r1_clip_count + r1_nonclip_count),col=\"blue\",main=\"clipping profile\",xlab=\"Position of read (read-1)\",ylab=\"Non-clipped %\",type=\"b\")\n\
 dev.off()\n\
 pdf(\"test_output.clipping_profile.R2.pdf\")\n\
 read_pos=c(0,1)\n\
-r2_clip_count=c(0.0,2.0)\n\
+r2_clip_count=c(0,2.0)\n\
 r2_nonclip_count = 2 - r2_clip_count\n\
 plot(read_pos, r2_nonclip_count*100/(r2_clip_count + r2_nonclip_count),col=\"blue\",main=\"clipping profile\",xlab=\"Position of read (read-2)\",ylab=\"Non-clipped %\",type=\"b\")\n\
 dev.off()\n";
