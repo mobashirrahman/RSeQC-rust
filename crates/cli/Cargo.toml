@@ -152,6 +152,11 @@ path = "src/bin/normalize_bigwig.rs"
 name = "overlay_bigwig"
 path = "src/bin/overlay_bigwig.rs"
 
+[[bin]]
+# Same naming note as above: packaging aliases this to `sc_bamStat.py`.
+name = "sc_bamStat"
+path = "src/bin/sc_bamstat.rs"
+
 [dependencies]
 rseqc-core = { path = "../core" }
 rseqc-formats = { path = "../formats" }
