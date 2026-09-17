@@ -20,7 +20,7 @@
 //! which is only correct for `Non_clipped_nt`, always float since
 //! `total_read` is itself always a float).
 //!
-//! SAM-text input (DIV-0002/0004) is supported at the CLI layer via
+//! SAM-text and CRAM input (DIV-0002/0004) are supported at the CLI layer via
 //! `rseqc_formats::open_alignments` for both `clipping_profile.py` and
 //! `insertion_profile.py`; these compute functions were unaffected
 //! (already generic over `IntoIterator<Item = io::Result<bam::Record>>`).

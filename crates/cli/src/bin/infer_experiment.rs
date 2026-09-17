@@ -15,8 +15,8 @@ use rseqc_commands::infer_experiment::{compute_experiment, render_results, GeneR
     about = "Infer RNA-seq library layout and strandedness from a SAM/BAM file."
 )]
 struct Args {
-    /// Input alignment file in BAM or plain-text SAM format (dispatched by
-    /// the `.bam`/`.sam` extension).
+    /// Input alignment file in BAM, plain-text SAM, or CRAM format
+    /// (dispatched by the `.bam`/`.sam`/`.cram` extension).
     #[arg(short = 'i', long = "input-file")]
     input_file: PathBuf,
 

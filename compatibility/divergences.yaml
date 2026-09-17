@@ -23,10 +23,16 @@ divergences:
     description: >
       CLOSED 2026-09-17 for both commands. Their CLIs now open input via
       `rseqc_formats::open_alignments`, which dispatches on the `.bam`/
-      `.sam` extension (case-insensitive) and, for `.sam` input, round-trips
-      the parsed text records through an in-memory BAM byte buffer before
-      handing them to the existing compute function -- which needed zero
-      changes in either case. A live diff against real upstream also
+      `.sam`/`.cram` extension (case-insensitive) and, for `.sam`/`.cram`
+      input, round-trips the parsed records through an in-memory BAM byte
+      buffer before handing them to the existing compute function -- which
+      needed zero changes in any case. Neither command has its own
+      extension whitelist upstream (unlike the 12 DIV-0004 commands), so
+      `.cram` support here is a side effect of sharing `open_alignments`,
+      not something separately verified for these two specifically -- see
+      DIV-0004 for the CRAM verification evidence (read_NVC_cram case and
+      the htslib/noodles-cram MAPQ interop fix). A live diff against real
+      upstream also
       surfaced a genuine behavioral subtlety worth recording (found on
       bam_stat.py, applies identically to bam2fq.py): pysam's
       `Samfile(path, 'rb')` succeeds even for authentic plain-text SAM
@@ -98,17 +104,44 @@ divergences:
       bam_stat.py/bam2fq.py; infer_experiment.py/read_distribution.py
       have no such message at all (custom standalone scripts, not
       qcmodule.SAM methods), so their migration was a pure open_bam ->
-      open_alignments swap. Note these 12 also advertise `.cram`, which
-      `open_alignments` does NOT support at all (no CRAM reader in
-      crates/formats) -- closing SAM-text support here does not close
-      the `.cram` gap; track that remnant per-command if/when it
-      matters, not as a reason to reopen this entry. See
-      verification/run_diff.py cases read_NVC_sam_text, read_GC_sam_text,
-      read_duplication_sam_text, read_quality_sam_text,
-      infer_experiment_sam_text, read_distribution_sam_text,
-      clipping_profile_sam_text, insertion_profile_sam_text,
-      junction_annotation_sam_text, inner_distance_sam_text,
-      junction_saturation_sam_text, rpkm_saturation_sam_text.
+      open_alignments swap. These 12 also advertise `.cram`, which is
+      NOW ALSO supported (2026-09-17): `open_alignments` gained a CRAM
+      branch (decodes with noodles_cram's default, empty reference-
+      sequence repository -- correctly handles embedded/no-reference
+      CRAM, which is what pysam/htslib themselves fall back to when
+      writing CRAM without an explicit external reference; a CRAM file
+      genuinely requiring EXTERNAL reference resolution will error
+      instead of silently producing wrong data, and network-based
+      reference auto-fetch -- which htslib itself can fall back to --
+      is deliberately not replicated, out of keeping with this
+      project's offline-first design). Verified via live diff on
+      read_NVC.py against a real CRAM fixture (bam_stat_basic.cram, the
+      same alignments as bam_stat_basic.bam re-encoded as CRAM), which
+      caught a genuine htslib/noodles-cram interop discrepancy: an
+      unmapped read's explicit MAPQ 0 does not survive htslib's own
+      CRAM write/read round-trip faithfully (htslib's CRAM writer
+      re-encodes unmapped reads' MAPQ as "missing" regardless of the
+      original value, and htslib's own CRAM reader then reports 0 as a
+      read-time convenience default for that specific "missing"
+      condition -- an asymmetry `noodles_cram`, which faithfully
+      reports what's actually stored, does not replicate). Fixed by
+      reproducing htslib's specific read-time convention in
+      `rseqc_formats::fix_unmapped_missing_mapping_quality` (only for
+      unmapped reads with a missing MAPQ from CRAM specifically, not a
+      general "missing MAPQ" rule) -- see that function's own doc
+      comment for the full account. See verification/run_diff.py cases
+      read_NVC_sam_text, read_GC_sam_text, read_duplication_sam_text,
+      read_quality_sam_text, infer_experiment_sam_text,
+      read_distribution_sam_text, clipping_profile_sam_text,
+      insertion_profile_sam_text, junction_annotation_sam_text,
+      inner_distance_sam_text, junction_saturation_sam_text,
+      rpkm_saturation_sam_text, and read_NVC_cram for the CRAM path
+      specifically (only one command's CRAM path has a dedicated case
+      so far -- the round-trip mechanism is shared and already proven
+      for SAM-text on all 12, so this is lower incremental risk than
+      it might look, but per-command CRAM cases are still a reasonable
+      future coverage-expansion target, same reasoning as any other
+      "add more run_diff.py cases" item).
     classification: explicit-compatibility-exception
     decision: Closed for all 12 verified candidates. The other ~12 open_bam-using commands remain NOT part of this gap (10 are genuinely BAM-only by upstream's own argparse validation; geneBody_coverage.py/tin.py require indexed random access that SAM text structurally cannot provide) -- do not re-add them here without re-deriving from upstream source first.
     status: fixed-working-tree

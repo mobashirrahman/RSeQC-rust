@@ -16,8 +16,8 @@ use rseqc_commands::read_gc::{compute_gc, render_gc_r_script, render_gc_table};
     about = "Calculate the GC-content distribution of aligned reads."
 )]
 struct Args {
-    /// Input alignment file in BAM or plain-text SAM format (dispatched by
-    /// the `.bam`/`.sam` extension).
+    /// Input alignment file in BAM, plain-text SAM, or CRAM format
+    /// (dispatched by the `.bam`/`.sam`/`.cram` extension).
     #[arg(short = 'i', long = "input-file")]
     input_file: PathBuf,
 

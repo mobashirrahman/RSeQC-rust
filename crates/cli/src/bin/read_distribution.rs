@@ -13,8 +13,8 @@ use rseqc_commands::read_distribution::{count_read_distribution, process_gene_mo
     about = "Summarize read distribution across genomic annotation categories."
 )]
 struct Args {
-    /// Input alignment file in BAM or plain-text SAM format (dispatched by
-    /// the `.bam`/`.sam` extension).
+    /// Input alignment file in BAM, plain-text SAM, or CRAM format
+    /// (dispatched by the `.bam`/`.sam`/`.cram` extension).
     #[arg(short = 'i', long = "input-file")]
     input_file: PathBuf,
 

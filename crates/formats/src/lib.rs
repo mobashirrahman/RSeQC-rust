@@ -82,62 +82,139 @@ pub fn write_bai_index(path: &Path) -> io::Result<()> {
     noodles_bam::bai::fs::write(bai_path, &index)
 }
 
-/// Opens either a BAM or plain-text SAM file for sequential record
-/// reading, dispatching on the `.bam`/`.sam` extension (case-
+/// Opens a BAM, plain-text SAM, or CRAM file for sequential record
+/// reading, dispatching on the `.bam`/`.sam`/`.cram` extension (case-
 /// insensitive) and returning a UNIFORM `(header, records)` pair
-/// regardless of source format -- closing DIV-0002/0004 ("BAM or SAM"
-/// input, upstream's own advertised contract via pysam) for any
+/// regardless of source format -- closing DIV-0002/0004 ("BAM, SAM, or
+/// CRAM" input, upstream's own advertised contract via pysam) for any
 /// command that switches its `open_bam` call to this function instead.
 ///
-/// SAM-text records are converted to genuine `bam::Record`s by
-/// round-tripping through an in-memory BAM byte buffer: write the
-/// parsed text records out via the same `bam::io::Writer::
-/// write_alignment_record` this port's own test helpers already use to
-/// build BAM fixtures (it accepts anything implementing `sam::
-/// alignment::Record`, including the text `sam::Record` -- no format-
-/// specific encoding logic needed here), then read that buffer back
-/// with a plain `bam::io::Reader`. This means every existing
-/// `compute_*` function in `rseqc-commands` -- all already generic
-/// over `IntoIterator<Item = io::Result<bam::Record>>` -- needs ZERO
-/// changes to accept SAM-text input; only a CLI's own `open_bam` call
-/// site needs to switch to this function and its module doc comment's
-/// "SAM-text input is not yet supported" note needs to come off.
+/// SAM-text and CRAM records are both converted to genuine
+/// `bam::Record`s by round-tripping through an in-memory BAM byte
+/// buffer: write the parsed records out via the same `bam::io::
+/// Writer::write_alignment_record` this port's own test helpers
+/// already use to build BAM fixtures (it accepts anything implementing
+/// `sam::alignment::Record` -- the text `sam::Record` type AND CRAM's
+/// `sam::alignment::RecordBuf`, no format-specific encoding logic
+/// needed here), then read that buffer back with a plain
+/// `bam::io::Reader`. This means every existing `compute_*` function
+/// in `rseqc-commands` -- all already generic over
+/// `IntoIterator<Item = io::Result<bam::Record>>` -- needs ZERO
+/// changes to accept SAM-text or CRAM input; only a CLI's own
+/// `open_bam` call site needs to switch to this function.
+///
+/// **CRAM's reference-sequence handling, a real scope limit, disclosed
+/// rather than silently wrong**: CRAM decodes with `noodles_cram`'s
+/// DEFAULT (empty) reference-sequence repository -- no external FASTA
+/// is consulted. This correctly decodes CRAM written with an embedded
+/// or no-reference-required encoding (confirmed via a real fixture:
+/// `pysam.AlignmentFile(path, 'wc', ...)` without an explicit
+/// `reference_filename` falls back to `embed_ref=2` -- htslib's own
+/// term for "embed the reference in the CRAM file itself" -- when no
+/// external reference is configured, which is exactly the case an
+/// empty repository can decode). A CRAM file that genuinely requires
+/// EXTERNAL reference resolution (encoded against a reference NOT
+/// embedded and not supplied here) will surface as a decode error
+/// instead of silently producing wrong sequence data. None of the 12
+/// upstream commands that advertise `.cram` input expose a
+/// `--reference`-style flag of their own either (checked via grep
+/// across their argparse setups) -- they rely on pysam/htslib's own
+/// reference resolution, which for files lacking a local/embedded
+/// reference can fall back to fetching from a remote EBI/ENA reference
+/// server over the network. Deliberately NOT replicated: this project
+/// is offline-first by design (see README), and network-dependent,
+/// non-reproducible reference fetching would be a poor fit for a QC
+/// tool's I/O layer regardless of upstream's own behavior here.
 ///
 /// The whole file is decoded eagerly into memory (not streamed) for
-/// both formats, unlike `open_bam`'s lazy reader -- acceptable for the
-/// small/QC-scale inputs this tool targets, and it avoids needing a
-/// second, owned-iterator BAM reader type alongside the existing
-/// borrowed-iterator one. Extension detection (not content sniffing)
-/// matches upstream's own `pysam.AlignmentFile` behavior, which also
-/// dispatches BAM-vs-SAM-text by filename, not by sniffing magic bytes.
+/// all three formats, unlike `open_bam`'s lazy reader -- acceptable
+/// for the small/QC-scale inputs this tool targets, and it avoids
+/// needing a second, owned-iterator BAM reader type alongside the
+/// existing borrowed-iterator one. Extension detection (not content
+/// sniffing) matches upstream's own `pysam.AlignmentFile` behavior,
+/// which also dispatches by filename, not by sniffing magic bytes.
 pub fn open_alignments(path: &Path) -> io::Result<(sam::Header, Vec<io::Result<noodles_bam::Record>>)> {
-    let is_sam_text = path.extension().and_then(|ext| ext.to_str()).map(|ext| ext.eq_ignore_ascii_case("sam")).unwrap_or(false);
+    let extension = path.extension().and_then(|ext| ext.to_str()).map(|ext| ext.to_ascii_lowercase());
 
-    if is_sam_text {
-        use sam::alignment::io::Write as _;
-
-        let mut text_reader = File::open(path).map(BufReader::new).map(sam::io::Reader::new)?;
-        let header = text_reader.read_header()?;
-
-        let mut buf = Vec::new();
-        {
-            let mut bam_writer = noodles_bam::io::Writer::new(&mut buf);
-            bam_writer.write_header(&header)?;
-            for result in text_reader.records() {
-                let record = result?;
-                bam_writer.write_alignment_record(&header, &record)?;
-            }
+    match extension.as_deref() {
+        Some("sam") => {
+            let mut text_reader = File::open(path).map(BufReader::new).map(sam::io::Reader::new)?;
+            let header = text_reader.read_header()?;
+            round_trip_through_bam(header, text_reader.records())
         }
-
-        let mut bam_reader = noodles_bam::io::Reader::new(buf.as_slice());
-        bam_reader.read_header()?;
-        let records: Vec<_> = bam_reader.records().collect();
-        Ok((header, records))
-    } else {
-        let (mut reader, header) = open_bam(path)?;
-        let records: Vec<_> = reader.records().collect();
-        Ok((header, records))
+        Some("cram") => {
+            let mut cram_reader = File::open(path).map(noodles_cram::io::Reader::new)?;
+            let header = cram_reader.read_header()?;
+            // `records()` borrows `header`, so collect eagerly before
+            // it's moved into `round_trip_through_bam`.
+            let records: Vec<io::Result<sam::alignment::RecordBuf>> = cram_reader
+                .records(&header)
+                .map(|result| result.map(fix_unmapped_missing_mapping_quality))
+                .collect();
+            round_trip_through_bam(header, records.into_iter())
+        }
+        _ => {
+            let (mut reader, header) = open_bam(path)?;
+            let records: Vec<_> = reader.records().collect();
+            Ok((header, records))
+        }
     }
+}
+
+/// Real, live-diff-discovered CRAM/htslib interop quirk, not a bug in
+/// this port's own logic: for an UNMAPPED read, `noodles_cram` decodes
+/// mapping quality as genuinely MISSING (`None`) when that's what the
+/// CRAM container's own MAPQ data series actually stores for that
+/// record -- which is what htslib's own CRAM WRITER puts there for
+/// unmapped reads (confirmed: converting `bam_stat_basic.bam`, whose
+/// `unmapped1` read has an EXPLICIT MAPQ of `0`, to CRAM via
+/// `pysam.AlignmentFile(..., 'wc', ...)` and back loses that `0`,
+/// because htslib's writer re-encodes unmapped reads' MAPQ as missing
+/// regardless of the original value). But htslib's own CRAM READER
+/// (what pysam/upstream actually uses) does NOT surface that as
+/// "missing" to callers -- it reports mapping quality `0` for an
+/// unmapped read with a missing MAPQ data series entry, a read-time
+/// convenience default. `noodles_cram` faithfully reports what's
+/// actually stored (missing) instead of replicating htslib's own
+/// asymmetric write/read convention. Discovered via a live diff on
+/// `read_NVC.py`: this port's CRAM path counted `unmapped1` as
+/// "qualifying" (missing MAPQ treated as BAM's own 255/"unavailable"
+/// sentinel, which always clears any `--mapq` threshold) while real
+/// upstream correctly excluded it (mapq 0 fails the default `-q 30`
+/// cutoff). Reproduces htslib's own read-time default here so this
+/// port's CRAM support matches what upstream ACTUALLY does, not just
+/// what the CRAM container's raw bytes technically encode.
+fn fix_unmapped_missing_mapping_quality(mut record: sam::alignment::RecordBuf) -> sam::alignment::RecordBuf {
+    use sam::alignment::record::{Flags, MappingQuality};
+    if record.flags().contains(Flags::UNMAPPED) && record.mapping_quality().is_none() {
+        *record.mapping_quality_mut() = MappingQuality::new(0);
+    }
+    record
+}
+
+/// Shared by `open_alignments`' SAM-text and CRAM branches: writes any
+/// `sam::alignment::Record`-implementing records out to an in-memory
+/// BAM buffer, then reads them back as genuine `bam::Record`s.
+fn round_trip_through_bam<R>(header: sam::Header, records: impl Iterator<Item = io::Result<R>>) -> io::Result<(sam::Header, Vec<io::Result<noodles_bam::Record>>)>
+where
+    R: sam::alignment::Record,
+{
+    use sam::alignment::io::Write as _;
+
+    let mut buf = Vec::new();
+    {
+        let mut bam_writer = noodles_bam::io::Writer::new(&mut buf);
+        bam_writer.write_header(&header)?;
+        for result in records {
+            let record = result?;
+            bam_writer.write_alignment_record(&header, &record)?;
+        }
+    }
+
+    let mut bam_reader = noodles_bam::io::Reader::new(buf.as_slice());
+    bam_reader.read_header()?;
+    let records: Vec<_> = bam_reader.records().collect();
+    Ok((header, records))
 }
 
 #[cfg(test)]
@@ -204,6 +281,34 @@ mod tests {
         assert_eq!(b.alignment_start().unwrap().unwrap(), s.alignment_start().unwrap().unwrap());
 
         std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    /// Real, pysam-written CRAM with no external reference configured
+    /// -- htslib itself falls back to embedding the reference in this
+    /// situation (confirmed via the warning it prints when writing;
+    /// see the fixture's own generator script), which is exactly what
+    /// `open_alignments`'s default (empty) reference-sequence
+    /// repository can decode. Noodles' OWN `cram::io::Writer` was not
+    /// usable to build this fixture directly: unlike pysam/htslib, it
+    /// hard-requires a real `fasta::Repository` to compute `@SQ` `M5`
+    /// checksums and panics without one -- a real fixture generated by
+    /// the actual tool this port needs to interoperate with is more
+    /// representative here anyway, matching this project's established
+    /// precedent for `crates/formats/tests/fixtures/` (see
+    /// `pybigwig_test.bw`'s own README entry).
+    #[test]
+    fn open_alignments_decodes_a_real_no_reference_cram_fixture() {
+        let path = Path::new(concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fixtures/cram_no_reference.cram"));
+        let (header, records) = open_alignments(path).unwrap();
+
+        assert_eq!(header.reference_sequences().len(), 1);
+        assert_eq!(records.len(), 1);
+
+        let record = records.into_iter().next().unwrap().unwrap();
+        assert_eq!(record.name().map(|n| n.to_vec()), Some(b"r1".to_vec()));
+        assert_eq!(record.mapping_quality().map(|q| q.get()), Some(40));
+        assert_eq!(record.alignment_start().unwrap().unwrap().get(), 11);
+        assert_eq!(record.sequence().iter().collect::<Vec<_>>(), b"ACGT".to_vec());
     }
 
     #[test]

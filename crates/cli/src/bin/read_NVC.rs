@@ -16,8 +16,8 @@ use rseqc_commands::read_nvc::{compute_nvc, render_nvc_r_script, render_nvc_tabl
     about = "Calculate nucleotide frequency at each read cycle."
 )]
 struct Args {
-    /// Input alignment file in BAM or plain-text SAM format (dispatched by
-    /// the `.bam`/`.sam` extension).
+    /// Input alignment file in BAM, plain-text SAM, or CRAM format
+    /// (dispatched by the `.bam`/`.sam`/`.cram` extension).
     #[arg(short = 'i', long = "input-file")]
     input_file: PathBuf,
 

@@ -21,8 +21,8 @@ use rseqc_commands::read_quality::{compute_quality, render_qual_r_script};
     about = "Calculate per-cycle Phred quality-score distributions for aligned reads."
 )]
 struct Args {
-    /// Input alignment file in BAM or plain-text SAM format (dispatched by
-    /// the `.bam`/`.sam` extension).
+    /// Input alignment file in BAM, plain-text SAM, or CRAM format
+    /// (dispatched by the `.bam`/`.sam`/`.cram` extension).
     #[arg(short = 'i', long = "input-file")]
     input_file: PathBuf,
 

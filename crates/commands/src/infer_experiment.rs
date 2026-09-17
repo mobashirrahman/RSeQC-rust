@@ -18,7 +18,7 @@
 //! span (which would also account for N/D ops) -- an upstream
 //! simplification, preserved as-is rather than "corrected".
 //!
-//! SAM-text input (DIV-0002/0004) is supported at the CLI layer via
+//! SAM-text and CRAM input (DIV-0002/0004) are supported at the CLI layer via
 //! `rseqc_formats::open_alignments`; this module's own functions were
 //! unaffected (already generic over
 //! `IntoIterator<Item = io::Result<bam::Record>>`).

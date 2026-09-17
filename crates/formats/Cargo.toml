@@ -8,6 +8,19 @@ license.workspace = true
 noodles-bam = "0.95.0"
 noodles-bgzf = "0.51.0"
 noodles-sam = "0.90.0"
+# .cram input for open_alignments (DIV-0004's remaining .cram remnant).
+# Decodes with the DEFAULT (empty) reference-sequence repository --
+# correctly handles embedded-reference or reference-free CRAM (the
+# common case when no external FASTA is configured, which is also what
+# pysam/htslib themselves fall back to when writing CRAM without an
+# explicit reference: `embed_ref=2`). A CRAM file that genuinely
+# requires EXTERNAL reference resolution (not embedded) will error
+# instead of silently producing wrong data -- see open_alignments' own
+# doc comment for why that's a disclosed, deliberate scope limit
+# rather than something to fix by adding network-based reference
+# auto-fetch (upstream's own commands don't expose a --reference flag
+# either, and this project is offline-first by design).
+noodles-cram = "0.99.0"
 rseqc-core = { path = "../core" }
 thiserror = "2"
 # Pure-Rust BigWig reader (no write/remote/cli support needed -- only

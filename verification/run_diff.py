@@ -430,6 +430,23 @@ def ensure_bam_stat_sam_fixture() -> None:
     subprocess.run([str(ORACLE_PYTHON), str(generator), str(fixture)], cwd=REPO_ROOT, check=True)
 
 
+def ensure_bam_stat_cram_fixture() -> None:
+    # Same alignments as bam_stat_basic.bam, re-encoded as CRAM (no
+    # external reference -- htslib embeds it) via pysam -- exercises
+    # open_alignments()'s CRAM round-trip path (DIV-0002/0004) against
+    # the exact same data as the .bam case. This specific fixture
+    # (including unmapped1, whose explicit MAPQ 0 doesn't survive
+    # htslib's own CRAM write/read round-trip faithfully) caught a real
+    # htslib/noodles-cram interop discrepancy -- see
+    # rseqc_formats::fix_unmapped_missing_mapping_quality.
+    ensure_bam_stat_fixture()
+    fixture = REPO_ROOT / "verification" / "fixtures" / "bam_stat_basic.cram"
+    if fixture.is_file():
+        return
+    generator = REPO_ROOT / "verification" / "fixtures" / "make_bam_stat_cram_fixture.py"
+    subprocess.run([str(ORACLE_PYTHON), str(generator), str(fixture)], cwd=REPO_ROOT, check=True)
+
+
 def ensure_regression_fixtures() -> None:
     fixture_dir = REPO_ROOT / "verification" / "fixtures"
     required = (
@@ -462,6 +479,10 @@ def _bam_stat_sam_fixture_path() -> str:
 
 def _bam_stat_sam_args(_scratch_dir: Path) -> list[str]:
     return ["-i", _bam_stat_sam_fixture_path()]
+
+
+def _bam_stat_cram_fixture_path() -> str:
+    return str(REPO_ROOT / "verification" / "fixtures" / "bam_stat_basic.cram")
 
 
 def _nvc_fixture_path() -> str:
@@ -663,6 +684,29 @@ CASES: list[Case] = [
         rust_args=lambda scratch_dir: ["-i", _bam_stat_sam_fixture_path(), "-o", str(scratch_dir / "out"), "--skip-plot"],
         compare_stream="stderr",
         stream_format="exact",
+        compare_files=("out.NVC.xls", "out.NVC_plot.r"),
+        normalize_paths=True,
+    ),
+    Case(
+        name="read_NVC_cram",
+        # DIV-0002/0004 CRAM remnant, closed for read_NVC.py via
+        # open_alignments. Found and fixed a real bug via this exact
+        # case: unmapped1's explicit MAPQ 0 doesn't survive htslib's
+        # own CRAM write/read round-trip faithfully -- see
+        # rseqc_formats::fix_unmapped_missing_mapping_quality. stderr is
+        # NOT compared: htslib always attempts to load a .crai index
+        # for CRAM input, even for pure sequential access, and prints
+        # "[E::cram_index_load] Could not retrieve index file ..." to
+        # stderr when none exists (this fixture has none, by design --
+        # this port's CRAM support never needs an index). Environment/
+        # library noise, not a correctness signal; the .xls/.r file
+        # outputs are the real check here.
+        ensure_fixture=ensure_bam_stat_cram_fixture,
+        py_script="read_NVC.py",
+        rust_bin="read_NVC",
+        py_args=lambda scratch_dir: ["-i", _bam_stat_cram_fixture_path(), "-o", str(scratch_dir / "out"), "--skip-plot"],
+        rust_args=lambda scratch_dir: ["-i", _bam_stat_cram_fixture_path(), "-o", str(scratch_dir / "out"), "--skip-plot"],
+        compare_stream="none",
         compare_files=("out.NVC.xls", "out.NVC_plot.r"),
         normalize_paths=True,
     ),
