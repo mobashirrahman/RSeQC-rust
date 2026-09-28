@@ -27,7 +27,6 @@ import subprocess
 import sys
 import tempfile
 import time
-from decimal import Decimal, InvalidOperation
 from pathlib import Path
 from typing import NamedTuple
 
@@ -172,43 +171,6 @@ def run_with_timing(
         )
 
 
-def numeric_equal(left: str, right: str) -> bool:
-    """Compare values with numeric semantics."""
-    try:
-        lval = Decimal(left)
-        rval = Decimal(right)
-    except InvalidOperation:
-        return left == right
-    if lval.is_nan() or rval.is_nan():
-        return lval.is_nan() and rval.is_nan()
-    return lval == rval
-
-
-def numeric_table_equal(left_bytes: bytes, right_bytes: bytes) -> bool:
-    """Compare whitespace-delimited tables with numeric cell semantics."""
-    left_rows = left_bytes.decode("utf-8", errors="replace").splitlines()
-    right_rows = right_bytes.decode("utf-8", errors="replace").splitlines()
-    if len(left_rows) != len(right_rows):
-        return False
-    
-    for left_row, right_row in zip(left_rows, right_rows):
-        left_cells = left_row.split()
-        right_cells = right_row.split()
-        if len(left_cells) != len(right_cells):
-            return False
-        for left_cell, right_cell in zip(left_cells, right_cells):
-            try:
-                Decimal(left_cell)
-                Decimal(right_cell)
-            except InvalidOperation:
-                if left_cell != right_cell:
-                    return False
-            else:
-                if not numeric_equal(left_cell, right_cell):
-                    return False
-    return True
-
-
 def normalize_temp_paths(data: bytes) -> bytes:
     """Normalize temp paths in R/shell scripts: replace /tmp/tmp* with <TEMP>."""
     text = data.decode("utf-8", errors="replace")
@@ -245,8 +207,10 @@ def compare_file_data(py_file_data: dict[str, bytes], rust_file_data: dict[str, 
             py_bytes = normalize_temp_paths(py_bytes)
             rust_bytes = normalize_temp_paths(rust_bytes)
 
-        # Use numeric table comparison for text files
-        if not numeric_table_equal(py_bytes, rust_bytes):
+        # Byte-exact after path normalisation: a drop-in replacement must
+        # reproduce upstream's text, and numeric equality would hide int/float
+        # rendering bugs such as "15.0" vs "15".
+        if py_bytes != rust_bytes:
             # Report the first difference
             py_lines = py_bytes.decode("utf-8", errors="replace").splitlines()
             rust_lines = rust_bytes.decode("utf-8", errors="replace").splitlines()
@@ -263,10 +227,10 @@ def compare_file_data(py_file_data: dict[str, bytes], rust_file_data: dict[str, 
     return errors
 
 
-def bootstrap_ci(values: list[float], seed: int = 42, resamples: int = 10000) -> tuple[float, float]:
-    """Compute 95% confidence interval via bootstrap."""
+def bootstrap_ci(values: list[float], seed: int = 42, resamples: int = 10000) -> tuple[float | None, float | None]:
+    """Compute a 95% bootstrap confidence interval; (None, None) with fewer than 2 values."""
     if not values or len(values) < 2:
-        return 0, 0
+        return None, None
     
     rng = random.Random(seed)
     bootstrap_medians = []
@@ -566,7 +530,8 @@ def main():
             ratio = stats["time_ratio_median"]
             ratio_ci = stats["time_ratio_ci_95"]
             print(
-                f"{match_status} {command:25} Speedup: {ratio:6.2f}x  95% CI: [{ratio_ci['lower']:6.2f}, {ratio_ci['upper']:6.2f}]",
+                f"{match_status} {command:25} Speedup: {ratio:6.2f}x  95% CI: "
+                + (f"[{ratio_ci['lower']:6.2f}, {ratio_ci['upper']:6.2f}]" if ratio_ci["lower"] is not None else "n/a (need >= 2 reps)"),
                 file=sys.stderr
             )
         else:
