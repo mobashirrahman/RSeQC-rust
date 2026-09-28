@@ -57,6 +57,10 @@ pub struct IndexedRead {
     /// `query_start` is the index into `qualities` of the base aligned
     /// to `ref_start`.
     pub match_blocks: Vec<(i64, i64, usize)>,
+    /// `(ref_start, ref_end)` pairs for D (deletion) and N (skip) CIGAR ops.
+    /// These spans appear in pileup but have no passing bases, so should
+    /// mark positions as visited (int 0) not unvisited (float 0.0).
+    pub skip_delete_blocks: Vec<(i64, i64)>,
     pub qualities: Vec<u8>,
     pub query_length: i64,
 }
@@ -90,6 +94,7 @@ where
         let mut ref_pos = start;
         let mut query_pos = 0usize;
         let mut match_blocks = Vec::new();
+        let mut skip_delete_blocks = Vec::new();
         for op in &ops {
             match op.kind() {
                 Kind::Match | Kind::SequenceMatch | Kind::SequenceMismatch => {
@@ -101,6 +106,7 @@ where
                     query_pos += op.len();
                 }
                 Kind::Deletion | Kind::Skip => {
+                    skip_delete_blocks.push((ref_pos, ref_pos + op.len() as i64));
                     ref_pos += op.len() as i64;
                 }
                 Kind::HardClip | Kind::Pad => {}
@@ -114,6 +120,7 @@ where
             end: ref_pos,
             is_duplicate: flags.is_duplicate(),
             match_blocks,
+            skip_delete_blocks,
             query_length: record.sequence().len() as i64,
             qualities,
         });
@@ -197,6 +204,7 @@ pub fn genebody_coverage_with_visited(reads: &[IndexedRead], positions: &[i64], 
         let mut paired_bases: HashMap<String, (u8, bool)> = HashMap::new();
         let mut unpaired_bases: Vec<bool> = Vec::new();
         for read in &overlapping {
+            // Check match blocks (M/=/X operations)
             for &(bs, be, qstart) in &read.match_blocks {
                 if p0 >= bs && p0 < be {
                     was_visited = true;
@@ -212,6 +220,15 @@ pub fn genebody_coverage_with_visited(reads: &[IndexedRead], positions: &[i64], 
                         unpaired_bases.push(passes_quality);
                     }
                     break;
+                }
+            }
+            // Also mark positions covered by D (deletion) and N (skip) CIGAR ops as visited
+            if !was_visited {
+                for &(bs, be) in &read.skip_delete_blocks {
+                    if p0 >= bs && p0 < be {
+                        was_visited = true;
+                        break;
+                    }
                 }
             }
         }
@@ -712,6 +729,7 @@ chr1\t0\t100\ttx2\t0\t+\t0\t100\t0\t1\t100,\t0,
                 end: 20,
                 is_duplicate: false,
                 match_blocks: vec![(0, 20, 0)],
+                skip_delete_blocks: vec![],
                 qualities: vec![40; 20],
                 query_length: 20,
             })
@@ -731,6 +749,7 @@ chr1\t0\t100\ttx2\t0\t+\t0\t100\t0\t1\t100,\t0,
                 end: 20,
                 is_duplicate: false,
                 match_blocks: vec![(0, 20, 0)],
+                skip_delete_blocks: vec![],
                 qualities: vec![40; 20],
                 query_length: 20,
             },
@@ -741,6 +760,7 @@ chr1\t0\t100\ttx2\t0\t+\t0\t100\t0\t1\t100,\t0,
                 end: 30,
                 is_duplicate: false,
                 match_blocks: vec![(10, 30, 0)],
+                skip_delete_blocks: vec![],
                 qualities: vec![40; 20],
                 query_length: 20,
             },

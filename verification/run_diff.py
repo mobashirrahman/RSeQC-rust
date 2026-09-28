@@ -667,6 +667,23 @@ def ensure_genebody_coverage_float_fixture() -> None:
     subprocess.run([str(ORACLE_PYTHON), str(generator), "--size", "300", "--output-dir", str(fixture_dir)], cwd=REPO_ROOT, check=True)
 
 
+def ensure_genebody_coverage_edge_fixture() -> None:
+    """Edge-case fixture for geneBody_coverage.py CIGAR D/N operations.
+    Verifies that deletion-only and skip-only spans appear in pileup and
+    render as int 0 (visited), not float 0.0 (unvisited)."""
+    fixture_dir = REPO_ROOT / "verification" / "fixtures" / "genebody_coverage_edge"
+    required = (
+        fixture_dir / "edge.bam",
+        fixture_dir / "edge.bam.bai",
+        fixture_dir / "edge.bed12",
+    )
+    if all(path.is_file() for path in required):
+        return
+    fixture_dir.mkdir(parents=True, exist_ok=True)
+    generator = REPO_ROOT / "verification" / "fixtures" / "make_genebody_coverage_edge_fixture.py"
+    subprocess.run([str(ORACLE_PYTHON), str(generator), str(fixture_dir)], cwd=REPO_ROOT, check=True)
+
+
 CASES: list[Case] = [
     Case(
         name="bam_stat_basic",
@@ -1071,6 +1088,34 @@ CASES: list[Case] = [
         compare_files=("out.geneBodyCoverage.txt",),
         # Use exact byte comparison (not numeric) to verify float formatting
         # (e.g., "15.0" in Rust output matches Python's "15.0", not "15")
+    ),
+    Case(
+        name="genebody_coverage_edge_cases",
+        ensure_fixture=ensure_genebody_coverage_edge_fixture,
+        py_script="geneBody_coverage.py",
+        rust_bin="geneBody_coverage",
+        py_args=lambda scratch_dir: [
+            "-i",
+            str(REPO_ROOT / "verification" / "fixtures" / "genebody_coverage_edge" / "edge.bam"),
+            "-r",
+            str(REPO_ROOT / "verification" / "fixtures" / "genebody_coverage_edge" / "edge.bed12"),
+            "-o",
+            str(scratch_dir / "gb"),
+            "--skip-plot",
+        ],
+        rust_args=lambda scratch_dir: [
+            "-i",
+            str(REPO_ROOT / "verification" / "fixtures" / "genebody_coverage_edge" / "edge.bam"),
+            "-r",
+            str(REPO_ROOT / "verification" / "fixtures" / "genebody_coverage_edge" / "edge.bed12"),
+            "-o",
+            str(scratch_dir / "gb"),
+            "--skip-plot",
+        ],
+        compare_stream="none",
+        compare_files=("gb.geneBodyCoverage.txt",),
+        # Verifies D (deletion) and N (skip) CIGAR spans mark positions as
+        # visited (int 0) not unvisited (float 0.0), even when no reads pass filters
     ),
     Case(
         name="tin_pair_overlap",
