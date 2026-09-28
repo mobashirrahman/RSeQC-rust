@@ -188,6 +188,15 @@ checksum = "fc652a48c352aef3ea3aed32080501cf3ef6ed5da78602a020c991775b0aff04"
 
 [[package]]
 name = "bzip2"
+version = "0.5.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "49ecfb22d906f800d4fe833b6282cf4dc1c298f5057ca0b5445e5c209735ca47"
+dependencies = [
+ "bzip2-sys",
+]
+
+[[package]]
+name = "bzip2"
 version = "0.6.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f3a53fac24f34a81bc9954b5d6cfce0c21e18ec6959f44f56e8e90e4bb7c346c"
@@ -203,6 +212,16 @@ checksum = "beeb59e7e4c811ab37cc73680c798c7a5da77fc9989c62b09138e31ee740f735"
 dependencies = [
  "crc32fast",
  "tinyvec",
+]
+
+[[package]]
+name = "bzip2-sys"
+version = "0.1.13+1.0.8"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "225bff33b2141874fe80d71e07d6eec4f85c5c216453dd96388240f96e1acc14"
+dependencies = [
+ "cc",
+ "pkg-config",
 ]
 
 [[package]]
@@ -679,7 +698,7 @@ checksum = "2e6586665a10fb37d997dbcc7375082d581f34226e85a8c727d3221a8c15de4b"
 dependencies = [
  "bitflags",
  "bstr",
- "bzip2",
+ "bzip2 0.6.1",
  "flate2",
  "indexmap",
  "lexical-core",
@@ -758,6 +777,12 @@ name = "pin-project-lite"
 version = "0.2.17"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a89322df9ebe1c1578d689c92318e070967d1042b512afbe49518723f4e6d5cd"
+
+[[package]]
+name = "pkg-config"
+version = "0.3.34"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f6b464fbc74e149a392436b17d523f769e057cb6877f6a5c4618bc6f11800548"
 
 [[package]]
 name = "png"
@@ -1003,6 +1028,7 @@ name = "rseqc-formats"
 version = "0.1.0"
 dependencies = [
  "bigtools",
+ "bzip2 0.5.2",
  "bzip2-rs",
  "flate2",
  "noodles-bam",
@@ -1012,6 +1038,7 @@ dependencies = [
  "noodles-sam",
  "proptest",
  "rseqc-core",
+ "tempfile",
  "thiserror 2.0.20",
 ]
 
