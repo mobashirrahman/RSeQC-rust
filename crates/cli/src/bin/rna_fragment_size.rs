@@ -41,7 +41,7 @@ fn main() -> std::process::ExitCode {
     match run(&args) {
         Ok(()) => std::process::ExitCode::SUCCESS,
         Err(err) => {
-            eprintln!("error: {err}");
+            eprintln!("RNA_fragment_size.py: error: {err}");
             std::process::ExitCode::FAILURE
         }
     }

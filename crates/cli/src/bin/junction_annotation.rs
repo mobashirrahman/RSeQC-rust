@@ -61,7 +61,7 @@ fn main() -> ExitCode {
     match run(&args) {
         Ok(code) => code,
         Err(err) => {
-            eprintln!("error: {err}");
+            eprintln!("junction_annotation.py: error: {err}");
             ExitCode::FAILURE
         }
     }

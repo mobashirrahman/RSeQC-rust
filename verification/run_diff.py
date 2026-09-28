@@ -2442,6 +2442,28 @@ CASES: list[Case] = [
         strip_log_prefixes=True,
         compare_files=("out.FPKM-UQ.txt", "out.htseq.counts.txt"),
     ),
+    Case(
+        name="fpkm_uq_error_prefix",
+        # Found by verification/synthetic_sweep.py: 26 upstream scripts
+        # report runtime errors via `parser.exit(1, f"{parser.prog}: error:
+        # {exc}\n")` (e.g. FPKM-UQ.py:448); the port printed a bare
+        # "error: ...". Here the committed mock's gene IDs are all absent
+        # from the synthetic info file -> "no protein-coding gene counts".
+        ensure_fixture=ensure_synthetic_fixtures,
+        py_script="FPKM-UQ.py",
+        rust_bin="FPKM_UQ",
+        py_args=lambda d: ["--bam", _synthetic("pe.bam"), "--gtf", _synthetic("model.gtf"),
+                           "--info", _synthetic("genes.info.txt"), "-o", str(d / "out"),
+                           "--htseq-count", _regression_fixture("mock_htseq_count.sh")],
+        rust_args=lambda d: ["--bam", _synthetic("pe.bam"), "--gtf", _synthetic("model.gtf"),
+                             "--info", _synthetic("genes.info.txt"), "-o", str(d / "out"),
+                             "--htseq-count", _regression_fixture("mock_htseq_count.sh")],
+        compare_stream="stderr",
+        stream_format="exact",
+        normalize_paths=True,
+        strip_log_prefixes=True,
+        expected_exit_code=1,
+    ),
 ]
 
 

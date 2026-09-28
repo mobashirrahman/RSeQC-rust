@@ -57,7 +57,9 @@ fn main() -> std::process::ExitCode {
     match run(&args) {
         Ok(()) => std::process::ExitCode::SUCCESS,
         Err(err) => {
-            eprintln!("error: {err}");
+            // Upstream: logging.error("%s", exc) -- the message alone, after
+            // the (unreplicated, DIV-0019) timestamp/level prefix.
+            eprintln!("{err}");
             std::process::ExitCode::FAILURE
         }
     }

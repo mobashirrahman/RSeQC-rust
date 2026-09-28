@@ -52,7 +52,7 @@ fn main() -> std::process::ExitCode {
     match run(&args) {
         Ok(()) => std::process::ExitCode::SUCCESS,
         Err(err) => {
-            eprintln!("error: {err}");
+            eprintln!("read_quality.py: error: {err}");
             std::process::ExitCode::FAILURE
         }
     }

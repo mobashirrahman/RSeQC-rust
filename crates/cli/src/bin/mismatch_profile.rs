@@ -53,7 +53,7 @@ fn main() -> std::process::ExitCode {
     match run(&args) {
         Ok(()) => std::process::ExitCode::SUCCESS,
         Err(err) => {
-            eprintln!("error: {err}");
+            eprintln!("mismatch_profile.py: error: {err}");
             std::process::ExitCode::FAILURE
         }
     }
