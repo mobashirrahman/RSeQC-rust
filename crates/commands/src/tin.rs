@@ -166,9 +166,12 @@ pub fn estimate_bg_noise(reads: &[IndexedRead], tx_start: i64, tx_end: i64, exon
 /// column iteration collapses them -- callers must still use the
 /// ORIGINAL, possibly-duplicated `positions.len()` as the TIN
 /// denominator, not this function's output length; see `tin_score`).
-pub fn genebody_coverage(reads: &[IndexedRead], positions: &[i64], bg_level: f64) -> Vec<f64> {
+/// Computes coverage for requested positions and also returns which positions
+/// were visited by at least one read (to distinguish truly uncovered positions
+/// from covered-but-filtered ones, needed for Python duck-typing float marker).
+pub fn genebody_coverage_with_visited(reads: &[IndexedRead], positions: &[i64], bg_level: f64) -> (Vec<f64>, Vec<bool>) {
     if positions.is_empty() {
-        return Vec::new();
+        return (Vec::new(), Vec::new());
     }
     let start0 = positions[0] - 1;
     let end0 = positions[positions.len() - 1];
@@ -181,9 +184,11 @@ pub fn genebody_coverage(reads: &[IndexedRead], positions: &[i64], bg_level: f64
     distinct.dedup();
 
     let mut coverage = Vec::with_capacity(distinct.len());
+    let mut visited = Vec::with_capacity(distinct.len());
     for p1 in distinct {
         let p0 = p1 - 1;
         let mut covered = 0.0;
+        let mut was_visited = false;
         // pysam's pileup() default max_depth is 8000.  The cap is applied
         // per genomic column before RSeQC filters duplicate/low-quality
         // pileups, so a deeply stacked locus must not silently contribute
@@ -194,6 +199,7 @@ pub fn genebody_coverage(reads: &[IndexedRead], positions: &[i64], bg_level: f64
         for read in &overlapping {
             for &(bs, be, qstart) in &read.match_blocks {
                 if p0 >= bs && p0 < be {
+                    was_visited = true;
                     let qidx = qstart + (p0 - bs) as usize;
                     let quality = read.qualities.get(qidx).copied().unwrap_or(255);
                     let passes_quality = quality >= 13;
@@ -231,18 +237,24 @@ pub fn genebody_coverage(reads: &[IndexedRead], positions: &[i64], bg_level: f64
             }
         }
         coverage.push(covered);
+        visited.push(was_visited);
     }
 
     if bg_level <= 0.0 {
-        return coverage;
+        return (coverage, visited);
     }
-    coverage
+    let adjusted = coverage
         .into_iter()
         .map(|v| {
             let subtracted = (v - bg_level) as i64;
             if subtracted > 0 { subtracted as f64 } else { 0.0 }
         })
-        .collect()
+        .collect();
+    (adjusted, visited)
+}
+
+pub fn genebody_coverage(reads: &[IndexedRead], positions: &[i64], bg_level: f64) -> Vec<f64> {
+    genebody_coverage_with_visited(reads, positions, bg_level).0
 }
 
 /// Shannon entropy (natural log), matching upstream's `shannon_entropy`

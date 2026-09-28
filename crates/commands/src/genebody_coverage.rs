@@ -52,7 +52,7 @@ use noodles_bam as bam;
 use noodles_sam as sam;
 
 use crate::python_fmt::{python_round, python_str_float};
-use crate::tin::{IndexedRead, build_read_index, genebody_coverage as position_coverage};
+use crate::tin::{IndexedRead, build_read_index, genebody_coverage_with_visited};
 
 /// Converts a string into a valid, safe R variable name. Ports
 /// `valid_name`.
@@ -164,19 +164,23 @@ pub fn genebody_percentile(reader: impl BufRead, mrna_length_cutoff: i64) -> io:
 /// Aggregates per-bin-index coverage across every transcript for one
 /// BAM's already-built read index. Ports the per-BAM-file
 /// `genebody_coverage()` orchestration (the per-position counting
-/// itself is `tin::genebody_coverage`, reused as `position_coverage`).
+/// itself is `tin::genebody_coverage_with_visited`, which returns both
+/// coverage values and position-visit markers).
 /// A transcript whose `chrom` is not a valid reference in `header` is
 /// silently skipped (upstream's `next(samfile.pileup(chrom,1,2),None)`
 /// existence probe).
 ///
 /// Returns `(aggregated_coverage, has_float_marker)` where `has_float_marker`
-/// tracks which indices received a 0.0 value during aggregation, matching
-/// Python's duck-typing behavior: once a 0.0 is added to an int, the
-/// aggregated value becomes float (even if later additions make it non-zero).
+/// indicates which indices received a value from a position that was NEVER
+/// visited by any read across ALL transcripts. These positions stay as 0.0
+/// (float) in Python due to dict initialization, matching the duck-typing:
+/// once 0.0 is added to an int, the aggregate becomes float permanently.
+/// Positions that were visited but filtered to 0 (deletions, duplicates, etc.)
+/// remain int 0, correctly distinguishing true no-coverage from zero-coverage.
 pub fn compute_coverage_for_bam(reads_by_chrom: &HashMap<String, Vec<IndexedRead>>, header: &sam::Header, transcripts: &[TranscriptPercentiles]) -> (Vec<i64>, Vec<bool>) {
     let valid_chroms: std::collections::HashSet<&str> = header.reference_sequences().keys().map(|k| std::str::from_utf8(k).unwrap_or("")).collect();
     let mut aggregated: Vec<i64> = Vec::new();
-    let mut has_float: Vec<bool> = Vec::new();
+    let mut ever_visited: Vec<bool> = Vec::new();
 
     for t in transcripts {
         if t.positions.is_empty() || !valid_chroms.contains(t.chrom.as_str()) {
@@ -184,23 +188,27 @@ pub fn compute_coverage_for_bam(reads_by_chrom: &HashMap<String, Vec<IndexedRead
         }
         let empty = Vec::new();
         let reads = reads_by_chrom.get(&t.chrom).unwrap_or(&empty);
-        let mut coverage = position_coverage(reads, &t.positions, 0.0);
+        let (mut coverage, mut visited) = genebody_coverage_with_visited(reads, &t.positions, 0.0);
         if t.strand == "-" {
             coverage.reverse();
+            visited.reverse();
         }
         if coverage.len() > aggregated.len() {
             aggregated.resize(coverage.len(), 0);
-            has_float.resize(coverage.len(), false);
+            ever_visited.resize(coverage.len(), false);
         }
-        for (i, v) in coverage.into_iter().enumerate() {
-            // Track if this index receives a 0.0 value (which makes it float in Python)
-            if v == 0.0 {
-                has_float[i] = true;
+        for (i, (v, was_visited)) in coverage.into_iter().zip(visited).enumerate() {
+            // An index becomes float if ANY transcript had it unvisited
+            // (because dict init with 0.0 causes duck-typing: 0.0 + int → float)
+            if !was_visited {
+                ever_visited[i] = true;  // Mark as "should be float"
             }
             aggregated[i] += v as i64;
         }
     }
 
+    // Indices that were unvisited in ANY transcript should be marked as float
+    let has_float = ever_visited;
     (aggregated, has_float)
 }
 
