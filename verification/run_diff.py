@@ -1716,6 +1716,20 @@ CASES: list[Case] = [
         stream_format="exact",
     ),
     Case(
+        name="sc_bamstat_chrm_custom",
+        # Tests --chrM-id flag with a non-existent contig name, exercising
+        # the mitochondrial-read detection code path with a different result
+        # (the single chrM read in the fixture is not recognized as
+        # mitochondrial, so mitochondrial counts are 0).
+        ensure_fixture=ensure_sc_bamstat_fixture,
+        py_script="sc_bamStat.py",
+        rust_bin="sc_bamStat",
+        py_args=lambda scratch_dir: ["-i", _regression_fixture("sc_bamstat_basic.bam"), "--chrM-id", "invalidname"],
+        rust_args=lambda scratch_dir: ["-i", _regression_fixture("sc_bamstat_basic.bam"), "--chrM-id", "invalidname"],
+        compare_stream="stdout",
+        stream_format="exact",
+    ),
+    Case(
         name="sc_editmatrix_basic",
         # Found by this case (before it was formalized): the edit-count
         # CSV's float/int cell dtype is a real `pandas.DataFrame.
@@ -1849,6 +1863,33 @@ CASES: list[Case] = [
             "--info", _regression_fixture("regression_fpkm_uq_genes.info.txt"),
             "-o", str(scratch_dir / "out"),
             "--htseq-count", _regression_fixture("mock_htseq_count.sh"),
+        ],
+        compare_stream="none",
+        compare_files=("out.FPKM-UQ.txt", "out.htseq.counts.txt"),
+    ),
+    Case(
+        name="fpkm_uq_with_log2",
+        # Tests --log2 flag, which transforms FPKM values to log2(FPKM + 1).
+        # Same fixtures and mock htseq-count as fpkm_uq_basic, exercising
+        # the log-scale branch of calculate_fpkm's output formatting.
+        ensure_fixture=ensure_fpkm_uq_fixtures,
+        py_script="FPKM-UQ.py",
+        rust_bin="FPKM_UQ",
+        py_args=lambda scratch_dir: [
+            "--bam", _regression_fixture("regression_fpkm_uq_dummy.bam"),
+            "--gtf", _regression_fixture("regression_fpkm_uq_dummy.gtf"),
+            "--info", _regression_fixture("regression_fpkm_uq_genes.info.txt"),
+            "-o", str(scratch_dir / "out"),
+            "--htseq-count", _regression_fixture("mock_htseq_count.sh"),
+            "--log2",
+        ],
+        rust_args=lambda scratch_dir: [
+            "--bam", _regression_fixture("regression_fpkm_uq_dummy.bam"),
+            "--gtf", _regression_fixture("regression_fpkm_uq_dummy.gtf"),
+            "--info", _regression_fixture("regression_fpkm_uq_genes.info.txt"),
+            "-o", str(scratch_dir / "out"),
+            "--htseq-count", _regression_fixture("mock_htseq_count.sh"),
+            "--log2",
         ],
         compare_stream="none",
         compare_files=("out.FPKM-UQ.txt", "out.htseq.counts.txt"),
@@ -2037,6 +2078,82 @@ CASES: list[Case] = [
         rust_args=lambda scratch_dir: [
             "-i", _track_fixture("track_signal.bw"), "-j", _track_fixture("track_signal2.bw"),
             "-a", "Average", "-o", str(scratch_dir / "out.wig"), "-c", "100000",
+        ],
+        compare_stream="stderr",
+        stream_format="exact",
+        normalize_paths=True,
+        compare_files=("out.wig",),
+    ),
+    Case(
+        name="overlay_bigwig_subtract",
+        # Tests Subtract action: BigWig 1 - BigWig 2.
+        ensure_fixture=ensure_track_fixtures,
+        py_script="overlay_bigwig.py",
+        rust_bin="overlay_bigwig",
+        py_args=lambda scratch_dir: [
+            "-i", _track_fixture("track_signal.bw"), "-j", _track_fixture("track_signal2.bw"),
+            "-a", "Subtract", "-o", str(scratch_dir / "out.wig"), "-c", "100000",
+        ],
+        rust_args=lambda scratch_dir: [
+            "-i", _track_fixture("track_signal.bw"), "-j", _track_fixture("track_signal2.bw"),
+            "-a", "Subtract", "-o", str(scratch_dir / "out.wig"), "-c", "100000",
+        ],
+        compare_stream="stderr",
+        stream_format="exact",
+        normalize_paths=True,
+        compare_files=("out.wig",),
+    ),
+    Case(
+        name="overlay_bigwig_product",
+        # Tests Product action: BigWig 1 * BigWig 2.
+        ensure_fixture=ensure_track_fixtures,
+        py_script="overlay_bigwig.py",
+        rust_bin="overlay_bigwig",
+        py_args=lambda scratch_dir: [
+            "-i", _track_fixture("track_signal.bw"), "-j", _track_fixture("track_signal2.bw"),
+            "-a", "Product", "-o", str(scratch_dir / "out.wig"), "-c", "100000",
+        ],
+        rust_args=lambda scratch_dir: [
+            "-i", _track_fixture("track_signal.bw"), "-j", _track_fixture("track_signal2.bw"),
+            "-a", "Product", "-o", str(scratch_dir / "out.wig"), "-c", "100000",
+        ],
+        compare_stream="stderr",
+        stream_format="exact",
+        normalize_paths=True,
+        compare_files=("out.wig",),
+    ),
+    Case(
+        name="overlay_bigwig_max",
+        # Tests Max action: maximum of corresponding values.
+        ensure_fixture=ensure_track_fixtures,
+        py_script="overlay_bigwig.py",
+        rust_bin="overlay_bigwig",
+        py_args=lambda scratch_dir: [
+            "-i", _track_fixture("track_signal.bw"), "-j", _track_fixture("track_signal2.bw"),
+            "-a", "Max", "-o", str(scratch_dir / "out.wig"), "-c", "100000",
+        ],
+        rust_args=lambda scratch_dir: [
+            "-i", _track_fixture("track_signal.bw"), "-j", _track_fixture("track_signal2.bw"),
+            "-a", "Max", "-o", str(scratch_dir / "out.wig"), "-c", "100000",
+        ],
+        compare_stream="stderr",
+        stream_format="exact",
+        normalize_paths=True,
+        compare_files=("out.wig",),
+    ),
+    Case(
+        name="overlay_bigwig_min",
+        # Tests Min action: minimum of corresponding values.
+        ensure_fixture=ensure_track_fixtures,
+        py_script="overlay_bigwig.py",
+        rust_bin="overlay_bigwig",
+        py_args=lambda scratch_dir: [
+            "-i", _track_fixture("track_signal.bw"), "-j", _track_fixture("track_signal2.bw"),
+            "-a", "Min", "-o", str(scratch_dir / "out.wig"), "-c", "100000",
+        ],
+        rust_args=lambda scratch_dir: [
+            "-i", _track_fixture("track_signal.bw"), "-j", _track_fixture("track_signal2.bw"),
+            "-a", "Min", "-o", str(scratch_dir / "out.wig"), "-c", "100000",
         ],
         compare_stream="stderr",
         stream_format="exact",
