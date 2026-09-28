@@ -1606,6 +1606,37 @@ CASES: list[Case] = [
         stream_format="exact",
     ),
     Case(
+        name="read_hexamer_refs_and_file_output",
+        # Previously untested: -r/-g (optional reference-genome/
+        # reference-transcript columns, `collect_inputs`) and -o (file
+        # output instead of stdout, including the "Created: <path>"
+        # stderr line). Deliberately passes the SAME fixture file for
+        # both -r and -g to also exercise unique_display_name's
+        # collision fallback (bare filename already taken by -r, so -g's
+        # column name falls back to the full path) -- previously only
+        # unit-tested in isolation, never live-diffed against real
+        # upstream's own `unique_display_name`.
+        ensure_fixture=ensure_hexamer_fixtures,
+        py_script="read_hexamer.py",
+        rust_bin="read_hexamer",
+        py_args=lambda scratch_dir: [
+            "-i", _regression_fixture("regression_hexamer_reads.fa"),
+            "-r", _regression_fixture("regression_hexamer_ref.fa"),
+            "-g", _regression_fixture("regression_hexamer_ref.fa"),
+            "-o", str(scratch_dir / "out.tsv"),
+        ],
+        rust_args=lambda scratch_dir: [
+            "-i", _regression_fixture("regression_hexamer_reads.fa"),
+            "-r", _regression_fixture("regression_hexamer_ref.fa"),
+            "-g", _regression_fixture("regression_hexamer_ref.fa"),
+            "-o", str(scratch_dir / "out.tsv"),
+        ],
+        compare_stream="stderr",
+        stream_format="exact",
+        normalize_paths=True,
+        compare_files=("out.tsv",),
+    ),
+    Case(
         name="junction_saturation_basic",
         # Reuses the same BAM/BED12 pair as junction_annotation_with_
         # junction: exactly one qualifying spliced read (20M100N20M
