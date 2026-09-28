@@ -41,7 +41,7 @@ use crate::python_fmt::python_str_float;
 /// `check_min_reads`/`estimate_bg_noise` (via `fetch()`) and
 /// `genebody_coverage` (via `pileup()`'s default `flag_filter`) disagree
 /// on whether duplicates count -- see module docs.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct IndexedRead {
     /// Query/template name used to identify paired mates for pileup's
     /// `ignore_overlaps=True` behavior.
@@ -60,6 +60,22 @@ pub struct IndexedRead {
     pub skip_delete_blocks: Vec<(i64, i64)>,
     pub qualities: Vec<u8>,
     pub query_length: i64,
+    /// BAM_FPROPER_PAIR. pysam's default "samtools" pileup stepper drops
+    /// orphans (paired but not properly paired) and htslib only adjusts
+    /// overlapping mates that are properly paired.
+    pub is_proper_pair: bool,
+    /// BAM_FMUNMAP.
+    pub mate_unmapped: bool,
+    /// Mate mapped to a different reference sequence than this read.
+    pub mate_on_other_reference: bool,
+    /// 0-based mate position (`-1` when absent) and TLEN, as htslib's
+    /// `overlap_push` inspects them.
+    pub mate_start: i64,
+    pub template_length: i64,
+    /// Decoded read bases (for htslib's overlap base-equality test).
+    pub sequence: Vec<u8>,
+    /// CIGAR as `(BAM op code, length)` pairs.
+    pub cigar: Vec<(u8, i64)>,
 }
 
 /// Builds a per-chromosome, start-sorted read index from a BAM. Applies
@@ -110,6 +126,11 @@ where
             }
         }
 
+        let mate_ref_id = record.mate_reference_sequence_id().transpose()?;
+        let mate_start = match record.mate_alignment_start().transpose()? {
+            Some(p) => (p.get() - 1) as i64,
+            None => -1,
+        };
         by_chrom.entry(chrom).or_default().push(IndexedRead {
             query_name: record.name().map(|n| n.to_string()).unwrap_or_default(),
             is_paired: flags.is_segmented(),
@@ -120,6 +141,13 @@ where
             skip_delete_blocks,
             query_length: record.sequence().len() as i64,
             qualities,
+            is_proper_pair: flags.is_properly_segmented(),
+            mate_unmapped: flags.is_mate_unmapped(),
+            mate_on_other_reference: mate_ref_id.is_some_and(|m| m != ref_id),
+            mate_start,
+            template_length: i64::from(record.template_length()),
+            sequence: record.sequence().iter().collect(),
+            cigar: ops.iter().map(|op| (cigar_code(op.kind()), op.len() as i64)).collect(),
         });
     }
 
@@ -180,8 +208,43 @@ pub fn genebody_coverage_with_visited(reads: &[IndexedRead], positions: &[i64], 
     let start0 = positions[0] - 1;
     let end0 = positions[positions.len() - 1];
 
-    let overlapping: Vec<&IndexedRead> =
-        reads.iter().filter(|r| r.start < end0 && r.end > start0 && !r.is_duplicate).collect();
+    // Reads entering pysam's default ("samtools" stepper) pileup over the
+    // region: flag_filter drops duplicates (unmapped/secondary/qcfail are
+    // already excluded at index time) and ignore_orphans drops reads that
+    // are paired but not properly paired.
+    let overlapping: Vec<&IndexedRead> = reads
+        .iter()
+        .filter(|r| r.start < end0 && r.end > start0 && !r.is_duplicate && !(r.is_paired && !r.is_proper_pair))
+        .collect();
+
+    // ignore_overlaps=True: htslib rewrites the base qualities of
+    // overlapping proper-pair mates as each pair completes in the pileup
+    // buffer (sam.c overlap_push/tweak_overlap_quality); min_base_quality
+    // then applies to the rewritten values.
+    let mut qualities: Vec<Vec<u8>> = overlapping.iter().map(|r| r.qualities.clone()).collect();
+    let mut waiting: HashMap<&str, usize> = HashMap::new();
+    for (i, r) in overlapping.iter().enumerate() {
+        if r.mate_unmapped || !r.is_proper_pair {
+            continue;
+        }
+        if r.mate_on_other_reference || (r.template_length.abs() >= 2 * r.query_length && r.mate_start >= r.end) {
+            continue;
+        }
+        match waiting.remove(r.query_name.as_str()) {
+            Some(j) if overlapping[j].end > r.start => {
+                let (lo, hi) = qualities.split_at_mut(i);
+                tweak_overlap_quality(overlapping[j], r, &mut lo[j], &mut hi[0]);
+            }
+            // The earlier mate already left the pileup buffer
+            // (overlap_remove) before this one arrived: nothing to adjust.
+            Some(_) => {}
+            None => {
+                if r.mate_start >= r.start || (r.is_paired && r.mate_start == -1) {
+                    waiting.insert(r.query_name.as_str(), i);
+                }
+            }
+        }
+    }
 
     let mut distinct: Vec<i64> = positions.to_vec();
     distinct.sort_unstable();
@@ -198,55 +261,25 @@ pub fn genebody_coverage_with_visited(reads: &[IndexedRead], positions: &[i64], 
         // pileups, so a deeply stacked locus must not silently contribute
         // an unbounded count in this in-memory implementation.
         let mut pileup_depth = 0usize;
-        let mut paired_bases: HashMap<String, (u8, bool)> = HashMap::new();
-        let mut unpaired_bases: Vec<bool> = Vec::new();
-        for read in &overlapping {
-            // Check match blocks (M/=/X operations)
+        for (i, read) in overlapping.iter().enumerate() {
+            let mut base_quality = None;
             for &(bs, be, qstart) in &read.match_blocks {
                 if p0 >= bs && p0 < be {
-                    was_visited = true;
                     let qidx = qstart + (p0 - bs) as usize;
-                    let quality = read.qualities.get(qidx).copied().unwrap_or(255);
-                    let passes_quality = quality >= 13;
-                    if read.is_paired && !read.query_name.is_empty() {
-                        let entry = paired_bases.entry(read.query_name.clone()).or_insert((quality, passes_quality));
-                        if quality > entry.0 {
-                            *entry = (quality, passes_quality);
-                        }
-                    } else {
-                        unpaired_bases.push(passes_quality);
-                    }
+                    base_quality = Some(qualities[i].get(qidx).copied().unwrap_or(0));
                     break;
                 }
             }
-            // Also mark positions covered by D (deletion) and N (skip) CIGAR ops as visited
-            if !was_visited {
-                for &(bs, be) in &read.skip_delete_blocks {
-                    if p0 >= bs && p0 < be {
-                        was_visited = true;
-                        break;
-                    }
-                }
+            let in_gap = base_quality.is_none() && read.skip_delete_blocks.iter().any(|&(bs, be)| p0 >= bs && p0 < be);
+            if base_quality.is_none() && !in_gap {
+                continue;
             }
-        }
-        // Count each unpaired read and each paired template once. The
-        // higher-quality mate wins when both mates cover the same base,
-        // matching pysam's ignore_overlaps=True rule.
-        for passes_quality in unpaired_bases {
+            was_visited = true;
             if pileup_depth >= 8000 {
-                break;
+                continue;
             }
             pileup_depth += 1;
-            if passes_quality {
-                covered += 1.0;
-            }
-        }
-        for (_, (_, passes_quality)) in paired_bases {
-            if pileup_depth >= 8000 {
-                break;
-            }
-            pileup_depth += 1;
-            if passes_quality {
+            if base_quality.is_some_and(|q| q >= 13) {
                 covered += 1.0;
             }
         }
@@ -269,6 +302,250 @@ pub fn genebody_coverage_with_visited(reads: &[IndexedRead], positions: &[i64], 
 
 pub fn genebody_coverage(reads: &[IndexedRead], positions: &[i64], bg_level: f64) -> Vec<f64> {
     genebody_coverage_with_visited(reads, positions, bg_level).0
+}
+
+/// BAM CIGAR operation code (`MIDNSHP=X` -> 0..=8).
+fn cigar_code(kind: Kind) -> u8 {
+    match kind {
+        Kind::Match => 0,
+        Kind::Insertion => 1,
+        Kind::Deletion => 2,
+        Kind::Skip => 3,
+        Kind::SoftClip => 4,
+        Kind::HardClip => 5,
+        Kind::Pad => 6,
+        Kind::SequenceMatch => 7,
+        Kind::SequenceMismatch => 8,
+    }
+}
+
+const CIG_MATCH: i32 = 0;
+
+fn is_match_op(op: u8) -> bool {
+    op == 0 || op == 7 || op == 8
+}
+
+/// Port of htslib `cigar_iref2iseq_set` (sam.c).
+fn cigar_iref2iseq_set(cigar: &[(u8, i64)], ci: &mut usize, icig: &mut i64, iseq: &mut i64, iref: &mut i64) -> i32 {
+    let mut pos = *iref;
+    if pos < 0 {
+        return -1;
+    }
+    *icig = 0;
+    *iseq = 0;
+    *iref = 0;
+    while *ci < cigar.len() {
+        let (cig, ncig) = cigar[*ci];
+        match cig {
+            4 | 1 => {
+                *ci += 1;
+                *iseq += ncig;
+                *icig = 0;
+            }
+            5 | 6 => {
+                *ci += 1;
+                *icig = 0;
+            }
+            2 | 3 => {
+                pos -= ncig;
+                if pos < 0 {
+                    pos = 0;
+                }
+                *ci += 1;
+                *icig = 0;
+                *iref += ncig;
+            }
+            _ if is_match_op(cig) => {
+                pos -= ncig;
+                if pos < 0 {
+                    *icig = ncig + pos;
+                    *iseq += *icig;
+                    *iref += *icig;
+                    return CIG_MATCH;
+                }
+                *ci += 1;
+                *iseq += ncig;
+                *icig = 0;
+                *iref += ncig;
+            }
+            _ => return -2,
+        }
+    }
+    *iseq = -1;
+    -1
+}
+
+/// Port of htslib `cigar_iref2iseq_next` (sam.c).
+fn cigar_iref2iseq_next(cigar: &[(u8, i64)], ci: &mut usize, icig: &mut i64, iseq: &mut i64, iref: &mut i64) -> i32 {
+    while *ci < cigar.len() {
+        let (cig, ncig) = cigar[*ci];
+        match cig {
+            2 | 3 => {
+                *ci += 1;
+                *iref += ncig;
+                *icig = -1;
+            }
+            1 | 4 => {
+                *ci += 1;
+                *iseq += ncig;
+                *icig = -1;
+            }
+            5 | 6 => {
+                *ci += 1;
+                *icig = -1;
+            }
+            _ if is_match_op(cig) => {
+                if *icig >= ncig - 1 {
+                    *icig = -1;
+                    *ci += 1;
+                    continue;
+                }
+                *iseq += 1;
+                *icig += 1;
+                *iref += 1;
+                return CIG_MATCH;
+            }
+            _ => return -2,
+        }
+    }
+    *iseq = -1;
+    *iref = -1;
+    -1
+}
+
+/// khash `__ac_X31_hash_string` followed by `__ac_Wang_hash` (C `char` is
+/// signed on the platforms htslib is built for, hence the sign extension).
+fn htslib_name_hash(name: &str) -> u32 {
+    let bytes = name.as_bytes();
+    let mut h: u32 = match bytes.first() {
+        Some(&c) => c as i8 as i32 as u32,
+        None => 0,
+    };
+    if h != 0 {
+        for &c in &bytes[1..] {
+            h = (h << 5).wrapping_sub(h).wrapping_add(c as i8 as i32 as u32);
+        }
+    }
+    let mut key = h;
+    key = key.wrapping_add(!(key << 15));
+    key ^= key >> 10;
+    key = key.wrapping_add(key << 3);
+    key ^= key >> 6;
+    key = key.wrapping_add(!(key << 11));
+    key ^= key >> 16;
+    key
+}
+
+/// `(uint8_t)(0.8 * q)` -- C double-to-uint8 truncation.
+fn scale08(mul: u8, q: u8) -> u8 {
+    (f64::from(mul) * 0.8 * f64::from(q)) as u8
+}
+
+/// Port of htslib `tweak_overlap_quality` (sam.c, htslib >= 1.13, as
+/// bundled with the oracle's pysam): given overlapping proper-pair mates
+/// `a` (earlier in the pileup) and `b`, rewrite their base qualities in the
+/// overlap so that only one mate keeps a (summed or 0.8-scaled) quality.
+fn tweak_overlap_quality(a: &IndexedRead, b: &IndexedRead, a_qual: &mut [u8], b_qual: &mut [u8]) {
+    let (mut a_ci, mut b_ci) = (0usize, 0usize);
+    let (mut a_icig, mut a_iseq, mut b_icig, mut b_iseq) = (0i64, 0i64, 0i64, 0i64);
+    let mut iref = b.start;
+    let mut a_iref = iref - a.start;
+    let mut b_iref = iref - b.start;
+    let mut a_ret = cigar_iref2iseq_set(&a.cigar, &mut a_ci, &mut a_icig, &mut a_iseq, &mut a_iref);
+    if a_ret < 0 {
+        return;
+    }
+    let mut b_ret = cigar_iref2iseq_set(&b.cigar, &mut b_ci, &mut b_icig, &mut b_iseq, &mut b_iref);
+    if b_ret < 0 {
+        return;
+    }
+    let (amul, bmul) = if htslib_name_hash(&a.query_name) & 1 == 1 { (1u8, 0u8) } else { (0u8, 1u8) };
+    let (a_len, b_len) = (a_qual.len() as i64, b_qual.len() as i64);
+    loop {
+        while a_ret >= 0 && a_iref >= 0 && a_iref < iref - a.start {
+            a_ret = cigar_iref2iseq_next(&a.cigar, &mut a_ci, &mut a_icig, &mut a_iseq, &mut a_iref);
+        }
+        if a_ret < 0 {
+            break;
+        }
+        while b_ret >= 0 && b_iref >= 0 && b_iref < iref - b.start {
+            b_ret = cigar_iref2iseq_next(&b.cigar, &mut b_ci, &mut b_icig, &mut b_iseq, &mut b_iref);
+        }
+        if b_ret < 0 {
+            break;
+        }
+        if iref < a_iref + a.start {
+            iref = a_iref + a.start;
+        }
+        if iref < b_iref + b.start {
+            iref = b_iref + b.start;
+        }
+        iref += 1;
+
+        if a_iref + a.start != b_iref + b.start {
+            if a_iref + a.start < b_iref + b.start && b_ci > 0 && b.cigar[b_ci - 1].0 == 2 {
+                loop {
+                    if a_iseq < 0 || a_iseq >= a_len {
+                        return;
+                    }
+                    let q = &mut a_qual[a_iseq as usize];
+                    *q = if amul == 1 { scale08(1, *q) } else { 0 };
+                    a_ret = cigar_iref2iseq_next(&a.cigar, &mut a_ci, &mut a_icig, &mut a_iseq, &mut a_iref);
+                    if a_ret < 0 {
+                        return;
+                    }
+                    if a_iref + a.start >= b_iref + b.start {
+                        break;
+                    }
+                }
+            } else if a_ci > 0 && a.cigar[a_ci - 1].0 == 2 {
+                loop {
+                    if b_iseq < 0 || b_iseq >= b_len {
+                        return;
+                    }
+                    let q = &mut b_qual[b_iseq as usize];
+                    *q = if bmul == 1 { scale08(1, *q) } else { 0 };
+                    b_ret = cigar_iref2iseq_next(&b.cigar, &mut b_ci, &mut b_icig, &mut b_iseq, &mut b_iref);
+                    if b_ret < 0 {
+                        return;
+                    }
+                    if b_iref + b.start >= a_iref + a.start {
+                        break;
+                    }
+                }
+            } else {
+                // e.g. ref-skip: not supported by htslib here either
+                continue;
+            }
+        }
+
+        if a_iseq > a.query_length || b_iseq > b.query_length {
+            return;
+        }
+        // Guard the C out-of-bounds read at iseq == l_qseq (bad CIGAR).
+        if a_iseq < 0 || b_iseq < 0 || a_iseq >= a_len || b_iseq >= b_len {
+            return;
+        }
+        let (ai, bi) = (a_iseq as usize, b_iseq as usize);
+        let same = match (a.sequence.get(ai), b.sequence.get(bi)) {
+            (Some(x), Some(y)) => x == y,
+            _ => false,
+        };
+        if same {
+            let qual = (u32::from(a_qual[ai]) + u32::from(b_qual[bi])).min(200) as u8;
+            a_qual[ai] = amul * qual;
+            b_qual[bi] = bmul * qual;
+        } else if a_qual[ai] > b_qual[bi] {
+            a_qual[ai] = scale08(1, a_qual[ai]);
+            b_qual[bi] = 0;
+        } else if a_qual[ai] < b_qual[bi] {
+            b_qual[bi] = scale08(1, b_qual[bi]);
+            a_qual[ai] = 0;
+        } else {
+            a_qual[ai] = scale08(amul, a_qual[ai]);
+            b_qual[bi] = scale08(bmul, b_qual[bi]);
+        }
+    }
 }
 
 /// Shannon entropy (natural log), matching upstream's `shannon_entropy`
@@ -729,6 +1006,7 @@ chr1\t0\t100\ttx2\t0\t+\t0\t100\t0\t1\t100,\t0,
                 skip_delete_blocks: vec![],
                 qualities: vec![40; 20],
                 query_length: 20,
+                ..Default::default()
             })
             .collect();
 
@@ -749,6 +1027,12 @@ chr1\t0\t100\ttx2\t0\t+\t0\t100\t0\t1\t100,\t0,
                 skip_delete_blocks: vec![],
                 qualities: vec![40; 20],
                 query_length: 20,
+                is_proper_pair: true,
+                mate_start: 10,
+                template_length: 30,
+                sequence: vec![b'A'; 20],
+                cigar: vec![(0, 20)],
+                ..Default::default()
             },
             IndexedRead {
                 query_name: "pair".to_string(),
@@ -760,11 +1044,59 @@ chr1\t0\t100\ttx2\t0\t+\t0\t100\t0\t1\t100,\t0,
                 skip_delete_blocks: vec![],
                 qualities: vec![40; 20],
                 query_length: 20,
+                is_proper_pair: true,
+                mate_start: 0,
+                template_length: -30,
+                sequence: vec![b'A'; 20],
+                cigar: vec![(0, 20)],
+                ..Default::default()
             },
         ];
 
         // The overlap at reference position 11 is one pileup base, not two.
         assert_eq!(genebody_coverage(&reads, &[11], 0.0), vec![1.0]);
+    }
+
+    fn pair_read(name: &str, start: i64, mate_start: i64, base: u8, qual: u8, proper: bool) -> IndexedRead {
+        IndexedRead {
+            query_name: name.to_string(),
+            is_paired: true,
+            start,
+            end: start + 10,
+            match_blocks: vec![(start, start + 10, 0)],
+            qualities: vec![qual; 10],
+            query_length: 10,
+            is_proper_pair: proper,
+            mate_start,
+            template_length: if start <= mate_start { 15 } else { -15 },
+            sequence: vec![base; 10],
+            cigar: vec![(0, 10)],
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn genebody_coverage_mirrors_htslib_overlap_quality_rules() {
+        // Probed against pysam 0.24.1 pileup(): matching overlapping bases
+        // keep the SUM of both qualities on one mate (8 + 8 = 16 >= 13);
+        // mismatching ones keep int(0.8 * max) (0.8 * 16 = 12 < 13, 0.8 * 17
+        // = 13).
+        let same = [pair_read("p", 0, 5, b'A', 8, true), pair_read("p", 5, 0, b'A', 8, true)];
+        assert_eq!(genebody_coverage(&same, &[8], 0.0), vec![1.0]);
+        let mism16 = [pair_read("p", 0, 5, b'A', 16, true), pair_read("p", 5, 0, b'C', 10, true)];
+        assert_eq!(genebody_coverage(&mism16, &[8], 0.0), vec![0.0]);
+        let mism17 = [pair_read("p", 0, 5, b'A', 17, true), pair_read("p", 5, 0, b'C', 10, true)];
+        assert_eq!(genebody_coverage(&mism17, &[8], 0.0), vec![1.0]);
+    }
+
+    #[test]
+    fn genebody_coverage_ignores_orphans() {
+        // pysam's default "samtools" stepper drops paired reads that are not
+        // properly paired (ignore_orphans=True).
+        let reads = [pair_read("p", 0, 5, b'A', 40, false), pair_read("p", 5, 0, b'A', 40, false)];
+        let (cov, visited) = genebody_coverage_with_visited(&reads, &[8], 0.0);
+        assert_eq!(cov, vec![0.0]);
+        assert_eq!(visited, vec![false]);
     }
 
     #[test]

@@ -340,6 +340,14 @@ divergences:
       depth mismatches for the tested profile, but malformed pairing, unusual
       QNAME reuse, and exact htslib admission order remain outside the current
       tiny fixture; retain this item for independent real-data review.
+      2026-09-28 (synthetic sweep): the "higher-quality mate wins" rule was
+      replaced by a port of htslib's tweak_overlap_quality (summed quality
+      for matching bases, 0.8x for mismatches, deletion catch-up, name-hash
+      side selection), applied only to proper pairs as overlap_push does,
+      and pysam's default "samtools" stepper's ignore_orphans=True (paired
+      but not properly paired reads never enter the pileup) is now
+      honoured. Shared by tin.py and geneBody_coverage.py; see run_diff
+      cases genebody_coverage_synthetic_pileup / tin_synthetic_pileup.
     status: fixed-working-tree
 
   - id: DIV-0012

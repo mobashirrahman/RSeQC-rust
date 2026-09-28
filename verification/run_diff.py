@@ -2464,6 +2464,39 @@ CASES: list[Case] = [
         strip_log_prefixes=True,
         expected_exit_code=1,
     ),
+    Case(
+        name="genebody_coverage_synthetic_pileup",
+        # Found by verification/synthetic_sweep.py: upstream's
+        # samfile.pileup() (geneBody_coverage.py:187) runs with pysam's
+        # default "samtools" stepper, which drops orphan reads (paired but
+        # not properly paired, ignore_orphans=True), and with
+        # ignore_overlaps=True, under which htslib rewrites overlapping
+        # mates' base qualities (sam.c tweak_overlap_quality: summed for
+        # matching bases, 0.8x for mismatches) before min_base_quality=13
+        # applies. The port counted orphans and approximated the overlap
+        # rule by "higher quality mate wins".
+        ensure_fixture=ensure_synthetic_fixtures,
+        py_script="geneBody_coverage.py",
+        rust_bin="geneBody_coverage",
+        py_args=lambda d: ["-i", _synthetic("pe.bam"), "-r", _synthetic("model.bed12"), "-o", str(d / "out"),
+                           "--skip-plot"],
+        rust_args=lambda d: ["-i", _synthetic("pe.bam"), "-r", _synthetic("model.bed12"), "-o", str(d / "out"),
+                             "--skip-plot"],
+        compare_stream="none",
+        compare_files=("out.geneBodyCoverage.txt",),
+    ),
+    Case(
+        name="tin_synthetic_pileup",
+        # Same pileup-default root cause as genebody_coverage_synthetic_pileup,
+        # via tin.py's genebody_coverage() pileup (per-transcript TIN).
+        ensure_fixture=ensure_synthetic_fixtures,
+        py_script="tin.py",
+        rust_bin="tin",
+        py_args=lambda d: ["-i", _synthetic("pe.bam"), "-r", _synthetic("model.bed12"), "-o", str(d), "-c", "2"],
+        rust_args=lambda d: ["-i", _synthetic("pe.bam"), "-r", _synthetic("model.bed12"), "-o", str(d), "-c", "2"],
+        compare_stream="none",
+        compare_files=("pe.tin.xls",),
+    ),
 ]
 
 
