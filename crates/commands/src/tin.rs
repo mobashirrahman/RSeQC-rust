@@ -198,7 +198,8 @@ pub fn genebody_coverage_with_visited(reads: &[IndexedRead], positions: &[i64], 
         // pileups, so a deeply stacked locus must not silently contribute
         // an unbounded count in this in-memory implementation.
         let mut pileup_depth = 0usize;
-        let mut bases: Vec<bool> = Vec::new();
+        let mut paired_bases: HashMap<String, (u8, bool)> = HashMap::new();
+        let mut unpaired_bases: Vec<bool> = Vec::new();
         for read in &overlapping {
             // Check match blocks (M/=/X operations)
             for &(bs, be, qstart) in &read.match_blocks {
@@ -207,7 +208,14 @@ pub fn genebody_coverage_with_visited(reads: &[IndexedRead], positions: &[i64], 
                     let qidx = qstart + (p0 - bs) as usize;
                     let quality = read.qualities.get(qidx).copied().unwrap_or(255);
                     let passes_quality = quality >= 13;
-                    bases.push(passes_quality);
+                    if read.is_paired && !read.query_name.is_empty() {
+                        let entry = paired_bases.entry(read.query_name.clone()).or_insert((quality, passes_quality));
+                        if quality > entry.0 {
+                            *entry = (quality, passes_quality);
+                        }
+                    } else {
+                        unpaired_bases.push(passes_quality);
+                    }
                     break;
                 }
             }
@@ -221,11 +229,19 @@ pub fn genebody_coverage_with_visited(reads: &[IndexedRead], positions: &[i64], 
                 }
             }
         }
-        // Count bases that pass quality filter, up to the max_depth limit.
-        // Note: pysam's ignore_overlaps=True deduplicates overlapping mates,
-        // but testing shows the upstream Python code does NOT actually do this,
-        // so we count all bases without deduplication.
-        for passes_quality in bases {
+        // Count each unpaired read and each paired template once. The
+        // higher-quality mate wins when both mates cover the same base,
+        // matching pysam's ignore_overlaps=True rule.
+        for passes_quality in unpaired_bases {
+            if pileup_depth >= 8000 {
+                break;
+            }
+            pileup_depth += 1;
+            if passes_quality {
+                covered += 1.0;
+            }
+        }
+        for (_, (_, passes_quality)) in paired_bases {
             if pileup_depth >= 8000 {
                 break;
             }
