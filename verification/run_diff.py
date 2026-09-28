@@ -33,7 +33,7 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 ORACLE_SCRIPTS = REPO_ROOT / "oracle" / "upstream-src" / "scripts"
 ORACLE_PYTHONPATH = str(REPO_ROOT / "oracle" / "upstream-src" / "src")
 ORACLE_PYTHON = REPO_ROOT / "oracle" / "venv" / "bin" / "python3"
-RUST_BIN_DIR = REPO_ROOT / "target" / "release"
+RUST_BIN_DIR = Path(os.environ.get("RSEQC_RUST_BIN_DIR", REPO_ROOT / "target" / "release"))
 
 
 @dataclasses.dataclass
@@ -118,6 +118,11 @@ class Case:
     # intentionally file-only.
     required_labels: tuple[str, ...] = ()
     allow_empty_stream: bool = False
+    # When True, timestamp-bearing log prefixes (Python logging's
+    # "YYYY-MM-DD HH:MM:SS [LEVEL] " and printlog()'s "@ YYYY-MM-DD HH:MM:SS: ")
+    # are removed from the start of each line of the compared stream --
+    # timestamps can never be byte-reproduced (DIV-0019/DIV-0022 context).
+    strip_log_prefixes: bool = False
     # Wall-clock limit for each implementation.  A timeout is a failed run,
     # never an equivalent result.
     timeout_s: float = 120.0
@@ -182,6 +187,12 @@ def run(
 # often append percentages or units.
 NUMBER_TOKEN = r"[-+]?(?:(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][-+]?\d+)?|(?:inf|nan))"
 LABEL_COUNT_RE = re.compile(rf"^([A-Za-z][^:]*?):\s*({NUMBER_TOKEN})(?=\s|$)", re.IGNORECASE)
+
+
+LOG_PREFIX_RE = re.compile(
+    r"^(?:\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}(?:,\d+)? \[[A-Z]+\] |@ \d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}: )",
+    re.M,
+)
 
 
 def extract_labeled_counts(text: str) -> dict[str, str]:
@@ -278,6 +289,9 @@ def compare_results(case: Case, py_result: RunResult, rust_result: RunResult, py
         if case.normalize_paths:
             py_text = py_text.replace(str(py_dir), "<SCRATCH_DIR>")
             rust_text = rust_text.replace(str(rust_dir), "<SCRATCH_DIR>")
+        if case.strip_log_prefixes:
+            py_text = LOG_PREFIX_RE.sub("", py_text)
+            rust_text = LOG_PREFIX_RE.sub("", rust_text)
         if case.stream_format == "exact":
             if not py_text and not case.allow_empty_stream:
                 print("  FAIL stream comparison: both streams are empty")
@@ -2405,6 +2419,28 @@ CASES: list[Case] = [
         stream_format="exact",
         normalize_paths=True,
         compare_files=("out.FPKM.xls",),
+    ),
+    Case(
+        name="fpkm_uq_synthetic_missing_gene",
+        # Found by verification/synthetic_sweep.py: for a count-file gene
+        # absent from --info, upstream warns "Warning: <id> is absent from
+        # <info path>; skipped" while writing the table, i.e. AFTER the
+        # summary lines (FPKM-UQ.py:346-353); the port printed a generic
+        # "info file" text before them.
+        ensure_fixture=ensure_synthetic_fixtures,
+        py_script="FPKM-UQ.py",
+        rust_bin="FPKM_UQ",
+        py_args=lambda d: ["--bam", _synthetic("pe.bam"), "--gtf", _synthetic("model.gtf"),
+                           "--info", _synthetic("genes.info.txt"), "-o", str(d / "out"),
+                           "--htseq-count", _synthetic("mock_htseq_count.sh")],
+        rust_args=lambda d: ["--bam", _synthetic("pe.bam"), "--gtf", _synthetic("model.gtf"),
+                             "--info", _synthetic("genes.info.txt"), "-o", str(d / "out"),
+                             "--htseq-count", _synthetic("mock_htseq_count.sh")],
+        compare_stream="stderr",
+        stream_format="exact",
+        normalize_paths=True,
+        strip_log_prefixes=True,
+        compare_files=("out.FPKM-UQ.txt", "out.htseq.counts.txt"),
     ),
 ]
 

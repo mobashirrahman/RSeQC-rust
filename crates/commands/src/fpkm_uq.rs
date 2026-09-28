@@ -202,6 +202,10 @@ pub struct FpkmUqSummary {
     pub protein_coding_counts_len: usize,
     pub uq_count: f64,
     pub total_count: i64,
+    /// Gene IDs present in the count file but absent from the info file, in
+    /// count-file order. Upstream warns about each one while writing the
+    /// output table, i.e. after its summary lines -- the caller prints them.
+    pub missing_gene_ids: Vec<String>,
 }
 
 /// Computes FPKM/FPKM-UQ for every gene present in `all_counts`. Returns
@@ -222,9 +226,10 @@ pub fn calculate_fpkm(gene_info: &GeneInfo, all_counts: &[(String, i64)], log2_f
     let total_count: i64 = protein_coding_counts.iter().sum();
 
     let mut rows = Vec::new();
+    let mut missing_gene_ids = Vec::new();
     for (gene_id, count) in all_counts {
         let Some(&gene_size) = gene_info.sizes.get(gene_id) else {
-            eprintln!("Warning: {gene_id} is absent from info file; skipped");
+            missing_gene_ids.push(gene_id.clone());
             continue;
         };
         let Some(info) = gene_info.info.get(gene_id) else { continue };
@@ -245,7 +250,7 @@ pub fn calculate_fpkm(gene_info: &GeneInfo, all_counts: &[(String, i64)], log2_f
         rows.push(FpkmUqRow { gene_id: gene_id.clone(), info: info.clone(), count: *count, fpkm: fpkm_str, fpkm_uq: fpkm_uq_str });
     }
 
-    Ok((rows, FpkmUqSummary { protein_coding_counts_len: protein_coding_counts.len(), uq_count, total_count }))
+    Ok((rows, FpkmUqSummary { protein_coding_counts_len: protein_coding_counts.len(), uq_count, total_count, missing_gene_ids }))
 }
 
 /// Renders the `.FPKM-UQ.txt` table, including the log2-labeled header

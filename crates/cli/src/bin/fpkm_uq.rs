@@ -158,6 +158,11 @@ fn run(args: &Args) -> std::io::Result<()> {
     // Upstream: plain `print(..., file=sys.stderr)`, NOT `printlog` --
     // no timestamp prefix on this one line, unlike its neighbors.
     eprintln!("Read gene count file to calculate FPKM and FPKM-UQ: {count_file}");
+    // Upstream (FPKM-UQ.py:348-353) warns while writing each table row,
+    // naming the info file exactly as given on the command line.
+    for gene_id in &summary.missing_gene_ids {
+        eprintln!("Warning: {gene_id} is absent from {}; skipped", args.info_file.display());
+    }
 
     File::create(&fpkm_file)?.write_all(render_fpkm_uq_table(&rows, args.log_scale).as_bytes())?;
 
