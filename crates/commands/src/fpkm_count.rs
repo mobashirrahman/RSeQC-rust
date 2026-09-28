@@ -138,16 +138,30 @@ where
         let Some((chrom_bstr, _)) = header.reference_sequences().get_index(ref_id) else { continue };
         let chrom = chrom_bstr.to_string();
 
-        let Some(pos) = record.alignment_start().transpose()? else { continue };
-        let start = (pos.get() - 1) as i64;
         let rlen = record.sequence().len() as i64;
-        let cigar_ops: Vec<_> = record.cigar().iter().collect::<Result<Vec<_>, _>>()?;
-        let (_, reference_end) = rseqc_formats::cigar::reference_span(start as usize, cigar_ops);
+
+        // For unmapped reads, use pos directly from the record (the coordinate field
+        // still contains meaningful data for unpaired unmapped reads or when the mate
+        // is mapped). For mapped reads, use alignment_start from CIGAR. This matches
+        // Python's pysam behavior which exposes pos for unmapped reads too.
+        let (start, reference_end) = if flags.is_unmapped() {
+            // Unmapped reads: use the raw POS field as start, estimate end as start+rlen
+            let pos = record.alignment_start().transpose()?.map(|p| (p.get() - 1) as i64).unwrap_or(0);
+            (pos, pos + rlen)
+        } else {
+            // Mapped reads: use CIGAR to compute reference span
+            let Some(pos) = record.alignment_start().transpose()? else { continue };
+            let start = (pos.get() - 1) as i64;
+            let cigar_ops: Vec<_> = record.cigar().iter().collect::<Result<Vec<_>, _>>()?;
+            let (_, ref_end) = rseqc_formats::cigar::reference_span(start as usize, cigar_ops);
+            (start, ref_end as i64)
+        };
+
         let mate_start = record.mate_alignment_start().transpose()?.map(|p| (p.get() - 1) as i64).unwrap_or(-1);
 
         by_chrom.entry(chrom).or_default().push(IndexedRead {
             start,
-            end: reference_end as i64,
+            end: reference_end,
             rlen,
             mate_start,
             is_paired: flags.is_segmented(),
