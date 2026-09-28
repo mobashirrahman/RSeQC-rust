@@ -12,3 +12,6 @@ noodles-core = "0.20.0"
 noodles-sam = "0.90.0"
 rand = "0.8"
 regex = "1.13.1"
+
+[dev-dependencies]
+proptest = "1.4"

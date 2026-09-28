@@ -39,3 +39,4 @@ bzip2-rs = "0.1.2"
 
 [dev-dependencies]
 noodles-core = "0.20.0"
+proptest = "1.4"
