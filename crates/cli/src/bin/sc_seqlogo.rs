@@ -2,16 +2,16 @@
 //! contain '.' (see crates/cli/Cargo.toml); packaging (PORTING_PLAN
 //! Step 10) adds the `.py`-suffixed PATH alias.
 //!
-//! `--oformat svg`/`png` (DIV-0016, partially closed): renders both of
+//! `--oformat svg`/`png`/`pdf` (DIV-0016, closed): renders both of
 //! upstream's real logo outputs -- `<prefix>.logo.<format>` (plain,
 //! frequency-based) and `<prefix>.logo.mean_centered.<format>`
 //! (mean-centered, flipped-below) -- via `rseqc_render::seqlogo`/
-//! `seqlogo_png`. See those modules' own doc comments for exactly what
-//! is and isn't reproduced (no real font metrics/hinting, `shade_below`/
-//! `fade_below` not honored, no working upstream oracle to verify
-//! visual output against). `--oformat pdf` remains unimplemented (needs
-//! a real PDF-writing crate, out of scope this pass) -- still fails
-//! cleanly with a disclosed error, per DIV-0016.
+//! `seqlogo_png`/`pdf`. See those modules' own doc comments for exactly
+//! what is and isn't reproduced (no real font metrics/hinting,
+//! `shade_below`/`fade_below` not honored, no working upstream oracle
+//! to verify visual output against; the `pdf` format reuses the PNG
+//! renderer's raster wrapped in a minimal single-page PDF image
+//! container).
 //!
 //! **Preserves a genuine upstream quirk, not "fixed"**: the
 //! "Mean-centered logo saved to ..." progress line names the file as
@@ -33,12 +33,18 @@ use std::io::Write as _;
 use std::path::PathBuf;
 
 use clap::Parser;
-use rseqc_commands::sc_seqlogo::{CountMatrix, compute_count_matrix, fasta_iter, fastq_seq_strings, render_count_matrix_csv};
-use rseqc_render::seqlogo::{StackOrder, render_frequency_logo_svg, render_mean_centered_logo_svg};
+use rseqc_commands::sc_seqlogo::{
+    compute_count_matrix, fasta_iter, fastq_seq_strings, render_count_matrix_csv, CountMatrix,
+};
+use rseqc_render::pdf::{render_frequency_logo_pdf, render_mean_centered_logo_pdf};
+use rseqc_render::seqlogo::{render_frequency_logo_svg, render_mean_centered_logo_svg, StackOrder};
 use rseqc_render::seqlogo_png::{render_frequency_logo_png, render_mean_centered_logo_png};
 
 #[derive(Parser)]
-#[command(name = "sc_seqLogo.py", about = "Generate a DNA sequence logo from FASTA, FASTQ, or sequence-only input.")]
+#[command(
+    name = "sc_seqLogo.py",
+    about = "Generate a DNA sequence logo from FASTA, FASTQ, or sequence-only input."
+)]
 struct Args {
     /// Input FASTA or FASTQ file.
     #[arg(short = 'i', long = "infile")]
@@ -96,26 +102,56 @@ fn main() -> std::process::ExitCode {
 
 fn run(args: &Args) -> std::io::Result<()> {
     if !matches!(args.in_format.as_str(), "fq" | "fa") {
-        return Err(std::io::Error::new(std::io::ErrorKind::InvalidInput, "--iformat must be 'fq' or 'fa'"));
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
+            "--iformat must be 'fq' or 'fa'",
+        ));
     }
     if !matches!(args.out_format.as_str(), "pdf" | "png" | "svg") {
-        return Err(std::io::Error::new(std::io::ErrorKind::InvalidInput, "--oformat must be 'pdf', 'png', or 'svg'"));
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
+            "--oformat must be 'pdf', 'png', or 'svg'",
+        ));
     }
     if let Some(n) = args.max_seq {
         if n <= 0 {
-            return Err(std::io::Error::new(std::io::ErrorKind::InvalidInput, "--nseq-limit must be greater than zero"));
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                "--nseq-limit must be greater than zero",
+            ));
         }
     }
     if args.step_size <= 0 {
-        return Err(std::io::Error::new(std::io::ErrorKind::InvalidInput, "--step-size must be greater than zero"));
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
+            "--step-size must be greater than zero",
+        ));
     }
     if !(0.0..=1.0).contains(&args.shade_below) || !(0.0..=1.0).contains(&args.fade_below) {
-        return Err(std::io::Error::new(std::io::ErrorKind::InvalidInput, "--shade-below and --fade-below must be between 0 and 1"));
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
+            "--shade-below and --fade-below must be between 0 and 1",
+        ));
     }
     match (args.highlight_start, args.highlight_end) {
-        (Some(s), Some(e)) if e < s => return Err(std::io::Error::new(std::io::ErrorKind::InvalidInput, "--highlight-end must be greater than or equal to --highlight-start")),
-        (Some(_), None) => return Err(std::io::Error::new(std::io::ErrorKind::InvalidInput, "--highlight-end is required when --highlight-start is supplied")),
-        (None, Some(_)) => return Err(std::io::Error::new(std::io::ErrorKind::InvalidInput, "--highlight-start is required when --highlight-end is supplied")),
+        (Some(s), Some(e)) if e < s => {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                "--highlight-end must be greater than or equal to --highlight-start",
+            ))
+        }
+        (Some(_), None) => {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                "--highlight-end is required when --highlight-start is supplied",
+            ))
+        }
+        (None, Some(_)) => {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                "--highlight-start is required when --highlight-end is supplied",
+            ))
+        }
         _ => {}
     }
 
@@ -128,7 +164,11 @@ fn run(args: &Args) -> std::io::Result<()> {
         eprintln!("Reading FASTA file \"{}\" ...", args.in_file.display());
     }
     let reader = rseqc_formats::open_text_input(&args.in_file)?;
-    let seqs = if args.in_format == "fq" { fastq_seq_strings(reader)? } else { fasta_iter(reader)? };
+    let seqs = if args.in_format == "fq" {
+        fastq_seq_strings(reader)?
+    } else {
+        fasta_iter(reader)?
+    };
 
     // Upstream's `seq2countMat` also prints a `"%d sequences
     // finished\r"` progress line every `--step-size` sequences (a
@@ -156,7 +196,13 @@ fn run(args: &Args) -> std::io::Result<()> {
 
     if let Some(s) = args.highlight_start {
         if s >= sequence_length || args.highlight_end.unwrap() >= sequence_length {
-            return Err(std::io::Error::new(std::io::ErrorKind::InvalidInput, format!("--highlight-start/--highlight-end is outside the valid range 0..{}", sequence_length - 1)));
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                format!(
+                    "--highlight-start/--highlight-end is outside the valid range 0..{}",
+                    sequence_length - 1
+                ),
+            ));
         }
     }
 
@@ -165,11 +211,6 @@ fn run(args: &Args) -> std::io::Result<()> {
     File::create(&count_matrix_path)?.write_all(render_count_matrix_csv(&matrix).as_bytes())?;
 
     let logo_path = format!("{prefix}.logo.{}", args.out_format);
-    if !matches!(args.out_format.as_str(), "svg" | "png") {
-        return Err(std::io::Error::other(format!(
-            "sequence logo was not created: {logo_path} (native rendering is only implemented for --oformat svg/png in this port -- see DIV-0016 in compatibility/divergences.yaml; {count_matrix_path} was written successfully)"
-        )));
-    }
 
     // Upstream: `logging.info("Making logo ...")` -- unconditional.
     eprintln!("Making logo ...");
@@ -181,7 +222,12 @@ fn run(args: &Args) -> std::io::Result<()> {
         eprintln!("'N' will be kept.");
     }
 
-    let stack_order = StackOrder::parse(&args.stack_order).ok_or_else(|| std::io::Error::new(std::io::ErrorKind::InvalidInput, "--stack-order must be 'big_on_top', 'small_on_top', or 'fixed'"))?;
+    let stack_order = StackOrder::parse(&args.stack_order).ok_or_else(|| {
+        std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
+            "--stack-order must be 'big_on_top', 'small_on_top', or 'fixed'",
+        )
+    })?;
     let highlight = match (args.highlight_start, args.highlight_end) {
         (Some(s), Some(e)) => Some((s, e)),
         _ => None,
@@ -192,12 +238,22 @@ fn run(args: &Args) -> std::io::Result<()> {
     // string does NOT match the real file `plt.savefig(...)` writes
     // (`.logo.mean_centered.<format>`, dot-separated); reproduced
     // exactly, including the mismatch (see module doc comment).
-    eprintln!("Mean-centered logo saved to \"{prefix}.logo_mean_centered.{}\".", args.out_format);
+    eprintln!(
+        "Mean-centered logo saved to \"{prefix}.logo_mean_centered.{}\".",
+        args.out_format
+    );
     if let Some((s, e)) = highlight {
         eprintln!("Highlight logo from {s} to {e}");
     }
     let mean_centered_path = format!("{prefix}.logo.mean_centered.{}", args.out_format);
-    write_logo(&mean_centered_path, &matrix, stack_order, highlight, &args.out_format, true)?;
+    write_logo(
+        &mean_centered_path,
+        &matrix,
+        stack_order,
+        highlight,
+        &args.out_format,
+        true,
+    )?;
 
     // Upstream: `logging.info("Logo saved to \"%s\"." % (outfile +
     // '.logo.' + oformat))` -- unconditional.
@@ -205,12 +261,26 @@ fn run(args: &Args) -> std::io::Result<()> {
     if let Some((s, e)) = highlight {
         eprintln!("Highlight logo from {s} to {e}");
     }
-    write_logo(&logo_path, &matrix, stack_order, highlight, &args.out_format, false)?;
+    write_logo(
+        &logo_path,
+        &matrix,
+        stack_order,
+        highlight,
+        &args.out_format,
+        false,
+    )?;
 
     Ok(())
 }
 
-fn write_logo(path: &str, matrix: &CountMatrix, stack_order: StackOrder, highlight: Option<(i64, i64)>, out_format: &str, centered: bool) -> std::io::Result<()> {
+fn write_logo(
+    path: &str,
+    matrix: &CountMatrix,
+    stack_order: StackOrder,
+    highlight: Option<(i64, i64)>,
+    out_format: &str,
+    centered: bool,
+) -> std::io::Result<()> {
     match out_format {
         "svg" => {
             let svg = if centered {
@@ -228,6 +298,14 @@ fn write_logo(path: &str, matrix: &CountMatrix, stack_order: StackOrder, highlig
             };
             File::create(path)?.write_all(&png)
         }
-        _ => unreachable!("out_format already validated to be svg or png"),
+        "pdf" => {
+            let pdf = if centered {
+                render_mean_centered_logo_pdf(&matrix.bases, &matrix.rows, stack_order, highlight)
+            } else {
+                render_frequency_logo_pdf(&matrix.bases, &matrix.rows, stack_order, highlight)
+            };
+            File::create(path)?.write_all(&pdf)
+        }
+        _ => unreachable!("out_format already validated to be svg, png, or pdf"),
     }
 }

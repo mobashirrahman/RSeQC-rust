@@ -11,7 +11,7 @@ All 33 upstream commands are implemented, build cleanly (`cargo build --workspac
 `cargo test --workspace` / `cargo clippy --workspace --all-targets -- -D warnings`. Compatibility
 is verified with a differential harness (`verification/run_diff.py`) that runs the real upstream
 Python CLI and this port's compiled binary against the same fixture and diffs their actual
-output — not just unit tests against this port's own expectations. The harness currently has 62
+output — not just unit tests against this port's own expectations. The harness currently has 63
 cases covering all 33 commands.
 
 **This is not yet a finished, published release.** See [Limitations](#limitations) below for what
@@ -98,19 +98,21 @@ Run any command with `--help` for its full flag list.
 | `sc_bamStat.py` | Report mapping statistics for single-cell RNA-seq BAM files | ✅ |
 | `sc_editMatrix.py` | Visualize error-correction edits in cellular barcodes and UMIs | ✅ |
 | `sc_seqQual.py` | Generate sequencing-quality matrices and a heatmap from a FASTQ file | ✅ |
-| `sc_seqLogo.py` | Generate a DNA sequence logo from FASTA, FASTQ, or sequence-only input | ⚠️ partial |
+| `sc_seqLogo.py` | Generate a DNA sequence logo from FASTA, FASTQ, or sequence-only input | ✅ |
 
 ✅ means the command's differential harness case(s) pass byte-identical (or equivalent, where a
 format's own container isn't byte-comparable in principle — e.g. gzip/BAI headers) against real
 upstream, for every case currently exercised. It does **not** mean every possible input/flag
 combination has been tried — see [Limitations](#limitations).
 
-`sc_seqLogo.py` is ⚠️ **partial**: its `.count_matrix.csv` output is fully computed and verified
-correct, and `--oformat svg`/`png` now both produce real, valid sequence-logo images via native
-from-scratch renderers (`crates/render`) — but `--oformat pdf` is not yet implemented, and both
-renderers' own known gaps (approximate glyph placement, no `shade_below`/`fade_below` support) are
-documented in `crates/render/src/seqlogo.rs`/`seqlogo_png.rs`. See DIV-0016 in
-`compatibility/divergences.yaml`.
+`sc_seqLogo.py` is now fully implemented: its `.count_matrix.csv` output is computed and verified
+byte-identical against real upstream, and `--oformat svg`/`png`/`pdf` all produce real, valid
+sequence-logo images via native from-scratch renderers (`crates/render`). The renderers' known
+gaps (approximate glyph placement, no `shade_below`/`fade_below` support) are documented in
+`crates/render/src/seqlogo.rs`/`seqlogo_png.rs`/`pdf.rs`. No reference image is byte-comparable:
+the pinned upstream's own `logomaker`+`pandas` combination crashes before rendering for every
+format, so the differential case checks the byte-identical CSV plus candidate-side PDF artifacts.
+See DIV-0016 in `compatibility/divergences.yaml`.
 
 Every known, intentional behavioral difference from upstream — including ones that are permanent
 by design (e.g. RNG algorithm differences, timestamped log lines) — is recorded in
@@ -119,13 +121,14 @@ this table, is the authoritative compatibility record.
 
 ## Limitations
 
-- **`sc_seqLogo.py`'s sequence-logo image rendering is partial** (DIV-0016) — `--oformat svg` and
-  `--oformat png` are both implemented (from-scratch renderers, verified by visually inspecting
-  real generated images); `pdf` is not (needs a real PDF-writing crate). No two independent
-  renderers can byte-match matplotlib's own image output regardless; a real reference image to
-  visually compare against isn't currently available either (the upstream oracle used during
-  development can't produce one in its own environment, due to an unrelated `logomaker`/`pandas`
-  version incompatibility).
+- **`sc_seqLogo.py`'s sequence-logo image rendering is from-scratch and shares documented visual
+  caveats** (DIV-0016) — `--oformat svg`/`png`/`pdf` are all implemented via native renderers
+  (from-scratch; `pdf` wraps the PNG renderer's raster in a minimal single-page PDF image
+  container). No two independent renderers can byte-match matplotlib's own image output regardless;
+  a real reference image to visually compare against isn't currently available either (the upstream
+  oracle used during development can't produce one in its own environment, due to an unrelated
+  `logomaker`/`pandas` version incompatibility). Renderers use approximate glyphs and don't honor
+  `shade_below`/`fade_below`.
 - **`.cram` input is now supported** (all 14 commands that accept `.bam`/`.sam` also accept
   `.cram`), decoded with no external reference file — the common case, matching what `pysam`/
   `htslib` themselves fall back to when writing CRAM without one configured. A CRAM file that

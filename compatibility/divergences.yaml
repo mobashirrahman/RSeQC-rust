@@ -435,23 +435,29 @@ divergences:
   - id: DIV-0016
     command_or_api: sc_seqLogo.py
     description: >
-      PARTIALLY CLOSED 2026-09-17. Upstream's sequence-logo images
-      (.logo.<format> and .logo.mean_centered.<format> -- upstream's
-      make_logo() actually produces TWO files, not one) are rendered
-      by qcmodule.fastq.make_logo, which calls the Python logomaker
+      PARTIALLY CLOSED 2026-09-17; CLOSED 2026-09-18. Upstream's
+      sequence-logo images (.logo.<format> and
+      .logo.mean_centered.<format> -- upstream's make_logo() actually
+      produces TWO files, not one) are rendered by
+      qcmodule.fastq.make_logo, which calls the Python logomaker
       library directly (matplotlib-based), not R -- unlike every other
       DIV-0005 "plot" command, there's no R-script intermediate to fall
       back to.
 
-      `--oformat svg` and `--oformat png` now both produce real images:
-      svg via `crates/render::seqlogo` (a from-scratch SVG renderer),
-      png via `crates/render::seqlogo_png` (a from-scratch rasterizer
-      using a tiny embedded 5x7 bitmap font, `crates/render::
-      bitmap_font`, and the pure-Rust `png` crate for encoding -- no
-      system libpng dependency). Both share the same stacking/ordering
-      computation and color scheme (`crates/render::seqlogo`'s
-      `order_indices`/`base_color_rgb`), so they agree on WHAT to draw;
-      neither is a logomaker/matplotlib port. They encode the same
+      `--oformat svg`, `--oformat png`, AND `--oformat pdf` now all
+      produce real images: svg via `crates/render::seqlogo` (a
+      from-scratch SVG renderer), png via `crates/render::seqlogo_png`
+      (a from-scratch rasterizer using a tiny embedded 5x7 bitmap font,
+      `crates/render::bitmap_font`, and the pure-Rust `png` crate for
+      encoding -- no system libpng dependency). Both share the same
+      stacking/ordering computation and color scheme
+      (`crates/render::seqlogo`'s `order_indices`/`base_color_rgb`), so
+      they agree on WHAT to draw; neither is a logomaker/matplotlib
+      port. pdf (`crates/render::pdf`) wraps the PNG renderer's exact
+      RGB raster (`Canvas`) in a minimal single-page PDF 1.4 image
+      XObject (raw uncompressed DeviceRGB, hand-written object/xref
+      tables, no PDF-crate dependency) -- the same underlying data as
+      svg/png, so it draws the same logo. All three encode the same
       DATA -- per-position letter-stack height by relative frequency
       (plain logo) or by each position's count minus its own mean
       (mean-centered logo, with below-axis letters flipped), upstream's
@@ -465,8 +471,7 @@ divergences:
       aliasing (glyphs are approximate, nearest-neighbor-scaled, not
       exact outlines); shade_below/fade_below are not honored (both
       default to 0.0 in the CLI's own flags, so this only matters if a
-      caller overrides them); pdf remains entirely unimplemented (needs
-      a real PDF-writing crate).
+      caller overrides them).
 
       A genuine upstream quirk was found and preserved exactly while
       implementing this: the "Mean-centered logo saved to ..."
@@ -491,23 +496,34 @@ divergences:
       mismatch quirk above -- confirmed for BOTH svg and png (the
       shared progress-message code path doesn't branch on format); the
       .count_matrix.csv output (already closed, unaffected by this
-      work) remains byte-identical for both formats; produced .svg
-      files are well-formed XML (parsed with Python's own
-      xml.etree.ElementTree) and produced .png files decode cleanly
+      work) remains byte-identical for all three formats; produced
+      .svg files are well-formed XML (parsed with Python's own
+      xml.etree.ElementTree), produced .png files decode cleanly
       (confirmed with both the `file` utility and a round-trip decode
-      in this port's own unit tests). No automated run_diff.py case
-      was added for either format specifically, since the two sides
-      now deliberately diverge in exit code (upstream crashes, this
-      port succeeds) for a reason outside this port's control -- same
-      reasoning as DIV-0006's split_paired_bam.py/split_bam.py
-      --index-output cases.
-    classification: unimplemented-native-rendering
+      in this port's own unit tests), and produced .pdf files are
+      recognized as one-page PDF 1.4 documents by the `file` utility
+      with structurally verified xref/object tables in this port's own
+      unit tests. The automated run_diff.py case `sc_seqlogo_basic`
+      covers the whole command end-to-end: it compares the
+      .count_matrix.csv byte-identically (written by both sides) and
+      asserts the two PDF logos exist on the candidate side only, since
+      the two sides now deliberately diverge in exit code (upstream
+      crashes on its own logomaker+pandas bug, this port succeeds) for
+      a reason outside this port's control -- same reasoning as
+      DIV-0006's split_paired_bam.py/split_bam.py --index-output cases.
+      The case declares that asymmetry explicitly via the harness's
+      per-side exit overrides (`py_expected_exit`/`rust_expected_exit`)
+      and candidate-only `rust_expect_files`; equal-failure is never a
+      pass.
+    classification: explicit-compatibility-exception
     decision: >
-      svg and png output are both implemented and functional; pdf
-      remains unimplemented pending a real PDF-writing crate. Not
-      fully closed until pdf is also implemented, or a decision is
-      made that svg/png-only native rendering is sufficient.
-    status: accepted
+      svg, png, and pdf output are all implemented and functional, all
+      sharing the same from-scratch rendering core and documented
+      visual-fidelity caveats (no working upstream reference image to
+      match against, since the pinned oracle's own logomaker+pandas
+      combination crashes before rendering for EVERY format). Closed:
+      no format remains unimplemented.
+    status: fixed-working-tree
 
   - id: DIV-0017
     command_or_api: divide_bam.py

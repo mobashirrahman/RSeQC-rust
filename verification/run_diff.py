@@ -93,6 +93,23 @@ class Case:
     # compatibility case must therefore not pass merely because both sides
     # failed in the same way.
     expected_exit_code: int = 0
+    # Per-side exit overrides for capability-scoped cases where one side is
+    # a known-degraded upstream environment (e.g. sc_seqlogo_basic: the
+    # pinned upstream crashes on its own pandas bug after writing the CSV,
+    # while this port is expected to succeed). When an override is set on a
+    # side, that side's exit must equal ITS override and the identical-exit
+    # assertion between the two sides is skipped (the exits legitimately
+    # differ). Overrides must always be declared explicitly; both-side
+    # equal-failure is never a positive pass either way.
+    py_expected_exit: int | None = None
+    rust_expected_exit: int | None = None
+    # Candidate-only artifacts that must exist and be non-empty on the Rust
+    # side, without content comparison -- used when the pinned upstream
+    # cannot produce the file at all in its environment (DIV-0016's rendered
+    # logos) yet the candidate is required to. Content is checked separately
+    # (e.g. structural unit tests in the render crate); here the existence
+    # check catches a command that silently skips the artifact.
+    rust_expect_files: tuple[str, ...] = ()
     # Stream comparison is either semantic labelled-number comparison or
     # exact text comparison.  Cases with file outputs normally use "none".
     stream_format: str = "labels"
@@ -236,14 +253,18 @@ def compare_results(case: Case, py_result: RunResult, rust_result: RunResult, py
     ok = True
     expected = case.expected_exit_code
     for side, result in (("python", py_result), ("rust", rust_result)):
+        side_expected = case.py_expected_exit if side == "python" else case.rust_expected_exit
+        if side_expected is not None:
+            expected = side_expected
         if result.exit_code != expected:
             suffix = " (timed out)" if result.timed_out else ""
-            print(f"  FAIL {side} exit code: expected={expected} actual={result.exit_code}{suffix}")
+            expected_desc = f"expected={expected}" + (f" [override for {side}]" if side_expected is not None else "")
+            print(f"  FAIL {side} exit code: {expected_desc} actual={result.exit_code}{suffix}")
             if result.stderr:
                 print(f"  --- {side} stderr ---")
                 print(result.stderr)
             ok = False
-    if py_result.exit_code != rust_result.exit_code:
+    if case.py_expected_exit is None and case.rust_expected_exit is None and py_result.exit_code != rust_result.exit_code:
         print(f"  FAIL exit code differs: python={py_result.exit_code} rust={rust_result.exit_code}")
         ok = False
     if not ok:
@@ -345,6 +366,15 @@ def compare_results(case: Case, py_result: RunResult, rust_result: RunResult, py
             print(f"  file '{rel_path}' PASS (exists on both sides, {py_size}/{rust_size} bytes)")
         else:
             print(f"  FAIL file '{rel_path}': python_size={py_size!r} rust_size={rust_size!r}")
+            ok = False
+
+    for rel_path in case.rust_expect_files:
+        rust_file = rust_dir / rel_path
+        rust_size = rust_file.stat().st_size if rust_file.is_file() else None
+        if rust_size:
+            print(f"  rust-only file '{rel_path}' PASS (exists, {rust_size} bytes)")
+        else:
+            print(f"  FAIL rust-only file '{rel_path}': rust_size={rust_size!r}")
             ok = False
     return ok
 
@@ -1715,10 +1745,17 @@ CASES: list[Case] = [
         # a single edited base through every position across 3 short
         # sequences so every position observes both bases (fully dense),
         # exercising the same previously-broken "always append .0" bug.
-        # Expects exit code 1 on BOTH sides (DIV-0016: sc_seqLogo.py
-        # produces no native image output at all in this port, matching
-        # upstream's own crash shape once the CSV -- the only file this
-        # case actually checks -- is already written).
+        # Asymmetric exit contract (DIV-0016): the pinned upstream
+        # environment itself cannot render logos -- its own
+        # logomaker+pandas crash (`TypeError: Invalid value
+        # '[-0.5 -0.5 -0.5]' for dtype 'int64'`) fires after the CSV is
+        # written, before the logo step -- so python is expected to exit
+        # 1 (its own bug), while this port is expected to exit 0 AND
+        # write the two real PDF logos (rust_expect_files; their content
+        # is structurally verified by the render crate's unit tests, and
+        # the DNA-sequence data behind them is the byte-identical CSV).
+        # The CSV is written by both sides before the crash, so it
+        # remains a normal byte-identical comparison file.
         ensure_fixture=ensure_sc_seqlogo_fixture,
         py_script="sc_seqLogo.py",
         rust_bin="sc_seqLogo",
@@ -1726,7 +1763,9 @@ CASES: list[Case] = [
         rust_args=lambda scratch_dir: ["-i", _regression_fixture("regression_sc_seqlogo.fa"), "-o", str(scratch_dir / "out"), "--iformat", "fa"],
         compare_stream="none",
         compare_files=("out.count_matrix.csv",),
-        expected_exit_code=1,
+        py_expected_exit=1,
+        rust_expected_exit=0,
+        rust_expect_files=("out.logo.pdf", "out.logo.mean_centered.pdf"),
     ),
     Case(
         name="fpkm_uq_basic",

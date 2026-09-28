@@ -1,17 +1,16 @@
 //! Port of `sc_seqLogo.py`'s count-matrix computation. Ports
 //! `qcmodule.fastq.fasta_iter`/`seq2countMat`.
 //!
-//! **DIV-0016, PARTIALLY CLOSED**: `--oformat svg`/`png` now produce
-//! real sequence-logo images via `rseqc_render::seqlogo`/`seqlogo_png`
-//! (from-scratch renderers, not a `logomaker`/matplotlib port) -- see
-//! those modules' own doc comments for exactly what is and isn't
-//! reproduced. `pdf` remains unimplemented (needs a real PDF-writing
-//! crate). The `.count_matrix.csv` output (this module's whole scope)
+//! **DIV-0016, CLOSED**: `--oformat svg`/`png`/`pdf` now all produce
+//! real sequence-logo images via `rseqc_render::seqlogo`/`seqlogo_png`/
+//! `pdf` (from-scratch renderers, not a `logomaker`/matplotlib port) --
+//! see those modules' own doc comments for exactly what is and isn't
+//! reproduced. The `.count_matrix.csv` output (this module's whole scope)
 //! is fully computed and correct regardless of `--oformat`.
 //!
 //! Compressed (`.gz`/`.Z`/`.z`/`.bz`/`.bz2`/`.bzip2`) input is supported
 //! at the CLI layer via `rseqc_formats::open_text_input`, same as
-//! `sc_seqQual.py` -- independent of the logo-rendering gap above.
+//! `sc_seqQual.py`.
 //!
 //! **Preserves the `pandas.DataFrame.from_dict` column/row ORDER
 //! quirk**, verified against a real `pandas` run in `oracle/venv`: with
@@ -126,7 +125,11 @@ pub struct CountMatrix {
 /// Computes the full count matrix and its column order from raw input
 /// sequences. This is the whole `.count_matrix.csv` deliverable (see
 /// module docs for why the `.logo.<format>` image is out of scope).
-pub fn compute_count_matrix(seqs: &[String], limit: Option<i64>, exclude_n: bool) -> io::Result<CountMatrix> {
+pub fn compute_count_matrix(
+    seqs: &[String],
+    limit: Option<i64>,
+    exclude_n: bool,
+) -> io::Result<CountMatrix> {
     let mat = seq2count_mat(seqs, limit, exclude_n);
     if mat.is_empty() {
         return Err(io::Error::new(io::ErrorKind::InvalidData, "no usable sequences were found; check the input format, sequence content, and --exclude-N setting"));
@@ -141,7 +144,15 @@ pub fn compute_count_matrix(seqs: &[String], limit: Option<i64>, exclude_n: bool
         }
     }
 
-    let rows: Vec<Vec<i64>> = mat.iter().map(|pos| bases.iter().map(|b| pos.counts.get(b).copied().unwrap_or(0)).collect()).collect();
+    let rows: Vec<Vec<i64>> = mat
+        .iter()
+        .map(|pos| {
+            bases
+                .iter()
+                .map(|b| pos.counts.get(b).copied().unwrap_or(0))
+                .collect()
+        })
+        .collect();
 
     Ok(CountMatrix { bases, rows })
 }
@@ -208,17 +219,35 @@ mod tests {
         // Cross-checked byte-for-byte against a real pandas
         // DataFrame.from_dict + fillna(0) + .T pipeline run in
         // oracle/venv with this exact input (seqs: ACGT,ACGA,TCGT,ACGT).
-        let seqs = vec!["ACGT".to_string(), "ACGA".to_string(), "TCGT".to_string(), "ACGT".to_string()];
+        let seqs = vec![
+            "ACGT".to_string(),
+            "ACGA".to_string(),
+            "TCGT".to_string(),
+            "ACGT".to_string(),
+        ];
         let matrix = compute_count_matrix(&seqs, None, false).unwrap();
         // Column order: A (pos0 first seq), T (pos0 third seq),
         // C (pos1), G (pos2) -- NOT alphabetical, NOT fixed ACGT.
         assert_eq!(matrix.bases, vec!['A', 'T', 'C', 'G']);
-        assert_eq!(matrix.rows, vec![vec![3, 1, 0, 0], vec![0, 0, 4, 0], vec![0, 0, 0, 4], vec![1, 3, 0, 0],]);
+        assert_eq!(
+            matrix.rows,
+            vec![
+                vec![3, 1, 0, 0],
+                vec![0, 0, 4, 0],
+                vec![0, 0, 0, 4],
+                vec![1, 3, 0, 0],
+            ]
+        );
     }
 
     #[test]
     fn render_count_matrix_csv_matches_real_pandas_output() {
-        let seqs = vec!["ACGT".to_string(), "ACGA".to_string(), "TCGT".to_string(), "ACGT".to_string()];
+        let seqs = vec![
+            "ACGT".to_string(),
+            "ACGA".to_string(),
+            "TCGT".to_string(),
+            "ACGT".to_string(),
+        ];
         let matrix = compute_count_matrix(&seqs, None, false).unwrap();
         let csv = render_count_matrix_csv(&matrix);
         let expected = "Index,A,T,C,G\n0,3.0,1.0,0.0,0.0\n1,0.0,0.0,4.0,0.0\n2,0.0,0.0,0.0,4.0\n3,1.0,3.0,0.0,0.0\n";
@@ -233,7 +262,10 @@ mod tests {
         // doesn't need to upcast any column, so the whole matrix stays
         // int64 -- "3", not "3.0". This is the shape that was
         // previously mis-rendered (the bug this test guards against).
-        let matrix = CountMatrix { bases: vec!['A', 'T'], rows: vec![vec![3, 1], vec![2, 2], vec![1, 3]] };
+        let matrix = CountMatrix {
+            bases: vec!['A', 'T'],
+            rows: vec![vec![3, 1], vec![2, 2], vec![1, 3]],
+        };
         let csv = render_count_matrix_csv(&matrix);
         assert_eq!(csv, "Index,A,T\n0,3,1\n1,2,2\n2,1,3\n");
     }

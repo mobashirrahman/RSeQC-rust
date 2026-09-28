@@ -10,6 +10,12 @@
 //! plain colored rectangle, but deliberately not attempting real
 //! font-hinting/anti-aliasing (out of scope; see this crate's other
 //! doc comments on what "correct" means for an image artifact here).
+//!
+//! The RGB pixel buffer this module builds (`Canvas`) is also reused
+//! by `crate::pdf` to produce `--oformat pdf` output, wrapping the
+//! exact same raster in a minimal single-page PDF image container --
+//! see that module's own doc comment for why that's a much smaller
+//! lift than a full vector-graphics PDF writer.
 
 use crate::bitmap_font::{GLYPH_HEIGHT, GLYPH_WIDTH, glyph_rows};
 use crate::seqlogo::{StackOrder, base_color_rgb, order_indices};
@@ -31,13 +37,25 @@ struct Rect {
     h: u32,
 }
 
-struct Canvas {
+pub(crate) struct Canvas {
     width: u32,
     height: u32,
     pixels: Vec<u8>, // RGB8, row-major
 }
 
 impl Canvas {
+    pub(crate) fn width(&self) -> u32 {
+        self.width
+    }
+
+    pub(crate) fn height(&self) -> u32 {
+        self.height
+    }
+
+    pub(crate) fn pixels(&self) -> &[u8] {
+        &self.pixels
+    }
+
     fn new(width: u32, height: u32, fill: (u8, u8, u8)) -> Self {
         let mut pixels = Vec::with_capacity((width * height * 3) as usize);
         for _ in 0..(width * height) {
@@ -133,6 +151,10 @@ fn draw_position_ticks(canvas: &mut Canvas, num_positions: usize, axis_y: u32) {
 /// comment for the semantics: letter-stack height by relative
 /// frequency per position).
 pub fn render_frequency_logo_png(bases: &[char], rows: &[Vec<i64>], stack_order: StackOrder, highlight: Option<(i64, i64)>) -> io::Result<Vec<u8>> {
+    build_frequency_canvas(bases, rows, stack_order, highlight).encode_png()
+}
+
+pub(crate) fn build_frequency_canvas(bases: &[char], rows: &[Vec<i64>], stack_order: StackOrder, highlight: Option<(i64, i64)>) -> Canvas {
     let num_positions = rows.len();
     let (width, height) = canvas_size(num_positions);
     let axis_y = MARGIN_TOP + LOGO_HEIGHT;
@@ -160,13 +182,17 @@ pub fn render_frequency_logo_png(bases: &[char], rows: &[Vec<i64>], stack_order:
     }
 
     draw_position_ticks(&mut canvas, num_positions, axis_y);
-    canvas.encode_png()
+    canvas
 }
 
 /// Renders the mean-centered sequence logo as a PNG, matching
 /// `render_mean_centered_logo_svg`'s data (positions' counts minus
 /// their own mean; below-axis letters flipped).
 pub fn render_mean_centered_logo_png(bases: &[char], rows: &[Vec<i64>], stack_order: StackOrder, highlight: Option<(i64, i64)>) -> io::Result<Vec<u8>> {
+    build_mean_centered_canvas(bases, rows, stack_order, highlight).encode_png()
+}
+
+pub(crate) fn build_mean_centered_canvas(bases: &[char], rows: &[Vec<i64>], stack_order: StackOrder, highlight: Option<(i64, i64)>) -> Canvas {
     let num_positions = rows.len();
     let (width, height) = canvas_size(num_positions);
     let half_height = LOGO_HEIGHT / 2;
@@ -208,7 +234,7 @@ pub fn render_mean_centered_logo_png(bases: &[char], rows: &[Vec<i64>], stack_or
     }
 
     draw_position_ticks(&mut canvas, num_positions, MARGIN_TOP + LOGO_HEIGHT);
-    canvas.encode_png()
+    canvas
 }
 
 #[cfg(test)]

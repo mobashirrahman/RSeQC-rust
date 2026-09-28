@@ -2,5 +2,6 @@
 //! separate so command logic never depends on a renderer directly.
 
 pub mod bitmap_font;
+pub mod pdf;
 pub mod seqlogo;
 pub mod seqlogo_png;

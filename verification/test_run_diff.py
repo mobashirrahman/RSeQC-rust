@@ -84,6 +84,42 @@ class RunnerComparatorTests(unittest.TestCase):
         self.assertIsNone(result.exit_code)
         self.assertTrue(result.timed_out)
 
+    def test_per_side_exit_overrides_pass_when_each_side_meets_its_own(self):
+        # sc_seqlogo_basic contract: upstream exits 1 on its own pandas
+        # bug, candidate succeeds. Diminished-exit must be explicit and
+        # both sides must still meet their declared expectation.
+        case = _case(compare_stream="none", py_expected_exit=1, rust_expected_exit=0)
+        py = run_diff.RunResult(1, "", "upstream pandas crash")
+        rust = run_diff.RunResult(0, "", "")
+        self.assertTrue(self.compare(case, py, rust))
+
+    def test_per_side_exit_override_rejects_side_failing_its_own_expectation(self):
+        case = _case(compare_stream="none", py_expected_exit=1, rust_expected_exit=0)
+        py = run_diff.RunResult(1, "", "ok")
+        rust = run_diff.RunResult(1, "", "candidate crashed")
+        self.assertFalse(self.compare(case, py, rust))
+
+    def test_no_overrides_still_requires_identical_exits(self):
+        case = _case(compare_stream="none")
+        py = run_diff.RunResult(0, "", "")
+        rust = run_diff.RunResult(1, "", "candidate crashed")
+        self.assertFalse(self.compare(case, py, rust))
+
+    def test_rust_expect_files_passes_for_nonempty_candidate_artifact(self):
+        case = _case(compare_stream="none", rust_expect_files=("out.logo.pdf",))
+        ok = run_diff.RunResult(0, "", "")
+        with tempfile.TemporaryDirectory() as py_tmp, tempfile.TemporaryDirectory() as rust_tmp:
+            (Path(rust_tmp) / "out.logo.pdf").write_bytes(b"%PDF-1.4")
+            with contextlib.redirect_stdout(io.StringIO()):
+                self.assertTrue(run_diff.compare_results(case, ok, ok, Path(py_tmp), Path(rust_tmp)))
+
+    def test_rust_expect_files_fails_when_artifact_missing(self):
+        case = _case(compare_stream="none", rust_expect_files=("out.logo.pdf",))
+        ok = run_diff.RunResult(0, "", "")
+        with tempfile.TemporaryDirectory() as py_tmp, tempfile.TemporaryDirectory() as rust_tmp:
+            with contextlib.redirect_stdout(io.StringIO()):
+                self.assertFalse(run_diff.compare_results(case, ok, ok, Path(py_tmp), Path(rust_tmp)))
+
 
 if __name__ == "__main__":
     unittest.main()
