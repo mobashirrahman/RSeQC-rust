@@ -7,3 +7,5 @@ oracle/venv/
 /.claude/scheduled_tasks.lock
 __pycache__/
 *.pyc
+benchmarks/workloads/
+benchmarks/benchmark_results/
