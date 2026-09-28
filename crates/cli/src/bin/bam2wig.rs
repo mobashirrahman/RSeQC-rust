@@ -8,10 +8,10 @@
 //! queries are served by a single sequential scan instead.
 //!
 //! The trailing `wigToBigWig` conversion (an external UCSC tool
-//! upstream invokes best-effort, silently ignoring failure) is
-//! replicated the same way: attempted once per output `.wig` file,
-//! any failure (tool missing or nonzero exit) is reported to stderr
-//! and otherwise ignored, matching upstream's bare `try/except: pass`.
+//! upstream invokes best-effort through `subprocess.call(..., shell=True)`)
+//! is replicated the same way: the identical command string is run via
+//! `/bin/sh -c`, preceded (unstranded mode only) by upstream's
+//! "Run wigToBigWig ..." stdout line; see `try_wig_to_bigwig`.
 
 use std::collections::HashSet;
 use std::fs::File;
@@ -126,28 +126,39 @@ fn run(args: &Args) -> std::io::Result<()> {
     if !strand_rule_active {
         let wig_path = format!("{prefix}.wig");
         File::create(&wig_path)?.write_all(render_unstranded_wig(&chrom_sizes, &valid_chroms, &signal, normalization_factor).as_bytes())?;
-        try_wig_to_bigwig(&wig_path, &args.chrom_size, &format!("{prefix}.bw"));
+        // Upstream prints the (flag-less) command line to stdout first.
+        println!("Run wigToBigWig {prefix}.wig {} {prefix}.bw ", args.chrom_size.display());
+        std::io::stdout().flush()?;
+        try_wig_to_bigwig(&[format!("wigToBigWig -clip {prefix}.wig {} {prefix}.bw ", args.chrom_size.display())]);
     } else {
         let (fwd, rev) = render_stranded_wig(&chrom_sizes, &valid_chroms, &signal, normalization_factor);
         let fwd_path = format!("{prefix}.Forward.wig");
         let rev_path = format!("{prefix}.Reverse.wig");
         File::create(&fwd_path)?.write_all(fwd.as_bytes())?;
         File::create(&rev_path)?.write_all(rev.as_bytes())?;
-        try_wig_to_bigwig(&fwd_path, &args.chrom_size, &format!("{prefix}.Forward.bw"));
-        try_wig_to_bigwig(&rev_path, &args.chrom_size, &format!("{prefix}.Reverse.bw"));
+        let cs = args.chrom_size.display();
+        try_wig_to_bigwig(&[
+            format!("wigToBigWig -clip {fwd_path} {cs} {prefix}.Forward.bw "),
+            format!("wigToBigWig -clip {rev_path} {cs} {prefix}.Reverse.bw "),
+        ]);
     }
 
     Ok(())
 }
 
-/// Best-effort `wigToBigWig -clip <wig> <chrom_size> <bw>` invocation,
-/// matching upstream's bare `try/except: pass` around the same
-/// subprocess call: any failure (tool not on PATH, nonzero exit) is
-/// reported to stderr and otherwise ignored.
-fn try_wig_to_bigwig(wig_path: &str, chrom_size: &std::path::Path, bw_path: &str) {
-    let result = Command::new("wigToBigWig").arg("-clip").arg(wig_path).arg(chrom_size).arg(bw_path).status();
-    match result {
-        Ok(status) if status.success() => {}
-        _ => eprintln!("Failed to call \"wigToBigWig\"."),
+/// Best-effort `wigToBigWig -clip <wig> <chrom_size> <bw>` invocation(s),
+/// reproducing upstream's `subprocess.call(<string>, shell=True)` inside a
+/// bare `try/except: pass`: each command string is handed to `/bin/sh -c`
+/// verbatim, so a missing tool yields the shell's own "not found" message
+/// (and a nonzero status, which upstream ignores). "Failed to call" is only
+/// printed when the shell itself cannot be spawned -- the only case in which
+/// `subprocess.call` raises -- and then aborts the remaining calls, as the
+/// exception would.
+fn try_wig_to_bigwig(commands: &[String]) {
+    for cmd in commands {
+        if Command::new("/bin/sh").arg("-c").arg(cmd).status().is_err() {
+            eprintln!("Failed to call \"wigToBigWig\".");
+            return;
+        }
     }
 }
