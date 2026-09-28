@@ -714,3 +714,30 @@ divergences:
     classification: bug-in-port
     decision: Fixed in the working tree 2026-09-28.
     status: fixed-working-tree
+
+  - id: DIV-0022
+    command_or_api: geneBody_coverage.py, FPKM-UQ.py
+    description: >
+      Upstream's `printlog` function (defined in both `geneBody_coverage.py`
+      and `FPKM-UQ.py`) writes timestamped progress messages to stderr AND
+      appends them to a fixed-name file `log.txt` in the CURRENT WORKING
+      DIRECTORY (unscoped to any output prefix or `--log-file` flag; the
+      default `Path("log.txt")` is hardcoded in the function signature).
+      This is not documented in the CLI help (`-h`/`--help`) for either
+      command and is a byproduct of the logging implementation detail, not
+      an advertised output. The Rust port's equivalent progress messages
+      use `eprintln!` for stderr output only, matching every other command's
+      existing practice in this project.
+    classification: explicit-compatibility-exception
+    decision: >
+      Deliberately not replicated. This is fixed-name, unscoped CWD
+      pollution with no `-o`/prefix control or `--log-file` flag in
+      upstream's own CLI -- blindly reproducing it would risk silently
+      clobbering an existing `log.txt` in whatever directory the Rust binary
+      is invoked from, for no benefit (nothing downstream in the standard
+      workflow consumes this file; it exists only as an artifact of
+      upstream's `printlog` logging implementation detail, not a documented
+      output of the command). If a real consumer is found that depends on
+      this file, revisit. Follows the same precedent and rationale as
+      DIV-0018 (sc_bamStat.py CWD file pollution).
+    status: accepted

@@ -168,9 +168,15 @@ pub fn genebody_percentile(reader: impl BufRead, mrna_length_cutoff: i64) -> io:
 /// A transcript whose `chrom` is not a valid reference in `header` is
 /// silently skipped (upstream's `next(samfile.pileup(chrom,1,2),None)`
 /// existence probe).
-pub fn compute_coverage_for_bam(reads_by_chrom: &HashMap<String, Vec<IndexedRead>>, header: &sam::Header, transcripts: &[TranscriptPercentiles]) -> Vec<i64> {
+///
+/// Returns `(aggregated_coverage, has_float_marker)` where `has_float_marker`
+/// tracks which indices received a 0.0 value during aggregation, matching
+/// Python's duck-typing behavior: once a 0.0 is added to an int, the
+/// aggregated value becomes float (even if later additions make it non-zero).
+pub fn compute_coverage_for_bam(reads_by_chrom: &HashMap<String, Vec<IndexedRead>>, header: &sam::Header, transcripts: &[TranscriptPercentiles]) -> (Vec<i64>, Vec<bool>) {
     let valid_chroms: std::collections::HashSet<&str> = header.reference_sequences().keys().map(|k| std::str::from_utf8(k).unwrap_or("")).collect();
     let mut aggregated: Vec<i64> = Vec::new();
+    let mut has_float: Vec<bool> = Vec::new();
 
     for t in transcripts {
         if t.positions.is_empty() || !valid_chroms.contains(t.chrom.as_str()) {
@@ -184,13 +190,18 @@ pub fn compute_coverage_for_bam(reads_by_chrom: &HashMap<String, Vec<IndexedRead
         }
         if coverage.len() > aggregated.len() {
             aggregated.resize(coverage.len(), 0);
+            has_float.resize(coverage.len(), false);
         }
         for (i, v) in coverage.into_iter().enumerate() {
+            // Track if this index receives a 0.0 value (which makes it float in Python)
+            if v == 0.0 {
+                has_float[i] = true;
+            }
             aggregated[i] += v as i64;
         }
     }
 
-    aggregated
+    (aggregated, has_float)
 }
 
 /// Builds a per-chromosome read index for one BAM, reusing
@@ -282,22 +293,25 @@ pub fn get_bam_files(input: &str) -> Vec<PathBuf> {
 
 /// Renders the `.geneBodyCoverage.txt` table: header row
 /// `Percentile\t1\t2\t...\t100`, then one row per sample.
-pub fn render_coverage_txt(samples: &[(String, Vec<i64>)]) -> String {
+///
+/// The `float_markers` parameter (same length as each sample's values)
+/// indicates which indices received 0.0 values during aggregation,
+/// matching Python's duck-typing: any value that had 0.0 added to it
+/// becomes float, even if the final sum is non-zero (e.g., 15.0).
+pub fn render_coverage_txt(samples: &[(String, Vec<i64>, Vec<bool>)]) -> String {
     let mut out = String::new();
     out.push_str("Percentile\t");
     out.push_str(&(1..=100).map(|i| i.to_string()).collect::<Vec<_>>().join("\t"));
     out.push('\n');
-    for (name, values) in samples {
+    for (name, values, float_markers) in samples {
         out.push_str(name);
-        for v in values {
+        for (v, &is_float) in values.iter().zip(float_markers.iter()) {
             out.push('\t');
-            // The upstream coverage dictionary starts each requested
-            // position as `0.0`; positions observed by pileup are replaced
-            // with an integer count.  Preserve that visible Python `str()`
-            // distinction for the common no-column case rather than
-            // rendering every zero as an integer.
-            if *v == 0 {
-                out.push_str("0.0");
+            // Preserve Python's duck-typing behavior: any index that received
+            // a 0.0 value (marked in float_markers) becomes float, even if
+            // subsequent additions make it non-zero.
+            if is_float {
+                out.push_str(&format!("{v}.0"));
             } else {
                 out.push_str(&v.to_string());
             }
@@ -340,10 +354,10 @@ pub struct DatasetEntry {
 /// rather than re-parsing that text back off disk -- a lossless
 /// simplification (same class as `RPKM_saturation.py`'s
 /// `build_quartile_plot_data`), not a behavioral change.
-pub fn load_dataset(samples: &[(String, Vec<i64>)]) -> Vec<DatasetEntry> {
+pub fn load_dataset(samples: &[(String, Vec<i64>, Vec<bool>)]) -> Vec<DatasetEntry> {
     let mut out: Vec<DatasetEntry> = samples
         .iter()
-        .map(|(name, raw)| {
+        .map(|(name, raw, _float_markers)| {
             let raw_f: Vec<f64> = raw.iter().map(|&v| v as f64).collect();
             let skewness = pearson_moment_coefficient(&raw_f);
             let min = raw_f.iter().cloned().fold(f64::INFINITY, f64::min);
@@ -484,7 +498,10 @@ chr1\t0\t300\ttx1\t0\t+\t0\t300\t0\t1\t300,\t0,
 
     #[test]
     fn load_dataset_normalizes_from_raw_and_sorts_by_descending_skewness() {
-        let samples = vec![("low_skew".to_string(), vec![1i64, 2, 3, 4, 5]), ("high_skew".to_string(), vec![1i64, 1, 1, 1, 100])];
+        let samples = vec![
+            ("low_skew".to_string(), vec![1i64, 2, 3, 4, 5], vec![false; 5]),
+            ("high_skew".to_string(), vec![1i64, 1, 1, 1, 100], vec![false; 5]),
+        ];
         let dataset = load_dataset(&samples);
         // high_skew should sort first (larger positive skewness from the outlier).
         assert_eq!(dataset[0].name, "high_skew");
@@ -496,7 +513,9 @@ chr1\t0\t300\ttx1\t0\t+\t0\t300\t0\t1\t300,\t0,
 
     #[test]
     fn render_coverage_txt_header_and_row_shape() {
-        let samples = vec![("s1".to_string(), (1..=100).collect::<Vec<i64>>())];
+        let values = (1..=100).collect::<Vec<i64>>();
+        let float_markers = vec![false; 100];
+        let samples = vec![("s1".to_string(), values, float_markers)];
         let txt = render_coverage_txt(&samples);
         let mut lines = txt.lines();
         assert!(lines.next().unwrap().starts_with("Percentile\t1\t2\t3"));

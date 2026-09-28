@@ -650,6 +650,23 @@ def ensure_track_fixtures() -> None:
     subprocess.run([str(ORACLE_PYTHON), str(generator), str(track_dir)], cwd=REPO_ROOT, check=True)
 
 
+def ensure_genebody_coverage_float_fixture() -> None:
+    """Fixture for testing geneBody_coverage.py's float vs int duck-typing
+    behavior. Generates a deterministic workload using the benchmarks/
+    generate_workload.py script with a fixed seed."""
+    fixture_dir = REPO_ROOT / "verification" / "fixtures" / "genebody_coverage_float"
+    required = (
+        fixture_dir / "reads.bam",
+        fixture_dir / "reads.bam.bai",
+        fixture_dir / "model.bed12",
+    )
+    if all(path.is_file() for path in required):
+        return
+    fixture_dir.mkdir(parents=True, exist_ok=True)
+    generator = REPO_ROOT / "benchmarks" / "generate_workload.py"
+    subprocess.run([str(ORACLE_PYTHON), str(generator), "--size", "300", "--output-dir", str(fixture_dir)], cwd=REPO_ROOT, check=True)
+
+
 CASES: list[Case] = [
     Case(
         name="bam_stat_basic",
@@ -1026,6 +1043,34 @@ CASES: list[Case] = [
         compare_stream="none",
         compare_files=("out.geneBodyCoverage.txt",),
         numeric_files=("out.geneBodyCoverage.txt",),
+    ),
+    Case(
+        name="geneBody_coverage_float_format",
+        ensure_fixture=ensure_genebody_coverage_float_fixture,
+        py_script="geneBody_coverage.py",
+        rust_bin="geneBody_coverage",
+        py_args=lambda scratch_dir: [
+            "-i",
+            str(REPO_ROOT / "verification" / "fixtures" / "genebody_coverage_float" / "reads.bam"),
+            "-r",
+            str(REPO_ROOT / "verification" / "fixtures" / "genebody_coverage_float" / "model.bed12"),
+            "-o",
+            str(scratch_dir / "out"),
+            "--skip-plot",
+        ],
+        rust_args=lambda scratch_dir: [
+            "-i",
+            str(REPO_ROOT / "verification" / "fixtures" / "genebody_coverage_float" / "reads.bam"),
+            "-r",
+            str(REPO_ROOT / "verification" / "fixtures" / "genebody_coverage_float" / "model.bed12"),
+            "-o",
+            str(scratch_dir / "out"),
+            "--skip-plot",
+        ],
+        compare_stream="none",
+        compare_files=("out.geneBodyCoverage.txt",),
+        # Use exact byte comparison (not numeric) to verify float formatting
+        # (e.g., "15.0" in Rust output matches Python's "15.0", not "15")
     ),
     Case(
         name="tin_pair_overlap",

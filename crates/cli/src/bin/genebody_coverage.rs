@@ -87,7 +87,7 @@ fn run(args: &Args) -> std::io::Result<()> {
     }
 
     let mut sample_names: Vec<String> = Vec::new();
-    let mut samples: Vec<(String, Vec<i64>)> = Vec::new();
+    let mut samples: Vec<(String, Vec<i64>, Vec<bool>)> = Vec::new();
 
     for bam_file in &bam_files {
         if !bam_file.is_file() {
@@ -98,7 +98,7 @@ fn run(args: &Args) -> std::io::Result<()> {
 
         let (mut reader, header) = rseqc_formats::open_bam(bam_file)?;
         let reads_by_chrom = build_index(reader.records(), &header)?;
-        let coverage = compute_coverage_for_bam(&reads_by_chrom, &header, &transcripts);
+        let (coverage, float_markers) = compute_coverage_for_bam(&reads_by_chrom, &header, &transcripts);
 
         if coverage.is_empty() {
             eprintln!("\nCannot get coverage signal from {}! Skip", bam_file.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default());
@@ -108,7 +108,7 @@ fn run(args: &Args) -> std::io::Result<()> {
         let base_name = valid_name(&bam_file.file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_default());
         let sample_name = make_unique_sample_name(&base_name, &sample_names);
         sample_names.push(base_name);
-        samples.push((sample_name, coverage));
+        samples.push((sample_name, coverage, float_markers));
     }
 
     File::create(&coverage_path)?.write_all(render_coverage_txt(&samples).as_bytes())?;
