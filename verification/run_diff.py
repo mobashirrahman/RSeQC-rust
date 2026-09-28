@@ -2529,6 +2529,26 @@ CASES: list[Case] = [
         compare_stream="none",
         compare_files=("pe.tin.xls", "pe.summary.txt"),
     ),
+    Case(
+        name="tin_synthetic_multi_input_logging",
+        # Found by verification/synthetic_sweep.py: tin.py resolves -i via
+        # getBamFiles.get_bam_files (comma list / directory / list file,
+        # tin.py:580-599) and logs its INFO progress unconditionally; the
+        # port accepted a single path only (a comma list failed with "No such
+        # file or directory") and printed progress only with --verbose.
+        ensure_fixture=ensure_synthetic_fixtures,
+        py_script="tin.py",
+        rust_bin="tin",
+        py_args=lambda d: ["-i", _synthetic("pe.bam") + "," + _synthetic("se.bam"), "-r", _synthetic("model.bed12"),
+                           "-o", str(d), "-c", "1"],
+        rust_args=lambda d: ["-i", _synthetic("pe.bam") + "," + _synthetic("se.bam"), "-r", _synthetic("model.bed12"),
+                             "-o", str(d), "-c", "1"],
+        compare_stream="stderr",
+        stream_format="exact",
+        normalize_paths=True,
+        strip_log_prefixes=True,
+        compare_files=("pe.tin.xls", "pe.summary.txt", "se.tin.xls", "se.summary.txt"),
+    ),
 ]
 
 

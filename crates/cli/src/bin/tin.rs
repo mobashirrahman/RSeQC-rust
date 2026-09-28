@@ -2,18 +2,24 @@
 //! (see crates/cli/Cargo.toml); packaging (PORTING_PLAN Step 10) adds the
 //! `.py`-suffixed PATH alias.
 //!
-//! Supports multiple BAM file input forms: single file, comma-separated list,
-//! directory, or text file listing BAM paths (one per line), matching
-//! `getBamFiles.get_bam_files` behavior. Each BAM generates separate
-//! `.tin.xls` and `.summary.txt` output files.
+//! `-i/--input` accepts every form upstream's `getBamFiles.get_bam_files`
+//! does (single BAM, comma-separated list, directory, list file); the
+//! resolved paths are sorted and each needs a `.bai` sidecar, as upstream
+//! requires. The index is only checked for presence (region queries are
+//! served from an in-memory read index -- see crates/commands/src/tin.rs).
+//!
+//! Upstream logs at INFO level unconditionally (`--verbose` only enables
+//! DEBUG), so the progress lines below are always printed; the
+//! `%(asctime)s [%(levelname)s] ` prefix is not replicated (DIV-0019).
 
 use std::fs::File;
 use std::io::{BufReader, Write as _};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use clap::Parser;
 use rseqc_commands::genebody_coverage::get_bam_files;
 use rseqc_commands::tin::{build_exon_ranges, build_read_index, compute_tin, genomic_positions, render_summary, render_tin_xls};
+use rseqc_formats::interval::MergedRegions;
 use rseqc_formats::bed::get_exon;
 
 #[derive(Parser)]
@@ -22,9 +28,9 @@ use rseqc_formats::bed::get_exon;
     about = "Calculate transcript integrity number (TIN) for each transcript or gene."
 )]
 struct Args {
-    /// Input BAM file(s): a single file, comma-separated list, directory, or text file listing BAM paths.
+    /// BAM input: one BAM, a comma-separated list, a directory, or a list file.
     #[arg(short = 'i', long = "input")]
-    input_spec: PathBuf,
+    input_files: String,
 
     /// Reference gene model in standard BED12 format.
     #[arg(short = 'r', long = "refgene")]
@@ -56,24 +62,41 @@ fn main() -> std::process::ExitCode {
     match run(&args) {
         Ok(()) => std::process::ExitCode::SUCCESS,
         Err(err) => {
-            eprintln!("error: {err}");
+            // Upstream: logging.error("%s", exc); return 1
+            eprintln!("{err}");
             std::process::ExitCode::FAILURE
         }
     }
 }
 
 fn run(args: &Args) -> std::io::Result<()> {
+    if args.sample_size > 1000 {
+        eprintln!("--sample-size is greater than 1000; reduce it if performance is poor");
+    }
     eprintln!("Get BAM file(s) ...");
-
-    let mut bam_files = get_bam_files(&args.input_spec.to_string_lossy());
+    let mut bam_files = get_bam_files(&args.input_files);
     bam_files.sort();
     if bam_files.is_empty() {
-        return Err(std::io::Error::new(std::io::ErrorKind::NotFound, "No BAM files found"));
+        return Err(std::io::Error::other("No BAM files found"));
     }
-
+    for bam in &bam_files {
+        if !bam.is_file() {
+            return Err(std::io::Error::other(format!("BAM file does not exist: {}", bam.display())));
+        }
+        let mut bai = bam.as_os_str().to_owned();
+        bai.push(".bai");
+        if !Path::new(&bai).is_file() && !bam.with_extension("bai").is_file() {
+            return Err(std::io::Error::other(format!(
+                "BAM index not found for {}; expected {}.bai or {}",
+                bam.display(),
+                bam.display(),
+                bam.with_extension("bai").display()
+            )));
+        }
+    }
     eprintln!("Total {} BAM file(s)", bam_files.len());
-    for bam_file in &bam_files {
-        eprintln!("  {}", bam_file.display());
+    for bam in &bam_files {
+        eprintln!("  {}", bam.display());
     }
 
     let exon_ranges = if args.subtract_bg {
@@ -84,37 +107,43 @@ fn run(args: &Args) -> std::io::Result<()> {
         None
     };
 
+    for bam in &bam_files {
+        eprintln!("Processing {}", bam.display());
+        process_bam(args, bam, exon_ranges.as_ref())?;
+    }
+    eprintln!("Done.");
+    Ok(())
+}
+
+fn process_bam(args: &Args, bam: &Path, exon_ranges: Option<&MergedRegions>) -> std::io::Result<()> {
     let refgene_file = File::open(&args.ref_gene_model)?;
     let samples = genomic_positions(BufReader::new(refgene_file), args.sample_size)?;
 
-    for bam_file in bam_files {
-        eprintln!("Processing {}", bam_file.display());
+    let (mut reader, header) = rseqc_formats::open_bam(bam)?;
+    let reads_by_chrom = build_read_index(reader.records(), &header)?;
 
-        let (mut reader, header) = rseqc_formats::open_bam(&bam_file)?;
-        let reads_by_chrom = build_read_index(reader.records(), &header)?;
-
-        let (records, summary) = compute_tin(&samples, &reads_by_chrom, args.minimum_coverage, exon_ranges.as_ref());
-
-        let stem = bam_file
-            .file_name()
-            .map(|n| n.to_string_lossy().to_string())
-            .unwrap_or_default();
-        let stem = stem.strip_suffix(".bam").or_else(|| stem.strip_suffix(".BAM")).unwrap_or(&stem);
-
-        let tin_path = args.output_dir.join(format!("{stem}.tin.xls"));
-        let summary_path = args.output_dir.join(format!("{stem}.summary.txt"));
-
-        let mut tin_file = File::create(&tin_path)?;
-        tin_file.write_all(render_tin_xls(&records).as_bytes())?;
-
-        let bam_name = bam_file.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
-        let mut summary_file = File::create(&summary_path)?;
-        summary_file.write_all(render_summary(&bam_name, &summary).as_bytes())?;
-
-        eprintln!("Created {}", tin_path.display());
-        eprintln!("Created {}", summary_path.display());
+    let (records, summary) = compute_tin(&samples, &reads_by_chrom, args.minimum_coverage, exon_ranges);
+    for finished in (100..=records.len()).step_by(100) {
+        eprintln!("{finished} transcripts finished");
     }
 
-    eprintln!("Done.");
+    let stem = bam.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
+    // Upstream strips a case-insensitive ".bam" suffix.
+    let stem = if stem.to_lowercase().ends_with(".bam") { stem[..stem.len() - 4].to_string() } else { stem };
+
+    // pathlib drops a bare "." component: Path(".") / "x" == Path("x").
+    let out_path = |name: String| if args.output_dir == Path::new(".") { PathBuf::from(name) } else { args.output_dir.join(name) };
+    let tin_path = out_path(format!("{stem}.tin.xls"));
+    let summary_path = out_path(format!("{stem}.summary.txt"));
+
+    let mut tin_file = File::create(&tin_path)?;
+    tin_file.write_all(render_tin_xls(&records).as_bytes())?;
+
+    let bam_name = bam.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
+    let mut summary_file = File::create(&summary_path)?;
+    summary_file.write_all(render_summary(&bam_name, &summary).as_bytes())?;
+
+    eprintln!("Created {}", tin_path.display());
+    eprintln!("Created {}", summary_path.display());
     Ok(())
 }

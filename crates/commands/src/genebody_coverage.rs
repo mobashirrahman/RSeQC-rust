@@ -244,11 +244,17 @@ pub fn is_bam_file(path: &Path) -> bool {
     }
     let Ok(meta) = path.metadata() else { return false };
     if meta.len() == 0 {
+        eprintln!("The size of {} is 0! Skip it.", path.display());
         return false;
     }
     let mut bai = path.as_os_str().to_owned();
     bai.push(".bai");
-    Path::new(&bai).is_file()
+    if Path::new(&bai).is_file() {
+        true
+    } else {
+        eprintln!("Warning: {}.bai does not exist! Skip it.", path.display());
+        false
+    }
 }
 
 /// Resolves `-i/--input` into a list of usable BAM paths: a directory
