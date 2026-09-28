@@ -37,19 +37,18 @@ ORACLE_PYTHONPATH = str(REPO_ROOT / "oracle" / "upstream-src" / "src")
 ORACLE_PYTHON = REPO_ROOT / "oracle" / "venv" / "bin" / "python3"
 RUST_BIN_DIR = REPO_ROOT / "target" / "release"
 
-# Benchmark commands: name -> (py_script, rust_bin, args_fn, compare_files)
+# Benchmark commands: name -> (py_script, rust_bin, args_fn)
+# File comparison compares all files found in either run directory
 BENCHMARK_COMMANDS = {
     "bam_stat": (
         "bam_stat.py",
         "bam_stat",
         lambda workload, out: ["-i", str(workload / "reads.bam")],
-        (),
     ),
     "read_distribution": (
         "read_distribution.py",
         "read_distribution",
         lambda workload, out: ["-i", str(workload / "reads.bam"), "-r", str(workload / "model.bed12")],
-        (),
     ),
     "geneBody_coverage": (
         "geneBody_coverage.py",
@@ -60,7 +59,6 @@ BENCHMARK_COMMANDS = {
             "-o", str(out / "genebody"),
             "--skip-plot",
         ],
-        ("genebody.geneBodyCoverage.txt",),
     ),
     "junction_annotation": (
         "junction_annotation.py",
@@ -71,7 +69,6 @@ BENCHMARK_COMMANDS = {
             "-o", str(out / "junction"),
             "--skip-plot",
         ],
-        ("junction.junction.xls",),
     ),
     "read_duplication": (
         "read_duplication.py",
@@ -81,7 +78,6 @@ BENCHMARK_COMMANDS = {
             "-o", str(out / "dup"),
             "--skip-plot",
         ],
-        ("dup.dup.xls",),
     ),
 }
 
@@ -213,21 +209,42 @@ def numeric_table_equal(left_bytes: bytes, right_bytes: bytes) -> bool:
     return True
 
 
-def compare_files(py_dir: Path, rust_dir: Path, file_list: tuple[str, ...]) -> tuple[bool, list[str]]:
-    """Compare output files between Python and Rust runs."""
+def normalize_temp_paths(data: bytes) -> bytes:
+    """Normalize temp paths in R/shell scripts: replace /tmp/tmp* with <TEMP>."""
+    text = data.decode("utf-8", errors="replace")
+    # Replace /tmp/tmp* or /scratch/*/tmp/tmp* paths with placeholder
+    import re
+    text = re.sub(r'/[^ \'"]*?/tmp/tmp[a-z0-9]+', '<TEMP>', text)
+    return text.encode("utf-8")
+
+
+def compare_file_data(py_file_data: dict[str, bytes], rust_file_data: dict[str, bytes]) -> list[str]:
+    """Compare file data between Python and Rust runs.
+
+    py_file_data and rust_file_data are dicts of {filename: file_bytes}.
+    Excludes log.txt (upstream writes, port doesn't; handled separately).
+    For .r (R script) files, normalize embedded temp paths before comparison.
+    Returns list of error strings (empty if all match).
+    """
     errors = []
-    for rel_path in file_list:
-        py_file = py_dir / rel_path
-        rust_file = rust_dir / rel_path
-        if not py_file.is_file() or not rust_file.is_file():
-            errors.append(
-                f"file '{rel_path}': python_exists={py_file.is_file()} rust_exists={rust_file.is_file()}"
-            )
+    all_files = set(py_file_data.keys()) | set(rust_file_data.keys())
+
+    for filename in sorted(all_files):
+        py_exists = filename in py_file_data
+        rust_exists = filename in rust_file_data
+
+        if not (py_exists and rust_exists):
+            errors.append(f"file '{filename}': python={py_exists} rust={rust_exists}")
             continue
-        
-        py_bytes = py_file.read_bytes()
-        rust_bytes = rust_file.read_bytes()
-        
+
+        py_bytes = py_file_data[filename]
+        rust_bytes = rust_file_data[filename]
+
+        # Normalize temp paths in .r files (R scripts embed temp paths)
+        if filename.endswith('.r'):
+            py_bytes = normalize_temp_paths(py_bytes)
+            rust_bytes = normalize_temp_paths(rust_bytes)
+
         # Use numeric table comparison for text files
         if not numeric_table_equal(py_bytes, rust_bytes):
             # Report the first difference
@@ -235,15 +252,15 @@ def compare_files(py_dir: Path, rust_dir: Path, file_list: tuple[str, ...]) -> t
             rust_lines = rust_bytes.decode("utf-8", errors="replace").splitlines()
             for i, (py_line, rust_line) in enumerate(zip(py_lines, rust_lines)):
                 if py_line != rust_line:
-                    errors.append(f"file '{rel_path}' line {i+1}: python={py_line[:50]!r} rust={rust_line[:50]!r}")
+                    errors.append(f"file '{filename}' line {i+1}: py={py_line[:40]!r} rust={rust_line[:40]!r}")
                     break
             else:
                 if len(py_lines) != len(rust_lines):
-                    errors.append(f"file '{rel_path}': python_lines={len(py_lines)} rust_lines={len(rust_lines)}")
+                    errors.append(f"file '{filename}': py_lines={len(py_lines)} rust_lines={len(rust_lines)}")
                 else:
-                    errors.append(f"file '{rel_path}': content differs")
-    
-    return len(errors) == 0, errors
+                    errors.append(f"file '{filename}': content differs")
+
+    return errors
 
 
 def bootstrap_ci(values: list[float], seed: int = 42, resamples: int = 10000) -> tuple[float, float]:
@@ -275,8 +292,8 @@ def run_benchmark(
     """Run a single benchmark command with both Python and Rust."""
     if command not in BENCHMARK_COMMANDS:
         raise ValueError(f"Unknown command: {command}")
-    
-    py_script, rust_bin, args_fn, compare_files_list = BENCHMARK_COMMANDS[command]
+
+    py_script, rust_bin, args_fn = BENCHMARK_COMMANDS[command]
     
     results = {
         "command": command,
@@ -308,27 +325,27 @@ def run_benchmark(
     # Track measurements per side and per rep
     py_times = {}
     rust_times = {}
-    py_dirs = {}
-    rust_dirs = {}
-    
+    py_files = {}  # rep -> file_data
+    rust_files = {}  # rep -> file_data
+
     # Execute in randomized order
     for order_item, side in run_order:
         is_warmup = order_item == "warmup"
         rep = 0 if is_warmup else order_item
-        
+
         with tempfile.TemporaryDirectory() as tmpdir:
             run_dir = Path(tmpdir)
-            
+
             # Build argument list
             args = args_fn(workload_dir, run_dir)
-            
+
             if side == "python":
                 argv = [str(ORACLE_PYTHON), str(ORACLE_SCRIPTS / py_script)] + args
                 result = run_with_timing(argv, pythonpath=ORACLE_PYTHONPATH, cwd=run_dir, timeout_s=300.0)
             else:
                 argv = [str(RUST_BIN_DIR / rust_bin)] + args
                 result = run_with_timing(argv, cwd=run_dir, timeout_s=300.0)
-            
+
             if not is_warmup:
                 # Record measured run
                 run_rec = {
@@ -338,30 +355,36 @@ def run_benchmark(
                     "peak_rss_mb": result.peak_rss_mb,
                     "timed_out": result.timed_out,
                 }
-                
+
+                # Collect files from this run (before temp dir is deleted)
+                file_data = {}
+                for f in run_dir.iterdir():
+                    if f.is_file() and f.name != "log.txt":
+                        file_data[f.name] = f.read_bytes()
+
                 if side == "python":
                     results["python"]["runs"].append(run_rec)
                     if result.wall_time > 0:
                         py_times[rep] = result.wall_time
-                    py_dirs[rep] = run_dir
+                    py_files[rep] = file_data
                 else:
                     results["rust"]["runs"].append(run_rec)
                     if result.wall_time > 0:
                         rust_times[rep] = result.wall_time
-                    rust_dirs[rep] = run_dir
-                
+                    rust_files[rep] = file_data
+
                 # Check exit codes
                 if result.exit_code != 0:
                     results["compatibility"]["match"] = False
                     results["compatibility"]["errors"].append(
                         f"Rep {rep + 1} ({side}): exit code {result.exit_code}"
                     )
-    
+
     # Compare output files across reps (when both sides completed)
     for rep in range(num_reps):
-        if rep in py_dirs and rep in rust_dirs:
-            files_ok, file_errors = compare_files(py_dirs[rep], rust_dirs[rep], compare_files_list)
-            if not files_ok:
+        if rep in py_files and rep in rust_files:
+            file_errors = compare_file_data(py_files[rep], rust_files[rep])
+            if file_errors:
                 results["compatibility"]["match"] = False
                 for err in file_errors:
                     results["compatibility"]["errors"].append(f"Rep {rep + 1}: {err}")
