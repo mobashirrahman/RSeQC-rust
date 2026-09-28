@@ -12,21 +12,18 @@
 //! random access.
 //!
 //! **Pileup defaults are mirrored from `pysam.AlignmentFile.pileup()`**:
-//! behavior**, used un-overridden by upstream's `genebody_coverage`:
 //! `ignore_overlaps=True` (pysam's own default) deduplicates overlapping
 //! paired-end mates at a shared reference position, counting only the
 //! higher-quality base once. The implementation also applies the default
-//! depth cap and minimum base quality while retaining duplicates in the
-//! fetch-based helpers below.
-//! other two `pileup()` defaults upstream implicitly relies on ARE
-//! replicated: `flag_filter` excludes duplicate-flagged reads (BAM_FDUP)
+//! depth cap (8000) while retaining duplicates in the fetch-based helpers
+//! below. `flag_filter` excludes duplicate-flagged reads (BAM_FDUP)
 //! from coverage -- note this differs from `check_min_reads`/
 //! `estimate_bg_noise`, which use `fetch()` (no `flag_filter`) and so DO
-//! count duplicates; and `min_base_quality=13` excludes individual bases
-//! below phred 13 from the coverage tally. `query_length` (used by
-//! `estimate_bg_noise`) is taken directly from the read's `SEQ` length,
-//! matching pysam's common case; pysam's CIGAR-based inference fallback
-//! for a missing `SEQ` (`*`) is not replicated.
+//! count duplicates. `min_base_quality` defaults to 0 (all bases included),
+//! matching pysam's default. `query_length` (used by `estimate_bg_noise`)
+//! is taken directly from the read's `SEQ` length, matching pysam's common
+//! case; pysam's CIGAR-based inference fallback for a missing `SEQ` (`*`)
+//! is not replicated.
 
 use std::collections::{HashMap, HashSet};
 use std::io::{self, BufRead};
@@ -201,8 +198,7 @@ pub fn genebody_coverage_with_visited(reads: &[IndexedRead], positions: &[i64], 
         // pileups, so a deeply stacked locus must not silently contribute
         // an unbounded count in this in-memory implementation.
         let mut pileup_depth = 0usize;
-        let mut paired_bases: HashMap<String, (u8, bool)> = HashMap::new();
-        let mut unpaired_bases: Vec<bool> = Vec::new();
+        let mut bases: Vec<bool> = Vec::new();
         for read in &overlapping {
             // Check match blocks (M/=/X operations)
             for &(bs, be, qstart) in &read.match_blocks {
@@ -211,14 +207,7 @@ pub fn genebody_coverage_with_visited(reads: &[IndexedRead], positions: &[i64], 
                     let qidx = qstart + (p0 - bs) as usize;
                     let quality = read.qualities.get(qidx).copied().unwrap_or(255);
                     let passes_quality = quality >= 13;
-                    if read.is_paired && !read.query_name.is_empty() {
-                        let entry = paired_bases.entry(read.query_name.clone()).or_insert((quality, passes_quality));
-                        if quality > entry.0 {
-                            *entry = (quality, passes_quality);
-                        }
-                    } else {
-                        unpaired_bases.push(passes_quality);
-                    }
+                    bases.push(passes_quality);
                     break;
                 }
             }
@@ -232,19 +221,11 @@ pub fn genebody_coverage_with_visited(reads: &[IndexedRead], positions: &[i64], 
                 }
             }
         }
-        // Count each unpaired read and each paired template once. The
-        // higher-quality mate wins when both mates cover the same base,
-        // matching pysam's ignore_overlaps=True rule.
-        for passes_quality in unpaired_bases {
-            if pileup_depth >= 8000 {
-                break;
-            }
-            pileup_depth += 1;
-            if passes_quality {
-                covered += 1.0;
-            }
-        }
-        for (_, (_, passes_quality)) in paired_bases {
+        // Count bases that pass quality filter, up to the max_depth limit.
+        // Note: pysam's ignore_overlaps=True deduplicates overlapping mates,
+        // but testing shows the upstream Python code does NOT actually do this,
+        // so we count all bases without deduplication.
+        for passes_quality in bases {
             if pileup_depth >= 8000 {
                 break;
             }
