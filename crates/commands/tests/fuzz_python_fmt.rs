@@ -1,8 +1,15 @@
 // Fuzz tests for Python numeric formatting functions
 use proptest::prelude::*;
+use proptest::test_runner::{Config, RngSeed};
 use rseqc_commands::python_fmt;
 
 proptest! {
+    #![proptest_config(Config {
+        cases: 1000,
+        rng_seed: RngSeed::Fixed(0x1234567890ABCDEF),
+        .. Config::default()
+    })]
+
     #[test]
     fn fuzz_python_round(x in any::<f64>()) {
         // Just ensure python_round doesn't panic on any f64

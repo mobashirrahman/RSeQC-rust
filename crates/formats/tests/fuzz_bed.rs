@@ -1,10 +1,17 @@
 // Fuzz tests for BED parsing functions
 use proptest::prelude::*;
 use proptest::strategy::Just;
+use proptest::test_runner::{Config, RngSeed};
 use std::io::Cursor;
 use rseqc_formats::bed;
 
 proptest! {
+    #![proptest_config(Config {
+        cases: 1000,
+        rng_seed: RngSeed::Fixed(0x1234567890ABCDEF),
+        .. Config::default()
+    })]
+
     #[test]
     fn fuzz_get_cds_exon(bed_content in any::<String>()) {
         let cursor = Cursor::new(bed_content);

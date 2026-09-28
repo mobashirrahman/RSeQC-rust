@@ -1,10 +1,15 @@
 // Fuzz tests for sequence parsing functions
 use proptest::prelude::*;
+use proptest::test_runner::{Config, RngSeed};
 use std::io::Cursor;
 use rseqc_commands::{read_hexamer, sc_seqlogo, sc_seqqual};
 
 proptest! {
-    #![proptest_config(ProptestConfig::with_cases(100))]
+    #![proptest_config(Config {
+        cases: 100,
+        rng_seed: RngSeed::Fixed(0x1234567890ABCDEF),
+        .. Config::default()
+    })]
 
     // read_hexamer sequence generator fuzz tests
     #[test]

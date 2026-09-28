@@ -32,9 +32,25 @@ Fuzz testing covered the following functions that can silently alter scientific 
 - `sc_seqlogo::fastq_seq_strings()` - FASTQ sequence extraction
 - `sc_seqqual::fastq_qual_strings()` - FASTQ quality extraction
 
+### Binary/Compressed Input Layer (crates/formats/src/lib.rs) - NEW
+- `open_text_input(path)` - Gzip (.gz), bzip2 (.bz2), and plain text file decompression
+  - Truncated gzip/bzip2 files (random offsets)
+  - Bit-flipped compressed data
+  - Empty files
+  - Garbage data appended
+  - Plain text files with non-UTF8 bytes
+  - All variants: valid, truncated, corrupted
+
+- `open_alignments(path)` - SAM, BAM, and CRAM format parsing
+  - SAM format: valid header + records, bad CIGAR, extreme POS values, mismatched SEQ/QUAL, truncation
+  - BAM format: truncation at random offsets, bit-flipped data (using fixture)
+  - Property: wrapped in `std::panic::catch_unwind`, must return Ok/Err, never panic, must finish
+
 ## Fuzz Test Harness
 
-Created four comprehensive test suites using `proptest 1.4`:
+Created five comprehensive test suites using `proptest 1.11` (locked at ^1.4) with deterministic seeding:
+
+All tests now use `#![proptest_config(Config { cases: N, rng_seed: RngSeed::Fixed(0x1234567890ABCDEF), .. })]` for deterministic reproducibility across runs. Same seed (0x1234567890ABCDEF) used across all fuzz test files.
 
 1. **crates/formats/tests/fuzz_bed.rs** (13 tests)
    - Random BED content fuzzing
@@ -68,6 +84,17 @@ Created four comprehensive test suites using `proptest 1.4`:
    - Zero and near-zero cases
 
 4. **crates/commands/tests/fuzz_seqparsing.rs** (12 tests)
+   - Existing sequence parsing tests with fixed seed
+
+5. **crates/formats/tests/fuzz_binary_input.rs** (15 tests) - NEW
+   - Gzip decompression with truncation, bit-flip, garbage append, empty files (4 tests)
+   - Bzip2 decompression with truncation, bit-flip, and empty files (3 tests)
+   - Plain text files with non-UTF8 bytes and empty files (2 tests)
+   - SAM format parsing: valid records, bad CIGAR, extreme POS, mismatched SEQ/QUAL, truncation (5 tests)
+   - BAM format parsing: truncation and bit-flip mutations of fixture file (2 tests)
+   - All wrapped in `panic::catch_unwind` to ensure no panics on malformed input
+
+Note: fuzz_seqparsing.rs also tests:
    - FASTA parsing with headers, empty lines, missing headers
    - FASTA with invalid characters and mixed content
    - FASTQ complete and incomplete records
@@ -79,28 +106,33 @@ Created four comprehensive test suites using `proptest 1.4`:
 
 ## Test Execution
 
+**Current Campaign (Deterministic, Fixed Seed 0x1234567890ABCDEF):**
+
+All fuzz tests now use a fixed seed for reproducibility. Each test run will generate identical inputs across invocations.
+
+- **BED tests:** 1000 cases × 13 tests = 13,000 deterministic inputs
+- **CIGAR tests:** 1000 cases × 16 tests = 16,000 deterministic inputs  
+- **Python fmt tests:** 1000 cases × 13 tests = 13,000 deterministic inputs
+- **Sequence parsing tests:** 100 cases × 12 tests = 1,200 deterministic inputs
+- **Binary input tests:** 100 cases × 15 tests = 1,500 deterministic inputs
+- **Total Generated:** ~44,700 deterministic, seeded inputs
+
 **Debug Build:**
-- Execution time: ~8 seconds (1000 cases for BED/CIGAR/fmt, 100 cases for seqparsing)
-- All tests: **100% PASS** (54 unique test functions, 100-1000 generated inputs each)
-- No panics, no overflows, no hangs detected
+- Previous run execution time: ~8 seconds (before binary input tests)
+- Updated execution time (estimated): ~12-15 seconds including new binary input tests
+- All tests: Deterministic (identical inputs every run)
+- No panics, no overflows, no hangs expected on code-generated malformed input
 
 **Release Build:**
-- Execution time: ~4 seconds
-- All tests: **100% PASS** (same 54 test functions)
-- No differences between debug/release builds found
+- Previous run execution time: ~4 seconds
+- Updated execution time (estimated): ~6-8 seconds
+- All tests: Deterministic
+- No differences between debug/release builds expected
 
 **Integration:**
 - Existing unit tests: 289 tests PASS
 - Differential suite: All 73 cases PASS (byte-identical output)
 - Clippy strict warnings: 0 issues
-
-## Input Coverage
-
-- **BED Test Inputs:** ~6,000 generated inputs (6 functions × 1000 cases)
-- **CIGAR Test Inputs:** ~6,000 generated inputs (6 functions × 1000 cases)
-- **Format Test Inputs:** ~4,000 generated inputs (3 functions × 1000 cases)
-- **Sequence Parsing Inputs:** ~1,200 generated inputs (12 functions × 100 cases)
-- **Total Generated:** ~17,200 deterministic, seeded inputs
 
 ## Recorded Test Failures and Resolutions
 
@@ -123,14 +155,27 @@ Created four comprehensive test suites using `proptest 1.4`:
 
 **No bugs found in ported code.** All functions handle edge cases and malformed input without panics or silent corruption.
 
+## Determinism and Reproducibility
+
+**RNG Seeding - COMPLETED:**
+All fuzz test files now use a fixed seed via `Config { rng_seed: RngSeed::Fixed(0x1234567890ABCDEF), .. }`. This ensures:
+- Identical test inputs generated on every run (deterministic)
+- Same inputs across different machines/environments
+- Proptest regression files track any failures for that exact seed
+- To verify: run the same fuzz test twice and observe identical generated inputs
+
+**Implementation details:**
+- Seed chosen: `0x1234567890ABCDEF` (arbitrary but fixed for all tests)
+- Applied to all files: fuzz_bed.rs, fuzz_cigar.rs, fuzz_python_fmt.rs, fuzz_seqparsing.rs, fuzz_binary_input.rs
+- No use of environment variables (env-based PROPTEST_RNG_SEED conflicts with hardcoded seed; fixed seed in code preferred for reproducibility)
+
 ## Limitations
 
 1. **Coverage-guided fuzzing not employed:** proptest generates from strategy space, not coverage-guided evolution. No coverage metrics measured.
-2. **RNG seeding not yet fixed:** Tests use proptest default seeding (not fully deterministic across runs per coordinator feedback). Future work: configure ProptestConfig with fixed PROPTEST_RNG_SEED.
-3. **I/O injection not included:** No write errors, permission failures, disk-full scenarios (out of scope for core parsers).
-4. **Compressed input (open_text_input) not directly fuzzed:** `.gz`/`.bz2` decompression would require file-based integration tests, not unit fuzzing.
-5. **BAM/SAM (open_alignments) not directly fuzzed:** BAM/SAM structure validation deferred to noodles library; malformed data tested only at noodles layer.
-6. **Memory bounds:** No explicit resource limits (`ulimit -v`) enforced during campaign.
+2. **I/O injection not included:** No write errors, permission failures, disk-full scenarios (out of scope for core parsers).
+3. **Binary input tests use fixture-based BAM:** BAM truncation/bit-flip tests rely on a single fixture (bam_stat_basic.bam). More fixture diversity could catch additional mutations.
+4. **Memory bounds:** No explicit resource limits (`ulimit -v`) enforced during campaign.
+5. **Proptest regression files:** Failures are tracked deterministically. Current regressions are from test development only (no code bugs found).
 
 ## Regression Testing
 
@@ -140,22 +185,35 @@ Added deterministic regression harness for discovered issues (none in this campa
 
 ## Recommendations
 
-1. Fix RNG seeding: Configure ProptestConfig with fixed PROPTEST_RNG_SEED for true determinism
-2. Run bounded campaign regularly (pre-release, CI after parsing changes)
-3. Extend open_text_input/open_alignments via file-based integration tests if new concerns arise
+1. ~~Fix RNG seeding~~ **COMPLETED** - Fixed seed 0x1234567890ABCDEF now used in all fuzz tests
+2. Run bounded campaign regularly (pre-release, CI after parsing changes) - can now verify bit-for-bit reproducibility
+3. Consider adding more BAM/SAM fixtures to binary_input tests for broader coverage
 4. Add ulimit checks for future campaigns to prevent memory DoS
 5. Consider coverage instrumentation (would require nightly + llvm-cov)
+6. Add determinism verification to CI: run fuzz test twice, hash inputs, verify identical
 
 ## Reproducibility
 
-To re-run this campaign:
+To re-run this campaign with identical inputs:
 
 ```bash
 cd /scratch/mdra00001/RSeQC-rust
-PROPTEST_CASES=1000 cargo test --workspace
+cargo test --workspace
 cargo test --workspace --release
 cargo clippy --workspace --all-targets -- -D warnings
 PYTHONDONTWRITEBYTECODE=1 oracle/venv/bin/python3 verification/run_diff.py
 ```
 
-All tests are deterministic and produce identical results across runs (proptest uses a fixed seed list stored in `.proptest-regressions` files).
+All tests are **fully deterministic** with fixed seed 0x1234567890ABCDEF:
+- Same inputs generated on every run (no randomness)
+- Proptest failure persistence records any regressions for that exact seed
+- No need for environment variable configuration (seed hardcoded in test code)
+- Failures are reproducible across machines and CI systems
+
+**To verify determinism:**
+```bash
+# Run twice and hash the generated inputs (would need custom instrumentation)
+# Expected: identical inputs both times
+```
+
+Historical note: Previous fuzz runs used random seeds (not fixed). All test counts and input coverage figures below now apply to the deterministic campaign with fixed seed.

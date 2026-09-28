@@ -1,9 +1,16 @@
 // Fuzz tests for CIGAR parsing functions
 use proptest::prelude::*;
+use proptest::test_runner::{Config, RngSeed};
 use noodles_sam::alignment::record::cigar::{Op, op::Kind};
 use rseqc_formats::cigar;
 
 proptest! {
+    #![proptest_config(Config {
+        cases: 1000,
+        rng_seed: RngSeed::Fixed(0x1234567890ABCDEF),
+        .. Config::default()
+    })]
+
     #[test]
     fn fuzz_reference_span_basic(start in 0usize..1_000_000) {
         let ops = vec![];
