@@ -1737,6 +1737,21 @@ CASES: list[Case] = [
         compare_files=("out.CB_edits_count.csv", "out.CB_freq.tsv", "out.UMI_edits_count.csv", "out.UMI_freq.tsv"),
     ),
     Case(
+        name="sc_editmatrix_limit",
+        # Previously untested: --limit (scbam.barcode_edits' own
+        # "total_alignments >= limit" early-stop). sc_editmatrix_basic.bam
+        # has 5 records (r1..r5); --limit 3 stops after r3, so r4/r5's
+        # edits (including r5's UMI 3-way edit) must NOT appear in any
+        # output file.
+        ensure_fixture=ensure_sc_editmatrix_fixture,
+        py_script="sc_editMatrix.py",
+        rust_bin="sc_editMatrix",
+        py_args=lambda scratch_dir: ["-i", _regression_fixture("sc_editmatrix_basic.bam"), "-o", str(scratch_dir / "out"), "--skip-heatmap", "--limit", "3"],
+        rust_args=lambda scratch_dir: ["-i", _regression_fixture("sc_editmatrix_basic.bam"), "-o", str(scratch_dir / "out"), "--skip-heatmap", "--limit", "3"],
+        compare_stream="none",
+        compare_files=("out.CB_edits_count.csv", "out.CB_freq.tsv", "out.UMI_edits_count.csv", "out.UMI_freq.tsv"),
+    ),
+    Case(
         name="sc_seqqual_basic",
         # Found by this case: unlike sc_editMatrix.py, this command's
         # pipeline DOES transpose the matrix before `to_csv`, which
