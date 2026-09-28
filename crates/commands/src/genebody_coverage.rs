@@ -51,7 +51,7 @@ use std::path::{Path, PathBuf};
 use noodles_bam as bam;
 use noodles_sam as sam;
 
-use crate::python_fmt::{python_round, python_str_float};
+use crate::python_fmt::{numpy_mean, numpy_std, python_round, python_str_float};
 use crate::tin::{IndexedRead, build_read_index, genebody_coverage_with_visited};
 
 /// Converts a string into a valid, safe R variable name. Ports
@@ -331,21 +331,16 @@ pub fn render_coverage_txt(samples: &[(String, Vec<i64>, Vec<bool>)]) -> String 
 
 /// Sample standard deviation (Bessel-corrected, `ddof=1`), matching
 /// `numpy.std(values, ddof=1)`.
-fn sample_std(values: &[f64]) -> f64 {
-    let n = values.len() as f64;
-    let mean = values.iter().sum::<f64>() / n;
-    let variance = values.iter().map(|v| (v - mean).powi(2)).sum::<f64>() / (n - 1.0);
-    variance.sqrt()
-}
-
 /// Ports `pearson_moment_coefficient`: standardizes each value against
 /// the sample's MIDDLE-INDEXED raw value (not the mean -- see module
 /// docs), cubes, and averages.
 pub fn pearson_moment_coefficient(values: &[f64]) -> f64 {
     let middle_value = values[values.len() / 2];
-    let sigma = sample_std(values);
-    let cubes: Vec<f64> = values.iter().map(|&v| ((v - middle_value) / sigma).powi(3)).collect();
-    cubes.iter().sum::<f64>() / cubes.len() as f64
+    // np.std(ddof=1) and np.mean use numpy's pairwise summation, and
+    // `np.float64 ** 3` is C pow(), not repeated multiplication.
+    let sigma = numpy_std(values, 1);
+    let cubes: Vec<f64> = values.iter().map(|&v| ((v - middle_value) / sigma).powf(3.0)).collect();
+    numpy_mean(&cubes)
 }
 
 #[derive(Debug, Clone)]

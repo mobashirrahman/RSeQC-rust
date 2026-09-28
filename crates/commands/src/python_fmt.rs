@@ -136,8 +136,67 @@ pub fn python_g12(value: f64) -> String {
     }
 }
 
+/// numpy's `pairwise_sum_DOUBLE` (the float64 `np.add.reduce` kernel used
+/// by `np.sum`/`np.mean`/`np.std`): 8-way unrolled blocks of up to 128
+/// elements, recursively halved above that. Plain left-to-right summation
+/// differs from it in the last bits for long inputs.
+pub fn numpy_sum(values: &[f64]) -> f64 {
+    let n = values.len();
+    if n < 8 {
+        let mut res = -0.0;
+        for &v in values {
+            res += v;
+        }
+        res
+    } else if n <= 128 {
+        let mut r = [0.0f64; 8];
+        r.copy_from_slice(&values[..8]);
+        let mut i = 8;
+        while i < n - (n % 8) {
+            for j in 0..8 {
+                r[j] += values[i + j];
+            }
+            i += 8;
+        }
+        let mut res = ((r[0] + r[1]) + (r[2] + r[3])) + ((r[4] + r[5]) + (r[6] + r[7]));
+        while i < n {
+            res += values[i];
+            i += 1;
+        }
+        res
+    } else {
+        let mut n2 = n / 2;
+        n2 -= n2 % 8;
+        numpy_sum(&values[..n2]) + numpy_sum(&values[n2..])
+    }
+}
+
+/// `np.mean` of a float64 array.
+pub fn numpy_mean(values: &[f64]) -> f64 {
+    numpy_sum(values) / values.len() as f64
+}
+
+/// `np.std(values, ddof=ddof)`: pairwise mean, squared deviations
+/// (`x * x`), pairwise sum, divided by `n - ddof`, square root.
+pub fn numpy_std(values: &[f64], ddof: usize) -> f64 {
+    let mean = numpy_mean(values);
+    let squares: Vec<f64> = values.iter().map(|&v| (v - mean) * (v - mean)).collect();
+    (numpy_sum(&squares) / (values.len() - ddof) as f64).sqrt()
+}
+
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn numpy_sum_uses_pairwise_blocks() {
+        // 0.1 summed 1000 times: numpy's pairwise kernel gives
+        // 100.00000000000001 (np.sum(np.full(1000, 0.1))), naive left-to-right
+        // summation 99.9999999999986.
+        let v = vec![0.1f64; 1000];
+        assert_eq!(numpy_sum(&v), 100.00000000000001);
+        assert_ne!(v.iter().sum::<f64>(), 100.00000000000001);
+        assert_eq!(numpy_std(&[1.0, 2.0, 3.0, 4.0], 0), 1.118033988749895);
+    }
+
     use super::*;
 
     #[test]

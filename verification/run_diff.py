@@ -2497,6 +2497,38 @@ CASES: list[Case] = [
         compare_stream="none",
         compare_files=("pe.tin.xls",),
     ),
+    Case(
+        name="genebody_coverage_synthetic_skewness",
+        # Found by verification/synthetic_sweep.py: the per-sample skewness
+        # printed to stderr (geneBody_coverage.py:68-77) uses np.std(ddof=1)
+        # / np.mean -- numpy's pairwise summation -- and np.float64 ** 3
+        # (C pow); the port summed left-to-right and used powi(3), differing
+        # in the last digits. Multi-sample so several skewness lines print.
+        ensure_fixture=ensure_synthetic_fixtures,
+        py_script="geneBody_coverage.py",
+        rust_bin="geneBody_coverage",
+        py_args=lambda d: ["-i", _synthetic("pe.bam") + "," + _synthetic("se.bam") + "," + _synthetic("sc.bam"),
+                           "-r", _synthetic("model.bed12"), "-o", str(d / "out"), "--skip-plot"],
+        rust_args=lambda d: ["-i", _synthetic("pe.bam") + "," + _synthetic("se.bam") + "," + _synthetic("sc.bam"),
+                             "-r", _synthetic("model.bed12"), "-o", str(d / "out"), "--skip-plot"],
+        compare_stream="stderr",
+        stream_format="exact",
+        normalize_paths=True,
+        strip_log_prefixes=True,
+        compare_files=("out.geneBodyCoverage.txt", "out.geneBodyCoverage.r"),
+    ),
+    Case(
+        name="tin_synthetic_summary_numpy",
+        # Same root cause for tin.py's summary (tin.py:541-543: np.mean,
+        # np.std over the per-transcript TINs).
+        ensure_fixture=ensure_synthetic_fixtures,
+        py_script="tin.py",
+        rust_bin="tin",
+        py_args=lambda d: ["-i", _synthetic("pe.bam"), "-r", _synthetic("model.bed12"), "-o", str(d), "-c", "1"],
+        rust_args=lambda d: ["-i", _synthetic("pe.bam"), "-r", _synthetic("model.bed12"), "-o", str(d), "-c", "1"],
+        compare_stream="none",
+        compare_files=("pe.tin.xls", "pe.summary.txt"),
+    ),
 ]
 
 

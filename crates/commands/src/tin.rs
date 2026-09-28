@@ -32,7 +32,7 @@ use noodles_bam as bam;
 use noodles_sam::{self as sam, alignment::record::cigar::op::Kind};
 use rseqc_formats::interval::{Bed3, MergedRegions};
 
-use crate::python_fmt::python_str_float;
+use crate::python_fmt::{numpy_mean, numpy_std, python_str_float};
 
 /// One BAM record's relevant fields for region-fetch/pileup queries,
 /// pre-filtered at build time on the three flags every upstream
@@ -701,8 +701,9 @@ pub struct TinSummary {
     pub stdev: f64,
 }
 
+/// `np.mean` (pairwise summation).
 fn mean(values: &[f64]) -> f64 {
-    values.iter().sum::<f64>() / values.len() as f64
+    numpy_mean(values)
 }
 
 fn median(values: &[f64]) -> f64 {
@@ -712,10 +713,9 @@ fn median(values: &[f64]) -> f64 {
     if n % 2 == 1 { sorted[n / 2] } else { (sorted[n / 2 - 1] + sorted[n / 2]) / 2.0 }
 }
 
+/// `np.std` (ddof=0, pairwise summation).
 fn population_stdev(values: &[f64]) -> f64 {
-    let m = mean(values);
-    let variance = values.iter().map(|v| (v - m).powi(2)).sum::<f64>() / values.len() as f64;
-    variance.sqrt()
+    numpy_std(values, 0)
 }
 
 /// Computes TIN for every sampled transcript against one BAM's read
