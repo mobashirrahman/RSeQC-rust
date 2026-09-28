@@ -36,7 +36,7 @@ struct Args {
     sample_size: u64,
 
     /// Lower bound of the inner-distance histogram.
-    #[arg(short = 'l', long = "lower-bound", default_value_t = -250)]
+    #[arg(short = 'l', long = "lower-bound", default_value_t = -250, allow_negative_numbers = true)]
     lower_bound: i64,
 
     /// Upper bound of the inner-distance histogram.
