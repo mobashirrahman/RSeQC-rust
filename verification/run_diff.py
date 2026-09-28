@@ -2001,6 +2001,49 @@ CASES: list[Case] = [
         compare_files=("out.wig",),
     ),
     Case(
+        name="overlay_bigwig_add",
+        # Formalizes an action previously only spot-checked manually
+        # (see overlay_bigwig_geometric_mean's own comment) into a real
+        # harness case, so a future regression in the ordinary
+        # non-NaN arithmetic path is actually caught, not just the NaN
+        # edge case geometricMean happens to exercise.
+        ensure_fixture=ensure_track_fixtures,
+        py_script="overlay_bigwig.py",
+        rust_bin="overlay_bigwig",
+        py_args=lambda scratch_dir: [
+            "-i", _track_fixture("track_signal.bw"), "-j", _track_fixture("track_signal2.bw"),
+            "-a", "Add", "-o", str(scratch_dir / "out.wig"), "-c", "100000",
+        ],
+        rust_args=lambda scratch_dir: [
+            "-i", _track_fixture("track_signal.bw"), "-j", _track_fixture("track_signal2.bw"),
+            "-a", "Add", "-o", str(scratch_dir / "out.wig"), "-c", "100000",
+        ],
+        compare_stream="stderr",
+        stream_format="exact",
+        normalize_paths=True,
+        compare_files=("out.wig",),
+    ),
+    Case(
+        name="overlay_bigwig_average",
+        # Same formalization as overlay_bigwig_add, covering the other
+        # arithmetic family (a division-by-2, not just addition).
+        ensure_fixture=ensure_track_fixtures,
+        py_script="overlay_bigwig.py",
+        rust_bin="overlay_bigwig",
+        py_args=lambda scratch_dir: [
+            "-i", _track_fixture("track_signal.bw"), "-j", _track_fixture("track_signal2.bw"),
+            "-a", "Average", "-o", str(scratch_dir / "out.wig"), "-c", "100000",
+        ],
+        rust_args=lambda scratch_dir: [
+            "-i", _track_fixture("track_signal.bw"), "-j", _track_fixture("track_signal2.bw"),
+            "-a", "Average", "-o", str(scratch_dir / "out.wig"), "-c", "100000",
+        ],
+        compare_stream="stderr",
+        stream_format="exact",
+        normalize_paths=True,
+        compare_files=("out.wig",),
+    ),
+    Case(
         name="rpkm_saturation_basic",
         # Found by this case: (1) RPKM_saturation.rs's percentile-
         # resampling population was rebuilt INDEPENDENTLY each
