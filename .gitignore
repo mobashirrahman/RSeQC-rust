@@ -9,3 +9,7 @@ __pycache__/
 *.pyc
 benchmarks/workloads/
 benchmarks/benchmark_results/
+
+# Regenerated on demand by run_diff.py; only reads.bam/.bai and model.bed12 are committed
+verification/fixtures/genebody_coverage_float/*.fastq
+verification/fixtures/genebody_coverage_float/manifest.json
