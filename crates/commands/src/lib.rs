@@ -6,6 +6,7 @@ pub mod bam2fq;
 pub mod bam2wig;
 pub mod bam_stat;
 pub mod divide_bam;
+pub mod exec_resolve;
 pub mod fpkm_count;
 pub mod fpkm_uq;
 pub mod genebody_coverage;

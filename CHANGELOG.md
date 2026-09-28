@@ -35,6 +35,10 @@ of a feature or a closed divergence, not every commit.
 
 ### Fixed
 
+- The 16 `Rscript`-invoking commands now pre-resolve `--rscript` (a `shutil.which` port,
+  `rseqc_commands::exec_resolve`) and report upstream's `Rscript executable not found: <name>`
+  instead of a raw OS spawn error (DIV-0021, found by clean-room testing).
+
 Every entry in `compatibility/divergences.yaml` with `status: fixed-working-tree` began as a real
 behavioral difference found via the differential harness against real upstream, then closed.
 Notable categories (see the divergences file for the full, individually-verified account of each):

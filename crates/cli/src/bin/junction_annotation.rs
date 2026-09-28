@@ -140,7 +140,13 @@ fn run(args: &Args) -> std::io::Result<ExitCode> {
     // Rscript is never invoked on those -- matched by returning before
     // reaching this point on both of those paths above).
     if !args.skip_plot {
-        let status = Command::new(&args.rscript).arg(&r_path).status()?;
+        let rscript_path = rseqc_commands::exec_resolve::which(&args.rscript).ok_or_else(|| {
+            std::io::Error::new(
+                std::io::ErrorKind::NotFound,
+                format!("Rscript executable not found: {}", args.rscript),
+            )
+        })?;
+        let status = Command::new(&rscript_path).arg(&r_path).status()?;
         if !status.success() {
             return Err(std::io::Error::other(format!("R plotting failed for {r_path}")));
         }

@@ -640,5 +640,77 @@ divergences:
       unrelated to input decompression). See `verification/run_diff.py`
       case `sc_seqqual_gzip_input`.
     classification: explicit-compatibility-exception
-    decision: Closed. Independent of DIV-0016 (sc_seqLogo.py's native image rendering remains unimplemented) -- this entry covers input decompression only.
+    decision: Closed. Independent of DIV-0016 (sc_seqLogo.py's native image rendering, since closed separately) -- this entry covers input decompression only.
+    status: fixed-working-tree
+
+  - id: DIV-0021
+    command_or_api: clipping_profile.py, deletion_profile.py, geneBody_coverage.py,
+      geneBody_coverage2.py, inner_distance.py, insertion_profile.py,
+      junction_annotation.py, junction_saturation.py, mismatch_profile.py,
+      read_duplication.py, read_GC.py, read_NVC.py, read_quality.py,
+      RPKM_saturation.py, sc_editMatrix.py, sc_seqQual.py
+    description: >
+      CLOSED 2026-09-28. Found via a genuine clean-room test (built a real
+      distribution archive with `scripts/build-release-archive.sh`, then
+      ran the extracted binaries with `PATH` set to ONLY that archive's
+      own `bin/` directory -- no Python/R/`wigToBigWig` resolvable at
+      all), something this project's README had disclosed as untested
+      since Step 10/11 packaging work began. Every core, non-plotting
+      command worked fully standalone as expected (confirmed via
+      `bam_stat.py` and `sc_seqLogo.py`, the latter including its native
+      PDF rendering -- no external tool needed at all). `bam2wig.py`'s
+      existing `wigToBigWig`-absent fallback also behaved correctly
+      (prints "Failed to call \"wigToBigWig\"." and still writes the
+      `.wig` file, matching its own pre-existing documented behavior).
+
+      But the 16 commands that shell out to `Rscript` (via each script's
+      own `run_plot_script`/`resolve_rscript` helper) had a real,
+      previously-undiscovered gap: upstream ALWAYS pre-resolves the
+      configured `--rscript` executable via `shutil.which` before
+      attempting to spawn it, producing a friendly, content-specific
+      `"Rscript executable not found: <name>"` error (14 commands) or
+      `"Rscript executable not found: \"<name>\""` (quoted variant,
+      `geneBody_coverage.py`/`geneBody_coverage2.py` only) -- this port
+      instead let `std::process::Command::new(&args.rscript).status()`'s
+      raw OS spawn-failure `io::Error` propagate unchanged (rendering
+      generically as e.g. "No such file or directory (os error 2)"),
+      since every development/CI environment this port has been tested
+      in already has Rscript installed, so this specific branch had
+      never actually been exercised end to end before. Invisible in this
+      project's own sandbox; a real gap for a genuine clean-room install
+      lacking R.
+
+      Added a shared `rseqc_commands::exec_resolve::which` (a faithful
+      `shutil.which` port: explicit-path check if the name contains a
+      path separator, otherwise a `$PATH` search, POSIX executable-bit
+      semantics) and wired a pre-check into all 16 call sites, matching
+      each command's own exact upstream message text and quoting.
+      `sc_editMatrix.py`/`sc_seqQual.py` needed the check inserted at the
+      START of their `ensure_r_dependencies` equivalent (matching
+      upstream's own `resolve_rscript()`-first ordering), before the
+      `pheatmap`-availability check -- otherwise a missing Rscript would
+      have been misreported as a missing R package instead. `FPKM-UQ.py`
+      already had the equivalent check for `htseq-count` (a separate,
+      pre-existing, already-correct `resolve_executable`), not touched.
+
+      Verified via the same clean-room test (both `junction_annotation
+      .py`'s unquoted and `geneBody_coverage2.py`'s quoted message,
+      plus `sc_editMatrix.py`'s `ensure_r_dependencies`-ordering case,
+      all byte-identical to real upstream's own clean-room output
+      content, timestamp/`{prog}: `-prefix differences aside -- the same
+      accepted, permanent formatting divergence every other error/log
+      line in this port already has). Not added as a `verification/
+      run_diff.py` case: the harness always inherits a PATH that DOES
+      have Rscript (needed for the other 60+ passing cases' real-Rscript
+      execution), so a PATH-manipulated case would need new harness
+      infrastructure for one narrow scenario -- the manual live-diff
+      above plus `cargo test`'s new `exec_resolve` unit tests (4 cases:
+      bare-name resolution, unresolvable name, explicit-path check
+      bypassing `$PATH`, rejecting a non-executable file) were judged
+      sufficient rigor, consistent with this project's established
+      practice for narrow, manually-verified branches (e.g.
+      `overlay_bigwig.py`'s non-`geometricMean` actions before this same
+      day's later commit formalized two of them).
+    classification: bug-in-port
+    decision: Fixed in the working tree 2026-09-28.
     status: fixed-working-tree

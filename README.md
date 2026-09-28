@@ -143,8 +143,12 @@ this table, is the authoritative compatibility record.
   x86_64 archive; no macOS/Windows builds, container images, or Python wheel yet.
 - **No LICENSE file is bundled yet.** This project's own release license is pending resolution of
   DIV-0003 (upstream's own license metadata is internally inconsistent — see that entry).
-- Distribution archives have not been tested in a clean-room environment without Python/R/
-  `wigToBigWig` present, despite several commands invoking those as optional external tools.
+- **Clean-room testing has been done once, on Linux x86_64 only** (2026-09-28): the built
+  distribution archive was extracted and run with `PATH` limited to its own `bin/` directory (no
+  Python/R/`wigToBigWig`). Core commands and `sc_seqLogo.py` work standalone; `bam2wig.py` falls
+  back gracefully without `wigToBigWig`; the 16 `Rscript`-using commands now report upstream's own
+  "Rscript executable not found" message (DIV-0021) — use `--skip-plot`/`--skip-heatmap` to avoid
+  needing R. Not repeated on macOS/Windows.
 
 ## Development
 

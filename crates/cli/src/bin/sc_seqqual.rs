@@ -81,7 +81,14 @@ fn r_package_available(rscript: &str, package: &str) -> bool {
 }
 
 fn ensure_r_dependencies(rscript: &str, install_missing: bool, cran_mirror: &str) -> std::io::Result<()> {
-    if r_package_available(rscript, "pheatmap") {
+    let rscript_path = rseqc_commands::exec_resolve::which(rscript).ok_or_else(|| {
+        std::io::Error::new(
+            std::io::ErrorKind::NotFound,
+            format!("Rscript executable not found: {rscript}"),
+        )
+    })?;
+    let rscript = rscript_path.to_string_lossy();
+    if r_package_available(&rscript, "pheatmap") {
         return Ok(());
     }
     if !install_missing {
@@ -90,11 +97,11 @@ fn ensure_r_dependencies(rscript: &str, install_missing: bool, cran_mirror: &str
         ));
     }
     eprintln!("Installing R package pheatmap from {cran_mirror}");
-    let status = Command::new(rscript).arg("-e").arg(format!("install.packages('pheatmap', repos='{cran_mirror}')")).status()?;
+    let status = Command::new(rscript.as_ref()).arg("-e").arg(format!("install.packages('pheatmap', repos='{cran_mirror}')")).status()?;
     if !status.success() {
         return Err(std::io::Error::other("R dependency installation failed"));
     }
-    if !r_package_available(rscript, "pheatmap") {
+    if !r_package_available(&rscript, "pheatmap") {
         return Err(std::io::Error::other("R package 'pheatmap' is still unavailable after installation"));
     }
     Ok(())
