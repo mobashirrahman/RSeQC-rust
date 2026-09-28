@@ -12,6 +12,7 @@ Output: summary of mismatches found, if any.
 from __future__ import annotations
 
 import os
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -128,12 +129,17 @@ def test_command(command: str, py_flags: list[str], rust_flags: list[str],
         "mismatches": [],
     }
 
-    # Use the same output directory for both implementations
-    outdir = workload_dir / "out"
-    outdir.mkdir(exist_ok=True)
+    # Separate output dirs per side: sharing one lets the first run's files
+    # trip the second run's overwrite guard and makes file comparison moot.
+    py_outdir = workload_dir / f"out_py_{command}"
+    rust_outdir = workload_dir / f"out_rust_{command}"
+    for d in (py_outdir, rust_outdir):
+        if d.exists():
+            shutil.rmtree(d)
+        d.mkdir()
 
     # Replace relative paths with absolute paths
-    def make_absolute(flags: list[str]) -> list[str]:
+    def make_absolute(flags: list[str], outdir: Path) -> list[str]:
         result_flags = []
         i = 0
         while i < len(flags):
@@ -152,13 +158,13 @@ def test_command(command: str, py_flags: list[str], rust_flags: list[str],
             i += 1
         return result_flags
 
-    py_flags_abs = make_absolute(py_flags)
-    rust_flags_abs = make_absolute(rust_flags)
+    py_flags_abs = make_absolute(py_flags, py_outdir)
+    rust_flags_abs = make_absolute(rust_flags, rust_outdir)
 
     # Run Python version
     py_cmd = [str(ORACLE_PYTHON), str(ORACLE_SCRIPTS / f"{command}.py")] + py_flags_abs
     env = {"PYTHONPATH": ORACLE_PYTHONPATH}
-    py_code, py_out, py_err = run_command(py_cmd, cwd=workload_dir, env=env, timeout_s=60.0)
+    py_code, py_out, py_err = run_command(py_cmd, cwd=py_outdir, env=env, timeout_s=60.0)
     result["py_exit"] = py_code
 
     # Run Rust version
@@ -169,19 +175,39 @@ def test_command(command: str, py_flags: list[str], rust_flags: list[str],
         return result
 
     rust_cmd = [str(rust_bin)] + rust_flags_abs
-    rust_code, rust_out, rust_err = run_command(rust_cmd, cwd=workload_dir, timeout_s=60.0)
+    rust_code, rust_out, rust_err = run_command(rust_cmd, cwd=rust_outdir, timeout_s=60.0)
     result["rust_exit"] = rust_code
 
     # Compare exit codes
     if py_code != rust_code:
         result["mismatches"].append(f"Exit mismatch: py={py_code}, rust={rust_code}")
+        if rust_err:
+            result["mismatches"].append(f"rust stderr: {rust_err.strip()[-200:]}")
         result["success"] = False
+        return result
 
-    # Compare stdout
-    if py_out != rust_out and py_code == 0 and rust_code == 0:
-        # Only report stdout mismatch if both succeeded
+    def norm(data: bytes, outdir: Path) -> bytes:
+        return data.replace(str(outdir).encode(), b"<OUT>")
+
+    if norm(py_out.encode(), py_outdir) != norm(rust_out.encode(), rust_outdir):
         result["mismatches"].append("stdout mismatch")
         result["success"] = False
+
+    # log.txt is upstream's unscoped CWD side effect (DIV-0022), not an output.
+    py_files = {p.name for p in py_outdir.iterdir() if p.is_file()} - {"log.txt"}
+    rust_files = {p.name for p in rust_outdir.iterdir() if p.is_file()}
+    for name in sorted(py_files ^ rust_files):
+        side = "python" if name in py_files else "rust"
+        result["mismatches"].append(f"file only on {side} side: {name}")
+        result["success"] = False
+    for name in sorted(py_files & rust_files):
+        if name.endswith((".bam", ".bai", ".gz")):
+            continue  # container bytes differ by design (BGZF/gzip headers)
+        py_bytes = norm((py_outdir / name).read_bytes(), py_outdir)
+        rust_bytes = norm((rust_outdir / name).read_bytes(), rust_outdir)
+        if py_bytes != rust_bytes:
+            result["mismatches"].append(f"file differs: {name}")
+            result["success"] = False
 
     return result
 
