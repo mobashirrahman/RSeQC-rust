@@ -449,12 +449,11 @@ mod tests {
         };
         let output = render_r_script(&result, "testprefix");
         let expected = "pdf(\"testprefix.splice_events.pdf\")\n\
-events=c(20,30,50)\n\
+events=c(20.0,30.0,50.0)\n\
 pie(events,col=c(2,3,4),init.angle=30,angle=c(60,120,150),density=c(70,70,70),main=\"splicing events\",labels=c(\"partial_novel 20%\",\"complete_novel 30%\",\"known 50%\"))\n\
 dev.off()\n\
-\n\
 pdf(\"testprefix.splice_junction.pdf\")\n\
-junction=c(12.5,25,62.5)\n\
+junction=c(12.5,25.0,62.5)\n\
 pie(junction,col=c(2,3,4),init.angle=30,angle=c(60,120,150),density=c(70,70,70),main=\"splicing junctions\",labels=c(\"partial_novel 12%\",\"complete_novel 25%\",\"known 62%\"))\n\
 dev.off()\n";
         assert_eq!(output, expected);
