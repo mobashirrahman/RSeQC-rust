@@ -2389,6 +2389,23 @@ CASES: list[Case] = [
         normalize_paths=True,
         compare_files=("out.wig",),
     ),
+    Case(
+        name="fpkm_count_synthetic_stderr",
+        # Found by verification/synthetic_sweep.py: the progress report
+        # differed from upstream FPKM_count.py:468-613 -- "...from <bed>..."
+        # (no space), "Counting total fragment ...  Done" on one line,
+        # float-formatted totals ("78.0", not "78") and the per-transcript
+        # "\r<n> transcripts finished" counter.
+        ensure_fixture=ensure_synthetic_fixtures,
+        py_script="FPKM_count.py",
+        rust_bin="FPKM_count",
+        py_args=lambda d: ["-i", _synthetic("pe_placed.bam"), "-r", _synthetic("model.bed12"), "-o", str(d / "out")],
+        rust_args=lambda d: ["-i", _synthetic("pe_placed.bam"), "-r", _synthetic("model.bed12"), "-o", str(d / "out")],
+        compare_stream="stderr",
+        stream_format="exact",
+        normalize_paths=True,
+        compare_files=("out.FPKM.xls",),
+    ),
 ]
 
 

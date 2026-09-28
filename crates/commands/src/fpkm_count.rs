@@ -444,8 +444,10 @@ pub fn compute_fpkm_rows(
     strand_map: &HashMap<String, char>,
     single_read: f64,
     denominator: f64,
+    mut on_transcript_finished: impl FnMut(usize),
 ) -> io::Result<Vec<FpkmRow>> {
     let mut rows = Vec::new();
+    let mut gene_finished = 0usize;
 
     for line in reader.lines() {
         let line = line?;
@@ -504,6 +506,10 @@ pub fn compute_fpkm_rows(
                 fpkm,
             });
         }
+        // Upstream's `gene_finished` counter advances for every parsed BED
+        // line, including strand-ruled lines whose strand is neither + nor -.
+        gene_finished += 1;
+        on_transcript_finished(gene_finished);
     }
 
     Ok(rows)

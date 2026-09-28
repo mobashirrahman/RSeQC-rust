@@ -11,6 +11,7 @@ use std::io::{BufReader, Write as _};
 use std::path::PathBuf;
 
 use clap::Parser;
+use rseqc_commands::python_fmt::python_str_float;
 use rseqc_commands::fpkm_count::{
     build_global_exon_ranges, build_read_index, compute_fpkm_rows, count_total_fragments, parse_strand_rule,
     render_fpkm_xls,
@@ -67,16 +68,19 @@ fn run(args: &Args) -> std::io::Result<()> {
     let strand_map = parse_strand_rule(args.strand_rule.as_deref())
         .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidInput, e))?;
 
-    eprintln!("Extract exon regions from {} ...", args.refgene_bed.display());
+    eprintln!("Extract exon regions from {}...", args.refgene_bed.display());
     let global_exon_ranges = build_global_exon_ranges(BufReader::new(File::open(&args.refgene_bed)?))?;
 
     let (mut reader, header) = rseqc_formats::open_bam(&args.input_file)?;
     let reads_by_chrom = build_read_index(reader.records(), &header, args.skip_multi, args.map_qual)?;
 
-    eprintln!("Counting total fragment ... ");
+    // Upstream: print("Counting total fragment ... ", end=" ") ... print("Done")
+    eprint!("Counting total fragment ...  ");
     let (total_frags, exonic_frags) = count_total_fragments(&reads_by_chrom, &global_exon_ranges, args.single_read);
-    eprintln!("Total fragment = {total_frags:<20}");
-    eprintln!("Total exonic fragment = {exonic_frags:<20}");
+    eprintln!("Done");
+    // Both totals are Python floats (initialised to 0.0), formatted `:<20`.
+    eprintln!("Total fragment = {:<20}", python_str_float(total_frags));
+    eprintln!("Total exonic fragment = {:<20}", python_str_float(exonic_frags));
 
     if total_frags <= 0.0 || exonic_frags <= 0.0 {
         return Err(std::io::Error::new(
@@ -93,7 +97,9 @@ fn run(args: &Args) -> std::io::Result<()> {
         &strand_map,
         args.single_read,
         denominator,
+        |n| eprint!("\r{n} transcripts finished"),
     )?;
+    eprintln!();
 
     let output_path = format!("{}.FPKM.xls", args.out_prefix.to_string_lossy());
     let mut output_file = File::create(&output_path)?;
