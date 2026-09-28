@@ -253,7 +253,7 @@ pub fn render_xls(result: &JunctionResult) -> String {
 /// Python 3's `round()`: round-half-to-even, NOT round-half-away-from-zero.
 /// Only used for the pie-chart label percentages (cosmetic `%d%%` text);
 /// the `events=c(...)`/`junction=c(...)` data lines use full float
-/// precision via ordinary `to_string()`, unaffected by this.
+/// precision via `python_str_float()`, which matches Python's `str(float)`.
 fn python_round(x: f64) -> i64 {
     let floor = x.floor();
     let diff = x - floor;
@@ -269,6 +269,7 @@ fn python_round(x: f64) -> i64 {
 }
 
 pub fn render_r_script(result: &JunctionResult, out_prefix: &str) -> String {
+    use crate::python_fmt::python_str_float;
     let mut lines = Vec::new();
 
     // Upstream's pie-1 denominator is `total_junc`, the RAW event total
@@ -277,7 +278,7 @@ pub fn render_r_script(result: &JunctionResult, out_prefix: &str) -> String {
     // `filtered_junc`. Use `event_total` as-is, unmodified.
     let denom1 = result.event_total as f64;
     let events = [result.event_novel3or5, result.event_novel35, result.event_known];
-    let events_csv: Vec<String> = events.iter().map(|&v| (v as f64 * 100.0 / denom1).to_string()).collect();
+    let events_csv: Vec<String> = events.iter().map(|&v| python_str_float(v as f64 * 100.0 / denom1)).collect();
     let events_pct: Vec<i64> = events.iter().map(|&v| python_round(v as f64 * 100.0 / denom1)).collect();
 
     lines.push(format!("pdf(\"{out_prefix}.splice_events.pdf\")"));
@@ -287,11 +288,10 @@ pub fn render_r_script(result: &JunctionResult, out_prefix: &str) -> String {
         events_pct[0], events_pct[1], events_pct[2]
     ));
     lines.push("dev.off()".to_string());
-    lines.push(String::new());
 
     let denom2 = (result.junction_known + result.junction_novel35 + result.junction_novel3or5) as f64;
     let junctions = [result.junction_novel3or5, result.junction_novel35, result.junction_known];
-    let junction_csv: Vec<String> = junctions.iter().map(|&v| (v as f64 * 100.0 / denom2).to_string()).collect();
+    let junction_csv: Vec<String> = junctions.iter().map(|&v| python_str_float(v as f64 * 100.0 / denom2)).collect();
     let junction_pct: Vec<i64> = junctions.iter().map(|&v| python_round(v as f64 * 100.0 / denom2)).collect();
 
     lines.push(format!("pdf(\"{out_prefix}.splice_junction.pdf\")"));

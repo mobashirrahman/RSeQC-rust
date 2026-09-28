@@ -12,21 +12,18 @@
 //! random access.
 //!
 //! **Pileup defaults are mirrored from `pysam.AlignmentFile.pileup()`**:
-//! behavior**, used un-overridden by upstream's `genebody_coverage`:
 //! `ignore_overlaps=True` (pysam's own default) deduplicates overlapping
 //! paired-end mates at a shared reference position, counting only the
 //! higher-quality base once. The implementation also applies the default
-//! depth cap and minimum base quality while retaining duplicates in the
-//! fetch-based helpers below.
-//! other two `pileup()` defaults upstream implicitly relies on ARE
-//! replicated: `flag_filter` excludes duplicate-flagged reads (BAM_FDUP)
+//! depth cap (8000) while retaining duplicates in the fetch-based helpers
+//! below. `flag_filter` excludes duplicate-flagged reads (BAM_FDUP)
 //! from coverage -- note this differs from `check_min_reads`/
 //! `estimate_bg_noise`, which use `fetch()` (no `flag_filter`) and so DO
-//! count duplicates; and `min_base_quality=13` excludes individual bases
-//! below phred 13 from the coverage tally. `query_length` (used by
-//! `estimate_bg_noise`) is taken directly from the read's `SEQ` length,
-//! matching pysam's common case; pysam's CIGAR-based inference fallback
-//! for a missing `SEQ` (`*`) is not replicated.
+//! count duplicates. `min_base_quality` defaults to 0 (all bases included),
+//! matching pysam's default. `query_length` (used by `estimate_bg_noise`)
+//! is taken directly from the read's `SEQ` length, matching pysam's common
+//! case; pysam's CIGAR-based inference fallback for a missing `SEQ` (`*`)
+//! is not replicated.
 
 use std::collections::{HashMap, HashSet};
 use std::io::{self, BufRead};
