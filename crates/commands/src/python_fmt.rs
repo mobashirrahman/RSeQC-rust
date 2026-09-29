@@ -66,10 +66,133 @@ fn scientific_from_fixed(value: &str) -> String {
     format!("{sign}{mantissa}e{exponent_sign}{exponent_digits}")
 }
 
+/// Adjusts the last digit of a plain decimal digit string (optional
+/// leading `-`, digits, optional `.`) by `delta` (`+1`/`-1`),
+/// propagating any carry/borrow leftward through the digits (skipping
+/// over `.`). Returns `None` if the carry/borrow would need to grow the
+/// digit count (e.g. `"9.99"` incremented needs a new leading digit) --
+/// that case is astronomically rare here and callers just skip the
+/// adjustment.
+fn adjust_last_digit(raw: &str, delta: i32) -> Option<String> {
+    let (sign, unsigned) = match raw.strip_prefix('-') {
+        Some(u) => ("-", u),
+        None => ("", raw),
+    };
+    let mut chars: Vec<char> = unsigned.chars().collect();
+    let mut carry = delta;
+    let mut idx = chars.len();
+    while carry != 0 {
+        if idx == 0 {
+            return None;
+        }
+        idx -= 1;
+        if chars[idx] == '.' {
+            continue;
+        }
+        let d = (chars[idx] as u8 - b'0') as i32 + carry;
+        if d >= 10 {
+            chars[idx] = '0';
+            carry = 1;
+        } else if d < 0 {
+            chars[idx] = '9';
+            carry = -1;
+        } else {
+            chars[idx] = (b'0' + d as u8) as char;
+            carry = 0;
+        }
+    }
+    Some(format!("{sign}{}", chars.into_iter().collect::<String>()))
+}
+
+fn last_digit_is_even(s: &str) -> bool {
+    s.chars().rev().find(|c| c.is_ascii_digit()).map(|c| (c as u8 - b'0') % 2 == 0).unwrap_or(false)
+}
+
+/// Number of digits after the decimal point in a plain (non-scientific)
+/// decimal string, or `0` if there is no `.`.
+fn frac_digit_count(s: &str) -> usize {
+    s.split_once('.').map(|(_, frac)| frac.len()).unwrap_or(0)
+}
+
+/// True only if `x`'s EXACT binary value (not merely "round-trips to a
+/// decimal near here") is precisely the arithmetic midpoint between
+/// `lo` and `lo`'s next representable decimal at its own digit count
+/// (i.e. `lo` with a `5` appended one place further right) -- a genuine
+/// tie, not just "this neighboring decimal also happens to round-trip".
+/// `lo` must be the unsigned (no leading `-`), numerically smaller of
+/// the two tied candidates.
+///
+/// Every `f64` has a finite exact decimal expansion (its value is
+/// mantissa * 2^exponent, and 2^k always terminates in decimal), so
+/// formatting `x` to enough fractional digits reproduces that exact
+/// expansion verbatim, padded with trailing zeros -- no approximation,
+/// this is exact by construction of Rust's fixed-precision float
+/// formatting. `MARGIN` digits beyond the midpoint's own precision is
+/// far more than any realistic normal-magnitude double from this
+/// codebase's commands needs (bounded by mantissa bits plus a handful
+/// of doublings/halvings from summation, well under 100); it would not
+/// suffice for subnormals near the denormal boundary, which this
+/// codebase never produces.
+fn is_exact_midpoint(lo: &str, x: f64) -> bool {
+    const MARGIN: usize = 400;
+    let frac = frac_digit_count(lo);
+    let precision = frac + 1 + MARGIN;
+
+    let mut expected = lo.to_string();
+    if frac == 0 {
+        expected.push('.');
+    }
+    expected.push('5');
+    expected.push_str(&"0".repeat(MARGIN));
+
+    format!("{:.*}", precision, x.abs()) == expected
+}
+
+/// Rust's `Display` for `f64` (used as `raw` below) gives a
+/// correctly-rounded, shortest round-tripping decimal, but Rust and
+/// Python can disagree on which decimal to pick when a double's exact
+/// binary value sits precisely halfway between the two nearest
+/// candidates at that digit count (a genuine tie): Python's
+/// `repr`/`str` (its own dtoa) rounds such ties to the EVEN last digit;
+/// Rust's does not consistently. Concrete example that surfaced this:
+/// `f64::from_bits(0x4056ae1480000000)` is exactly `90.720001220703125`
+/// (equidistant between `...312` and `...313` at 16 significant
+/// digits) -- Rust's `Display` prints `"90.72000122070313"`, Python's
+/// `str()` prints `"90.72000122070312"` (the even one).
+///
+/// Merely checking "does the neighboring decimal ALSO round-trip to the
+/// same bits" is NOT sufficient to detect a tie (tried first, caused
+/// regressions): a double's round-trip acceptance interval is often
+/// wider than one decimal step at the last digit, so a neighbor can
+/// round-trip while still being strictly farther from `x`'s exact value
+/// than `raw` -- e.g. `85.63000106811523` (exact value
+/// `85.630001068115234375`) and `85.63000106811524` both round-trip to
+/// the same bits, but the first is genuinely closer (Rust's `Display`
+/// already gets this one right); swapping to the neighbor there would
+/// have been a bug, not a fix. Genuine ties are instead confirmed via
+/// `is_exact_midpoint`.
+fn round_ties_to_even(raw: &str, x: f64) -> String {
+    let bits = x.to_bits();
+    for delta in [1i32, -1i32] {
+        let Some(neighbor) = adjust_last_digit(raw, delta) else { continue };
+        if neighbor.parse::<f64>().map(|v| v.to_bits()) != Ok(bits) {
+            continue;
+        }
+        let lo = if delta > 0 { raw } else { neighbor.as_str() };
+        let lo_unsigned = lo.strip_prefix('-').unwrap_or(lo);
+        if !is_exact_midpoint(lo_unsigned, x) {
+            continue;
+        }
+        return if last_digit_is_even(&neighbor) && !last_digit_is_even(raw) { neighbor } else { raw.to_string() };
+    }
+    raw.to_string()
+}
+
 /// Renders Python 3's `str(float)` representation, including its notation
 /// switch at `1e-4`/`1e16` and two-digit signed exponents. Rust's default
 /// Display supplies the shortest round-tripping decimal; the helpers above
-/// only normalize its notation and Python's required trailing `.0`.
+/// only normalize its notation and Python's required trailing `.0`, and
+/// `round_ties_to_even` corrects the rare exact-tie last digit.
 pub fn python_str_float(x: f64) -> String {
     if x.is_nan() {
         return "nan".to_string();
@@ -80,7 +203,7 @@ pub fn python_str_float(x: f64) -> String {
     if x == 0.0 {
         return if x.is_sign_negative() { "-0.0".to_string() } else { "0.0".to_string() };
     }
-    let raw = format!("{x}");
+    let raw = round_ties_to_even(&format!("{x}"), x);
     let scientific = x.abs() >= 1e16 || x.abs() < 1e-4;
     let normalized = if scientific {
         scientific_from_fixed(&fixed_from_scientific(&raw))
@@ -186,6 +309,54 @@ pub fn numpy_std(values: &[f64], ddof: usize) -> f64 {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn python_str_float_breaks_genuine_ties_to_even() {
+        // Regression for `genebody_coverage2_png`/`_sig1`/`_sig2`:
+        // f64::from_bits(0x4056ae1480000000) is exactly
+        // 90.720001220703125 -- precisely equidistant between
+        // "90.72000122070312" and "90.72000122070313" at 16 significant
+        // digits. Python's str() picks the even one ("...312"); Rust's
+        // native Display picked "...313".
+        let x = f64::from_bits(0x4056ae1480000000);
+        assert_eq!(super::python_str_float(x), "90.72000122070312");
+
+        // Second real case from the same sweep (`geneBodyCoverage.txt`
+        // line 71, size1500_seed3): f64::from_bits(0x3ffb5c2800000000)
+        // is exactly 1.70999908447265625 -- equidistant between
+        // "1.7099990844726562" and "1.7099990844726563".
+        let y = f64::from_bits(0x3ffb5c2800000000);
+        assert_eq!(super::python_str_float(y), "1.7099990844726562");
+    }
+
+    #[test]
+    fn python_str_float_does_not_flip_genuinely_closer_neighbor() {
+        // Regression for a bug in an earlier version of this fix: merely
+        // checking "does the decimal neighbor also round-trip" is not
+        // enough to detect a tie. 85.63000106811523's exact binary value
+        // is 85.630001068115234375 -- strictly closer to "...23" than to
+        // "...24" even though BOTH decimal strings round-trip to the
+        // same bits. Rust's Display already gets this one right and
+        // must not be "corrected" to the farther neighbor.
+        let x: f64 = "85.63000106811523".parse().unwrap();
+        assert_eq!(
+            x.to_bits(),
+            "85.63000106811524".parse::<f64>().unwrap().to_bits(),
+            "test premise: both decimal strings must round-trip to the same bits"
+        );
+        assert_eq!(super::python_str_float(x), "85.63000106811523");
+    }
+
+    #[test]
+    fn python_str_float_ties_still_respect_notation_switch_and_sign() {
+        // The tie fix runs before the sci/fixed notation branch and the
+        // trailing-".0" branch in python_str_float; make sure ordinary
+        // non-tied values (including negative and whole-number ones)
+        // are completely unaffected.
+        assert_eq!(super::python_str_float(-f64::from_bits(0x4056ae1480000000)), "-90.72000122070312");
+        assert_eq!(super::python_str_float(5.0), "5.0");
+        assert_eq!(super::python_str_float(1e-5), "1e-05");
+    }
+
     #[test]
     fn numpy_sum_uses_pairwise_blocks() {
         // 0.1 summed 1000 times: numpy's pairwise kernel gives
