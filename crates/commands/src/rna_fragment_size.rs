@@ -58,17 +58,23 @@ impl IndexedReads {
             let record = result?;
             let flags = record.flags();
 
-            // Matches fragment_size()'s per-read filters (is_paired,
+            // Matches fragment_size()'s per-read filters exactly: is_paired,
             // !is_read2, !mate_is_unmapped, !qcfail, !duplicate,
-            // !secondary) plus the implicit "fetch() never returns
-            // unmapped reads" behavior.
+            // !secondary. Upstream never checks `is_unmapped` here, and
+            // (unlike this port's earlier assumption) pysam's indexed
+            // `fetch(chrom, start, end)` DOES return "placed" unmapped
+            // reads -- reads flagged unmapped whose RNAME/POS were copied
+            // from a mapped mate so they sort next to it (htslib's
+            // `bam_index` bins these using their POS the same as mapped
+            // records). Filtering `is_unmapped()` here dropped exactly
+            // those records, undercounting fragments whenever a mate pair
+            // has one mapped and one placed-unmapped end.
             if !flags.is_segmented()
                 || flags.is_last_segment()
                 || flags.is_mate_unmapped()
                 || flags.is_qc_fail()
                 || flags.is_duplicate()
                 || flags.is_secondary()
-                || flags.is_unmapped()
             {
                 continue;
             }
@@ -88,7 +94,13 @@ impl IndexedReads {
             let ref_start = (pos.get() - 1) as i64;
 
             let ops: Vec<_> = record.cigar().iter().collect::<Result<Vec<_>, _>>()?;
-            let (_, ref_end) = reference_span(ref_start as usize, ops);
+            let (_, span_end) = reference_span(ref_start as usize, ops);
+            // A placed-unmapped read has no CIGAR, so `reference_span`
+            // returns a zero-width span (`span_end == ref_start`). htslib
+            // still registers a 1 bp footprint for such records in the
+            // BAM index, and pysam's region `fetch()` returns them
+            // accordingly, so widen the span here to match.
+            let ref_end = span_end.max(ref_start as usize + 1);
 
             let Some(mate_pos) = record.mate_alignment_start().transpose()? else {
                 continue;
@@ -240,12 +252,18 @@ pub fn compute_fragment_sizes(bed: &BedRecord, reads: &IndexedReads, qcut: u8, n
     }
 }
 
-/// NumPy-equivalent mean/median/std (population std, ddof=0).
+/// NumPy-equivalent mean/median/std (population std, ddof=0). Mean and std
+/// use `numpy_mean`/`numpy_std` (pairwise summation, matching `np.mean`/
+/// `np.std` bit-for-bit) over `values` in their *original* (insertion)
+/// order -- `np.mean`/`np.std` never sort their input, and pairwise
+/// summation's last-bit result depends on element order. Only the median
+/// needs a sorted copy.
 fn mean_median_std(values: &[i64]) -> (f64, f64, f64) {
-    let n = values.len() as f64;
-    let mean = values.iter().map(|&v| v as f64).sum::<f64>() / n;
+    let floats: Vec<f64> = values.iter().map(|&v| v as f64).collect();
+    let mean = crate::python_fmt::numpy_mean(&floats);
+    let std = crate::python_fmt::numpy_std(&floats, 0);
 
-    let mut sorted: Vec<f64> = values.iter().map(|&v| v as f64).collect();
+    let mut sorted = floats;
     sorted.sort_by(|a, b| a.partial_cmp(b).unwrap());
     let mid = sorted.len() / 2;
     let median = if sorted.len().is_multiple_of(2) {
@@ -253,9 +271,6 @@ fn mean_median_std(values: &[i64]) -> (f64, f64, f64) {
     } else {
         sorted[mid]
     };
-
-    let variance = values.iter().map(|&v| (v as f64 - mean).powi(2)).sum::<f64>() / n;
-    let std = variance.sqrt();
 
     (mean, median, std)
 }
@@ -386,5 +401,78 @@ mod tests {
         assert_eq!(mean, 50.0);
         assert_eq!(median, 50.0);
         assert_eq!(std, 0.0);
+    }
+
+    #[test]
+    fn counts_placed_unmapped_mate_like_upstream() {
+        // Regression for the count divergence upstream showed for
+        // chr1_g3 (py count 6 vs rust count 5): a "placed unmapped" read
+        // -- FLAG has UNMAPPED set, but RNAME/POS were copied from its
+        // mapped mate so it sorts next to it. Upstream's per-read filter
+        // (RNA_fragment_size.py `fragment_size()`, ~oracle/upstream-src/
+        // scripts/RNA_fragment_size.py:322-338) never checks `is_unmapped`
+        // at all, and pysam's indexed `fetch()` DOES return such reads, so
+        // this record must count as read1 of the pair -- not be silently
+        // dropped for being flagged unmapped.
+        let header = test_header();
+
+        let unmapped_read1 = RecordBuf::builder()
+            .set_flags(Flags::SEGMENTED | Flags::FIRST_SEGMENT | Flags::UNMAPPED)
+            .set_reference_sequence_id(0)
+            .set_alignment_start(Position::new(101).unwrap())
+            .set_mate_alignment_start(Position::new(101).unwrap())
+            .set_mapping_quality(MappingQuality::new(0).unwrap())
+            .set_sequence(noodles_sam::alignment::record_buf::Sequence::from(vec![b'A'; 20]))
+            .build();
+
+        let bam_records = to_bam_records(&header, &[unmapped_read1]);
+        let reads = IndexedReads::build(bam_records.into_iter().map(Ok), &header).unwrap();
+
+        let bed = BedRecord {
+            chrom: "chr1".into(),
+            tx_start: 0,
+            tx_end: 1000,
+            name: "geneA".into(),
+            exon_ranges: vec![(1, 1000)],
+        };
+
+        let stats = compute_fragment_sizes(&bed, &reads, 0, 1);
+        assert_eq!(stats.count, 1, "placed-unmapped read1 must still be counted");
+    }
+
+    #[test]
+    fn mean_and_std_use_numpy_pairwise_summation() {
+        // Regression for the last-digit divergence upstream showed on
+        // chr2 (std 113.64928508354112 vs 113.6492850835411): np.mean/
+        // np.std sum with numpy's pairwise-blocked kernel, not naive
+        // left-to-right summation, and the two differ in the last bit for
+        // long-enough inputs -- concretely, in the squared-deviation sum
+        // inside `np.std`, which numpy_std/numpy_sum's >128-element
+        // recursive-halving path reproduces bit-for-bit but a naive
+        // running sum does not. Use >128 elements, mirroring a real
+        // per-transcript fragment_sizes vector, and check the whole
+        // pipeline (mean_median_std) matches the shared numpy_mean/
+        // numpy_std helpers exactly.
+        let values: Vec<i64> = (0..200).map(|i| 100 + (i % 37)).collect();
+        let floats: Vec<f64> = values.iter().map(|&v| v as f64).collect();
+
+        let (mean, _median, std) = mean_median_std(&values);
+
+        assert_eq!(mean, crate::python_fmt::numpy_mean(&floats));
+        assert_eq!(std, crate::python_fmt::numpy_std(&floats, 0));
+
+        // The squared-deviation sum inside std is where naive and
+        // pairwise summation actually diverge for this input (mean of
+        // integers sums exactly regardless of order, but the squared
+        // deviations are non-integer floats): confirm numpy_std is doing
+        // real work here, not coincidentally matching a naive sum.
+        let squares: Vec<f64> = floats.iter().map(|&v| (v - mean) * (v - mean)).collect();
+        let naive_variance = squares.iter().sum::<f64>() / floats.len() as f64;
+        let naive_std = naive_variance.sqrt();
+        assert_ne!(
+            std.to_bits(),
+            naive_std.to_bits(),
+            "expected pairwise and naive summation to differ in the last bit for this input"
+        );
     }
 }
