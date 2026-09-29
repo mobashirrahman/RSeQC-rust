@@ -105,7 +105,7 @@ fn adjust_last_digit(raw: &str, delta: i32) -> Option<String> {
 }
 
 fn last_digit_is_even(s: &str) -> bool {
-    s.chars().rev().find(|c| c.is_ascii_digit()).map(|c| (c as u8 - b'0') % 2 == 0).unwrap_or(false)
+    s.chars().rev().find(|c| c.is_ascii_digit()).map(|c| (c as u8 - b'0').is_multiple_of(2)).unwrap_or(false)
 }
 
 /// Number of digits after the decimal point in a plain (non-scientific)
