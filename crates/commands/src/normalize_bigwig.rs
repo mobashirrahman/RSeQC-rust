@@ -161,6 +161,7 @@ pub fn write_bedgraph_chromosome(out: &mut String, bw: &mut BigWigReader, chrom:
     Ok(())
 }
 
+#[derive(Debug)]
 pub struct WigsumResult {
     pub chrom_sizes: Vec<(String, i64)>,
     pub observed_wigsum: f64,
@@ -171,13 +172,21 @@ pub struct WigsumResult {
 /// half of upstream's `normalize_bigwig`, up through the point it
 /// prints "Total WIG sum is .../Normalization factor: ...". Split out
 /// from the write phase (`render_normalized_body`) so the CLI can print
-/// those two lines (plus "Normalizing BigWig file ...") at the correct
-/// point in the sequence -- upstream's `main()` calls `normalize_bigwig`
-/// as ONE function that does both phases back to back with no
-/// opportunity to interleave caller-side prints; this port's own
-/// `main`-equivalent (crates/cli/src/bin/normalize_bigwig.rs) needs to
-/// emit the same lines, in the same order, without a String round-trip
-/// through both phases first.
+/// "Normalization factor: .../Normalizing BigWig file ..." at the
+/// correct point in the sequence -- upstream's `main()` calls
+/// `normalize_bigwig` as ONE function that does both phases back to
+/// back with no opportunity to interleave caller-side prints; this
+/// port's own `main`-equivalent (crates/cli/src/bin/normalize_bigwig.rs)
+/// needs to emit the same lines, in the same order, without a String
+/// round-trip through both phases first.
+///
+/// The "\nTotal WIG sum is {:.2}\n" diagnostic is printed here, not by
+/// the caller, and unconditionally before the zero/negative-sum check --
+/// matching upstream's `print(...)` call sitting textually BEFORE its
+/// `if observed_wigsum <= 0: raise ValueError(...)`. Deferring that print
+/// to the caller (only on `Ok`) used to swallow it whenever this
+/// function errored, so the port's stderr silently dropped the "Total
+/// WIG sum is <negative-or-zero-value>" line upstream always emits.
 pub fn calculate_wigsum(bw: &mut BigWigReader, refgene: Option<impl BufRead>, total_wigsum: f64, chunk_size: i64, refgene_path: &str) -> io::Result<WigsumResult> {
     let chrom_sizes: Vec<(String, i64)> = bw.chroms().into_iter().map(|(n, l)| (n, l as i64)).collect();
 
@@ -185,6 +194,8 @@ pub fn calculate_wigsum(bw: &mut BigWigReader, refgene: Option<impl BufRead>, to
         Some(r) => calculate_exonic_wigsum(bw, r, refgene_path)?,
         None => calculate_genome_wigsum(bw, &chrom_sizes, chunk_size)?,
     };
+
+    eprintln!("\nTotal WIG sum is {observed_wigsum:.2}\n");
 
     if observed_wigsum <= 0.0 {
         return Err(io::Error::new(io::ErrorKind::InvalidData, "observed WIG sum is zero; normalization cannot be calculated"));
@@ -276,6 +287,26 @@ mod tests {
         // Full genome sum should be >= chrom10's contribution alone.
         let total = calculate_genome_wigsum(&mut bw, &chrom_sizes, 500_000).unwrap();
         assert!(total >= 200.0);
+    }
+
+    #[test]
+    fn calculate_wigsum_errors_on_non_positive_observed_sum() {
+        // Regression for `normalize_bigwig_refgene_bgr_sig2`: upstream's
+        // `if observed_wigsum <= 0: raise ValueError(...)`
+        // (normalize_bigwig.py, in `normalize_bigwig()`) sits textually
+        // AFTER its unconditional
+        // `print(f"\nTotal WIG sum is {observed_wigsum:.2f}\n", file=sys.stderr)`.
+        // A refgene region with no overlapping signal sums to exactly
+        // 0.0, which must still hit the same `<= 0` branch (not just
+        // `== 0`, and not silently succeed with weight = +inf).
+        let mut bw = fixture_reader();
+        // chrom "1" has intervals only within [0,151); [500,600) has no
+        // data at all, so calculate_exonic_wigsum's signal_sum is 0.0.
+        let refbed = "1\t500\t600\tno_signal\t0\t+\t500\t600\t0\t1\t100,\t0,\n";
+        let err = calculate_wigsum(&mut bw, Some(refbed.as_bytes()), 100_000_000.0, 500_000, "test.bed12")
+            .unwrap_err();
+        assert_eq!(err.kind(), io::ErrorKind::InvalidData);
+        assert_eq!(err.to_string(), "observed WIG sum is zero; normalization cannot be calculated");
     }
 
     fn fixture_reader() -> BigWigReader {

@@ -83,9 +83,12 @@ fn run(args: &Args) -> std::io::Result<()> {
         eprintln!("Calculate WIG sum from {}", args.bigwig_file.display());
     }
 
+    // `calculate_wigsum` prints "\nTotal WIG sum is ...\n" itself, before
+    // its own zero/negative-sum check -- see its doc comment. That must
+    // stay inside `calculate_wigsum` so it's emitted even on `Err`, not
+    // duplicated here on `Ok`.
     let wigsum = calculate_wigsum(&mut bw, refgene_reader, args.total_wigsum, args.chunk_size, &refgene_path)?;
 
-    eprintln!("\nTotal WIG sum is {:.2}\n", wigsum.observed_wigsum);
     eprintln!("Normalization factor: {}", python_g12(wigsum.weight));
     eprintln!("Normalizing BigWig file ...");
 
