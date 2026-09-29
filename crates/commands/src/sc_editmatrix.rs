@@ -120,8 +120,22 @@ where
     let ub_tag = tag(&tags.ub);
 
     let mut s = BarcodeEditStats::default();
+    let mut iter = records.into_iter();
 
-    for item in records {
+    loop {
+        // Upstream: `total_alignments += 1` runs BEFORE `next(samfile)`
+        // inside the loop body, so when the record stream is exhausted
+        // the increment has ALREADY happened and is never rolled back
+        // (`StopIteration` is caught OUTSIDE the loop) -- a genuine
+        // upstream off-by-one (`total_alignments` == real record count
+        // + 1 whenever the stream runs out before `limit` is reached).
+        // Preserved here rather than "fixed": reported via
+        // `BarcodeEditStats::total_alignments` and printed by the CLI's
+        // "Total alignments processed: N" line.
+        let Some(item) = iter.next() else {
+            s.total_alignments += 1;
+            break;
+        };
         let record = item?;
         s.total_alignments += 1;
         let data = record.data();
@@ -305,7 +319,15 @@ mod tests {
         let tags = BarcodeTagNames::default();
         let stats = barcode_edits(bam_records.into_iter().map(Ok), &tags, None).unwrap();
 
-        assert_eq!(stats.total_alignments, 3);
+        // Regression coverage for a real upstream off-by-one, confirmed
+        // live (3-record BAM through the actual sc_editMatrix.py CLI
+        // prints "Total alignments processed: 4"): `total_alignments`
+        // is incremented BEFORE the loop's `next(samfile)` call, and
+        // that increment is never rolled back when the stream is
+        // exhausted (`StopIteration` is caught outside the loop) --
+        // so with no `--limit`, `total_alignments` == real record count
+        // + 1, not the real count.
+        assert_eq!(stats.total_alignments, 4);
         assert_eq!(stats.cb.diff, 1);
         assert_eq!(stats.cb.same, 1);
         assert_eq!(stats.cb.miss, 1);

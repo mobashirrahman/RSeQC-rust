@@ -45,6 +45,8 @@ use std::io;
 use noodles_bam as bam;
 use noodles_sam::{self as sam, alignment::record::data::field::Tag};
 
+use crate::pylog::log_line;
+
 fn tag(name: &str) -> Tag {
     let bytes = name.as_bytes();
     Tag::new(bytes[0], bytes[1])
@@ -140,7 +142,7 @@ where
     let mut iter = records.into_iter().peekable();
 
     for (chrom_idx, chrom_name_ref) in ref_names.iter().enumerate() {
-        eprintln!("Processing \"{chrom_name_ref}\" ...");
+        eprintln!("{}", log_line("INFO", &format!("Processing \"{chrom_name_ref}\" ...")));
         let mut chrom_count: i64 = 0;
 
         loop {
@@ -224,7 +226,7 @@ where
             }
         }
 
-        eprintln!("Processed {chrom_count} alignments from \"{chrom_name_ref}\"");
+        eprintln!("{}", log_line("INFO", &format!("Processed {chrom_count} alignments from \"{chrom_name_ref}\"")));
     }
 
     // Records whose reference doesn't match any (remaining) header
@@ -236,10 +238,10 @@ where
         item?;
     }
 
-    eprintln!("Processing total {} alignments mapped to all chromosomes.", s.total_alignments);
-    eprintln!("Count total mapped reads ...");
-    eprintln!("Count confidently mapped reads ...");
-    eprintln!("Removing intermediate files ...");
+    eprintln!("{}", log_line("INFO", &format!("Processing total {} alignments mapped to all chromosomes.", s.total_alignments)));
+    eprintln!("{}", log_line("INFO", "Count total mapped reads ..."));
+    eprintln!("{}", log_line("INFO", "Count confidently mapped reads ..."));
+    eprintln!("{}", log_line("INFO", "Removing intermediate files ..."));
 
     s.total_reads_n = all_reads.len() as i64;
     s.confi_reads_n = confi_reads.len() as i64;

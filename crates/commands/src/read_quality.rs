@@ -20,11 +20,32 @@
 //! `rseqc_formats::open_alignments`; this module's own functions were
 //! unaffected (already generic over
 //! `IntoIterator<Item = io::Result<bam::Record>>`).
+//!
+//! **Second upstream quirk, found via a real per-read diff against a kept
+//! synthetic-sweep failure**: `aligned_read.qqual` is pysam's *deprecated
+//! alias for `query_alignment_qualities`*, NOT `query_qualities` -- despite
+//! the docstring ("calculate phred quality score for each base in read")
+//! suggesting the whole read. `query_alignment_qualities` is
+//! `query_qualities[query_alignment_start:query_alignment_end]`: it
+//! excludes SOFT-CLIPPED bases at either end of the query (confirmed live:
+//! `pysam.AlignedSegment.qqual` on a read with a leading/trailing `S` CIGAR
+//! op returns exactly `query_alignment_qualities`, byte-for-byte, while
+//! `query_qualities` includes the clipped bases). Hard clips never appear
+//! in SEQ/QUAL at all (already excluded by BAM's own encoding), so only
+//! `S` ops matter here. A read with no CIGAR (typically: unmapped) has no
+//! clip information, so its "alignment" quality scores are the full
+//! sequence, same as pysam's fallback. `trim_soft_clips` reproduces this
+//! by finding the leading/trailing contiguous soft-clip length (skipping
+//! over any flanking hard clip, which doesn't consume query bases) and
+//! slicing the full-length quality vector to match, BEFORE the
+//! is_reverse reversal below (same order upstream applies: `qqual` is
+//! already clip-trimmed storage-order data, then optionally reversed).
 
 use std::collections::HashMap;
 use std::io;
 
 use noodles_bam as bam;
+use noodles_sam::alignment::record::cigar::op::Kind as CigarOpKind;
 
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
 pub struct QualityHistogram {
@@ -32,6 +53,34 @@ pub struct QualityHistogram {
     pub q_min: u8,
     pub q_max: u8,
     pub read_len: usize, // Last processed record's length (the quirk)
+}
+
+/// Slices `full_qual_scores` down to pysam's `query_alignment_qualities`
+/// range: drops a leading and/or trailing soft-clip run (any flanking
+/// hard clip is skipped over, since it doesn't consume query bases and so
+/// was never present in `full_qual_scores` to begin with). A CIGAR with
+/// no soft clips at that end (including an empty/absent CIGAR, e.g. for
+/// an unmapped read) leaves that end untouched, matching pysam's
+/// full-sequence fallback when there is no clip information.
+fn trim_soft_clips(full_qual_scores: &[u8], ops: &[noodles_sam::alignment::record::cigar::Op]) -> Vec<u8> {
+    let start = ops
+        .iter()
+        .find(|op| op.kind() != CigarOpKind::HardClip)
+        .filter(|op| op.kind() == CigarOpKind::SoftClip)
+        .map(|op| op.len())
+        .unwrap_or(0);
+
+    let end_clip = ops
+        .iter()
+        .rev()
+        .find(|op| op.kind() != CigarOpKind::HardClip)
+        .filter(|op| op.kind() == CigarOpKind::SoftClip)
+        .map(|op| op.len())
+        .unwrap_or(0);
+
+    let end = full_qual_scores.len().saturating_sub(end_clip);
+    let start = start.min(end);
+    full_qual_scores[start..end].to_vec()
 }
 
 /// Computes quality score histogram for a sequence of BAM records,
@@ -57,10 +106,14 @@ where
             continue;
         }
 
-        // Get quality scores (raw Phred scores, not ASCII)
-        let mut qual_scores: Vec<u8> = record.quality_scores().iter().collect();
+        // Get quality scores (raw Phred scores, not ASCII), then trim
+        // soft-clipped bases to match upstream's `qqual`
+        // (== `query_alignment_qualities`) -- see the module doc comment.
+        let full_qual_scores: Vec<u8> = record.quality_scores().iter().collect();
+        let ops: Vec<_> = record.cigar().iter().collect::<Result<Vec<_>, _>>()?;
+        let mut qual_scores = trim_soft_clips(&full_qual_scores, &ops);
         read_len = qual_scores.len();
-        
+
         // Reverse quality scores if the read is reverse complemented
         if record.flags().is_reverse_complemented() {
             qual_scores.reverse();
@@ -240,6 +293,69 @@ mod tests {
         assert_eq!(hist.quality[&0][&15], 1);
         assert_eq!(hist.quality[&1][&20], 1);
         assert_eq!(hist.quality[&1][&25], 1);
+    }
+
+    #[test]
+    fn soft_clipped_bases_are_excluded_like_pysam_qqual() {
+        // Regression test for a real per-read divergence found via a kept
+        // synthetic-sweep failure (read_quality_pe): upstream's
+        // `aligned_read.qqual` is pysam's deprecated alias for
+        // `query_alignment_qualities`, which excludes soft-clipped bases
+        // at either end of the query -- NOT `query_qualities` (the full
+        // sequence). A read with a 2bp leading soft clip and a 1bp
+        // trailing soft clip must only contribute its 3 aligned-region
+        // quality scores, not all 6.
+        let header = test_header();
+
+        let leading_and_trailing_clip = RecordBuf::builder()
+            .set_flags(Flags::empty())
+            .set_reference_sequence_id(0)
+            .set_mapping_quality(MappingQuality::new(40).unwrap())
+            .set_cigar(Cigar::from(vec![
+                Op::new(CigarOpKind::SoftClip, 2),
+                Op::new(CigarOpKind::Match, 3),
+                Op::new(CigarOpKind::SoftClip, 1),
+            ]))
+            .set_sequence(sam::alignment::record_buf::Sequence::from(b"AAAAAA".to_vec()))
+            .set_quality_scores(sam::alignment::record_buf::QualityScores::from(vec![
+                90, 91, 10, 20, 30, 92,
+            ]))
+            .build();
+
+        // A hard clip flanking a soft clip must be skipped over (it
+        // consumes no query bases, so it was never in the quality vector
+        // to begin with) rather than blocking the soft-clip detection.
+        let hard_then_soft_clip = RecordBuf::builder()
+            .set_flags(Flags::empty())
+            .set_reference_sequence_id(0)
+            .set_mapping_quality(MappingQuality::new(40).unwrap())
+            .set_cigar(Cigar::from(vec![
+                Op::new(CigarOpKind::HardClip, 5),
+                Op::new(CigarOpKind::SoftClip, 1),
+                Op::new(CigarOpKind::Match, 2),
+            ]))
+            .set_sequence(sam::alignment::record_buf::Sequence::from(b"AAA".to_vec()))
+            .set_quality_scores(sam::alignment::record_buf::QualityScores::from(vec![93, 40, 50]))
+            .build();
+
+        let bam_records = to_bam_records(&header, &[leading_and_trailing_clip, hard_then_soft_clip]);
+        let hist = compute_quality(bam_records.into_iter().map(Ok), 30).unwrap();
+
+        // Second (last-processed) record has 2 aligned bases -> read_len 2.
+        assert_eq!(hist.read_len, 2);
+        // leading_and_trailing_clip: aligned-region quals are [10, 20, 30].
+        assert_eq!(hist.quality[&0][&10], 1);
+        assert_eq!(hist.quality[&1][&20], 1);
+        // hard_then_soft_clip: aligned-region quals are [40, 50] (the
+        // leading hard clip's 5bp and soft clip's 1bp are both excluded).
+        assert_eq!(hist.quality[&0][&40], 1);
+        assert_eq!(hist.quality[&1][&50], 1);
+        // None of the clipped sentinel values (90/91/92/93) were counted.
+        for pos in hist.quality.values() {
+            for sentinel in [90u8, 91, 92, 93] {
+                assert!(!pos.contains_key(&sentinel), "clipped base leaked into histogram");
+            }
+        }
     }
 
     #[test]

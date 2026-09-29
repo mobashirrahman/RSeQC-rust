@@ -12,6 +12,7 @@ use std::path::PathBuf;
 use std::process::Command;
 
 use clap::Parser;
+use rseqc_commands::pylog::log_line;
 use rseqc_commands::sc_editmatrix::{BarcodeTagNames, barcode_edits, render_edit_matrix_csv, render_freq_tsv, render_heatmap_r_script};
 
 #[derive(Parser)]
@@ -116,7 +117,7 @@ fn ensure_r_dependencies(rscript: &str, install_missing: bool, cran_mirror: &str
             "R package 'pheatmap' is not installed. Install it with \"Rscript -e \\\"install.packages('pheatmap', repos='https://cloud.r-project.org')\\\"\", rerun with --install-r-deps, or use --skip-heatmap.",
         ));
     }
-    eprintln!("Installing R package pheatmap from {cran_mirror}");
+    eprintln!("{}", log_line("INFO", &format!("Installing R package pheatmap from {cran_mirror}")));
     let status = Command::new(rscript.as_ref()).arg("-e").arg(format!("install.packages('pheatmap', repos='{cran_mirror}')")).status()?;
     if !status.success() {
         return Err(std::io::Error::other("R dependency installation failed"));
@@ -169,20 +170,39 @@ fn run(args: &Args) -> std::io::Result<()> {
 
     let tags = BarcodeTagNames { cr: args.cr_tag.clone(), cb: args.cb_tag.clone(), ur: args.ur_tag.clone(), ub: args.ub_tag.clone() };
 
+    // Ports `barcode_edits`' own `logging.info` calls (scbam.py), which
+    // this port's pure `barcode_edits` compute function doesn't print
+    // itself -- reproduced here, in the same order, around/after the
+    // equivalent call.
+    eprintln!("{}", log_line("INFO", &format!("Reading BAM file \"{}\" ...", args.in_file.display())));
     let (mut reader, _header) = rseqc_formats::open_bam(&args.in_file)?;
     let stats = barcode_edits(reader.records(), &tags, args.reads_num)?;
 
+    eprintln!("{}", log_line("INFO", &format!("Total alignments processed: {}", stats.total_alignments)));
+    eprintln!("{}", log_line("INFO", &format!("Number of alignmenets with <cell barcode> kept AS IS: {}", stats.cb.same)));
+    eprintln!("{}", log_line("INFO", &format!("Number of alignmenets with <cell barcode> edited: {}", stats.cb.diff)));
+    eprintln!("{}", log_line("INFO", &format!("Number of alignmenets with <cell barcode> missing: {}", stats.cb.miss)));
+    eprintln!("{}", log_line("INFO", &format!("Number of alignmenets with UMI kept AS IS: {}", stats.umi.same)));
+    eprintln!("{}", log_line("INFO", &format!("Number of alignmenets with UMI edited: {}", stats.umi.diff)));
+    eprintln!("{}", log_line("INFO", &format!("Number of alignmenets with UMI missing: {}", stats.umi.miss)));
+
     let prefix = args.out_file.to_string_lossy().into_owned();
-    File::create(format!("{prefix}.CB_freq.tsv"))?.write_all(render_freq_tsv(&stats.cb).as_bytes())?;
-    File::create(format!("{prefix}.UMI_freq.tsv"))?.write_all(render_freq_tsv(&stats.umi).as_bytes())?;
+    let cb_freq_path = format!("{prefix}.CB_freq.tsv");
+    let umi_freq_path = format!("{prefix}.UMI_freq.tsv");
+    eprintln!("{}", log_line("INFO", &format!("Writing cell barcode frequencies to \"{cb_freq_path}\"")));
+    File::create(&cb_freq_path)?.write_all(render_freq_tsv(&stats.cb).as_bytes())?;
+    eprintln!("{}", log_line("INFO", &format!("Writing UMI frequencies to \"{umi_freq_path}\"")));
+    File::create(&umi_freq_path)?.write_all(render_freq_tsv(&stats.umi).as_bytes())?;
 
     let cb_matrix_path = format!("{prefix}.CB_edits_count.csv");
     let umi_matrix_path = format!("{prefix}.UMI_edits_count.csv");
+    eprintln!("{}", log_line("INFO", &format!("Writing the nucleotide editing matrix (count) of cell barcode to \"{cb_matrix_path}\"")));
     File::create(&cb_matrix_path)?.write_all(render_edit_matrix_csv(&stats.cb.corrected_bases).as_bytes())?;
+    eprintln!("{}", log_line("INFO", &format!("Writing the nucleotide editing matrix of molecular barcode (UMI) to \"{umi_matrix_path}\"")));
     File::create(&umi_matrix_path)?.write_all(render_edit_matrix_csv(&stats.umi.corrected_bases).as_bytes())?;
 
-    eprintln!("Created {cb_matrix_path}");
-    eprintln!("Created {umi_matrix_path}");
+    eprintln!("{}", log_line("INFO", &format!("Created {cb_matrix_path}")));
+    eprintln!("{}", log_line("INFO", &format!("Created {umi_matrix_path}")));
 
     if !args.skip_heatmap {
         ensure_r_dependencies(&args.rscript, args.install_r_deps, &args.cran_mirror)?;
@@ -191,6 +211,6 @@ fn run(args: &Args) -> std::io::Result<()> {
         generate_heatmap(&umi_matrix_path, &format!("{prefix}.UMI_edits_heatmap"), &args.file_type, args.cell_width, args.cell_height, args.col_angle, args.font_size, &args.text_color, args.no_num)?;
     }
 
-    eprintln!("Done.");
+    eprintln!("{}", log_line("INFO", "Done."));
     Ok(())
 }

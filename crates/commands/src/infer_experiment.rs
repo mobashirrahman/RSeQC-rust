@@ -101,6 +101,15 @@ pub struct ExperimentResult {
     pub spec1: f64,
     pub spec2: f64,
     pub undetermined: f64,
+    /// Number of usable (strand-classified) reads sampled -- upstream's
+    /// `count`, reported via "Total N usable reads were sampled".
+    pub sampled_count: u64,
+    /// True when the record stream was exhausted (upstream's
+    /// `StopIteration` on `next(self.samfile)`) before `sample_size` was
+    /// reached -- the CLI layer prints "Finished" in that case only, same
+    /// as upstream's `except StopIteration: print("Finished", ...)`
+    /// (hitting the sample-size cap instead breaks the loop silently).
+    pub stopped_at_eof: bool,
 }
 
 pub fn compute_experiment<I>(
@@ -116,11 +125,22 @@ where
     let mut count = 0u64;
     let mut p_strandness: HashMap<String, u64> = HashMap::new();
     let mut s_strandness: HashMap<String, u64> = HashMap::new();
+    let mut records_iter = records.into_iter();
+    let mut stopped_at_eof = false;
 
-    for result in records {
+    loop {
         if count >= sample_size {
             break;
         }
+        // Mirrors upstream's `next(self.samfile)` / `except StopIteration`:
+        // check the sample-size cap BEFORE pulling the next record (so a
+        // `for`-loop's eager pull-then-check wouldn't consume one extra
+        // record past the cap), and treat exhaustion as ending the whole
+        // loop rather than just this iteration.
+        let Some(result) = records_iter.next() else {
+            stopped_at_eof = true;
+            break;
+        };
         let record = result?;
 
         let flags = record.flags();
@@ -206,6 +226,8 @@ where
         spec1,
         spec2,
         undetermined: other,
+        sampled_count: count,
+        stopped_at_eof,
     })
 }
 
@@ -295,6 +317,38 @@ mod tests {
         // Only bucket populated is "++": spec1 should be 1.0 (all reads explained by ++/--).
         assert_eq!(result.spec1, 1.0);
         assert_eq!(result.spec2, 0.0);
+        // Regression coverage for stderr progress lines (a kept
+        // synthetic-sweep failure showed the CLI printed nothing at all):
+        // one usable read was sampled, and the record stream ran out
+        // before `sample_size` (200_000) was reached, so upstream prints
+        // "Finished" before "Total 1 usable reads were sampled".
+        assert_eq!(result.sampled_count, 1);
+        assert!(result.stopped_at_eof);
+    }
+
+    #[test]
+    fn sample_size_cap_stops_before_end_of_file() {
+        // When `sample_size` is reached before the record stream is
+        // exhausted, upstream's loop breaks via the `count >= sample_size`
+        // check (not `StopIteration`), so it must NOT print "Finished".
+        let header = test_header();
+        let (ranges, _) = GeneRanges::parse("chr1\t0\t1000\tgeneA\t0\t+\n".as_bytes()).unwrap();
+
+        let make_record = || {
+            RecordBuf::builder()
+                .set_flags(Flags::empty())
+                .set_reference_sequence_id(0)
+                .set_alignment_start(noodles_core::Position::new(1).unwrap())
+                .set_mapping_quality(MappingQuality::new(40).unwrap())
+                .set_cigar(Cigar::from(vec![Op::new(Kind::Match, 10)]))
+                .build()
+        };
+
+        let bam_records = to_bam_records(&header, &[make_record(), make_record(), make_record()]);
+        let result = compute_experiment(bam_records.into_iter().map(Ok), &header, &ranges, 2, 30).unwrap();
+
+        assert_eq!(result.sampled_count, 2);
+        assert!(!result.stopped_at_eof);
     }
 
     #[test]
@@ -304,6 +358,8 @@ mod tests {
             spec1: 0.9876,
             spec2: 0.0100,
             undetermined: 0.0024,
+            sampled_count: 0,
+            stopped_at_eof: false,
         };
         let output = render_results(&r);
         let expected = "\nThis is SingleEnd Data\nFraction of reads failed to determine: 0.0024\nFraction of reads explained by \"++,--\": 0.9876\nFraction of reads explained by \"+-,-+\": 0.0100";
@@ -317,6 +373,8 @@ mod tests {
             spec1: 0.5,
             spec2: 0.25,
             undetermined: 0.25,
+            sampled_count: 0,
+            stopped_at_eof: false,
         };
         let output = render_results(&r);
         let expected = "\nThis is PairEnd Data\nFraction of reads failed to determine: 0.2500\nFraction of reads explained by \"1++,1--,2+-,2-+\": 0.5000\nFraction of reads explained by \"1+-,1-+,2++,2--\": 0.2500";
