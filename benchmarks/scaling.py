@@ -103,11 +103,20 @@ def sweep(label, driver, points, real, workroot, commands, reps, base):
                 continue
             w = r.get("wall_e2e", {})
             m = r.get("peak_rss_mb", {})
+            fl = r.get("floor_s") or {}
             out_rows.append({
                 "sweep": label, "driver": driver, "value": value,
                 "command": r["command"],
+                # Net (E1): the per-invocation fixed cost subtracted.
                 "median_python": w.get("median_python"),
                 "median_rust": w.get("median_rust"),
+                # End-to-end (E2): what a user waits for, fixed cost included.
+                # analyze.py renders these as the "py E2"/"rs E2" columns, so
+                # they must be carried or the columns silently print 0.000.
+                "median_python_e2e": w.get("median_python_e2e"),
+                "median_rust_e2e": w.get("median_rust_e2e"),
+                "floor_py": fl.get("python"),
+                "floor_rs": fl.get("rust"),
                 "ratio": w.get("ratio_median"),
                 "ci95": w.get("ratio_ci95"),
                 "rss_py": m.get("median_python"),

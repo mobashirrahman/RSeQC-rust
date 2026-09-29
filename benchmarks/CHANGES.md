@@ -124,6 +124,52 @@ validates that the full artefact set exists and is non-empty before reusing a
 workload; and a missing workload now raises rather than silently measuring nothing.
 The 150bp point was regenerated and re-measured (3.35x, not 25.79x).
 
+### 2.5 A stray runaway process contaminated a full 10-rep run — INVALIDATED that run, 2026-09-29
+
+An orphaned `cargo test --workspace --release` from 14:13 on 2026-09-29 was stuck in
+`tests::open_alignments_decodes_a_real_no_reference_cram_fixture` and ran continuously
+for 3+ hours at 100% of one core, with RSS growing past 20 GB (48 GB virtual, 6.3 GB
+swapped). It was present for the entire duration of a full 10-repetition `main` run, so
+every row in that run was measured on a machine with a persistent background load of
+unknown interference.
+
+The process was killed and the whole suite re-measured from scratch. The CRAM hang
+itself was a transient mid-edit state that the later `crates/formats/src/lib.rs` change
+already fixed: the test passes in 0.00 s now, three runs in a row.
+
+**This is a second, independent instance of the same underlying class of error as §2.1
+and §2.4 — a measurement that was never checked for whether it measured anything.** The
+harness records the load average at start (`os.getloadavg()` in `environment()`), but
+nothing compared load before against load after, so a machine that got busier *during* a
+block, or was already busy before it started, produced a clean-looking run.
+
+### 2.6 `tin` holds a whole-file read index where a sliding window suffices — results changed, re-measured, 2026-09-29
+
+Not a harness bug, but recorded here because it moved a reported number by more than an
+order of magnitude in the column that decides whether the port is usable.
+
+`tin` builds its read index with `build_read_index`, which retains every read in the BAM
+for the whole run. Each `IndexedRead` carries per-read heap buffers (query name,
+qualities, sequence, CIGAR, two block lists), so this costs roughly 600 bytes per read:
+600k reads measured 366 MB against upstream `pysam`'s 43 MB, and the port lost that row's
+memory 8.5x even while winning on time 8.05x.
+
+But `compute_tin` only ever consumes the reads whose *start* falls inside the current
+transcript's span. The port now streams the BAM once in transcript coordinate order and
+keeps only the reads that can still reach a transcript not yet scored, retiring a read
+as soon as `end <= tx_start` (safe, because `start < end <= tx_start` puts it before
+every later window and `reads_starting_in` would have excluded it anyway). The resident
+set falls from 597,048 reads to a mean of 3,424 (max 16,438) on the benchmark workload.
+
+This is exact, not an approximation: the per-transcript scoring arithmetic is a single
+shared `score_sample` function, transcripts are scored in coordinate order but collected
+by original index so row order and the summary's pairwise-summation order are unchanged,
+and both output files are byte-identical to upstream on all 3000 transcripts on the
+600k-read workload and all 26,590 on the 400k-read workload, with and without
+`--subtract-background`. A non-coordinate-sorted input is detected and falls back to the
+whole-file path, which is the only behavioural difference (pysam itself refuses to index
+an unsorted BAM, so this is not reachable through the documented CLI).
+
 ---
 
 ## 3. Additional artefacts produced
