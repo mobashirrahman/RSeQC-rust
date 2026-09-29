@@ -174,9 +174,11 @@ def run_with_timing(
 def normalize_temp_paths(data: bytes) -> bytes:
     """Normalize temp paths in R/shell scripts: replace /tmp/tmp* with <TEMP>."""
     text = data.decode("utf-8", errors="replace")
-    # Replace /tmp/tmp* or /scratch/*/tmp/tmp* paths with placeholder
+    # Replace /tmp/tmp* or /scratch/*/tmp/tmp* paths with placeholder.
+    # tempfile suffixes can include "_", so include it in the character class
+    # (otherwise one side can normalize to "<TEMP>_" and the other to "<TEMP>").
     import re
-    text = re.sub(r'/[^ \'"]*?/tmp/tmp[a-z0-9]+', '<TEMP>', text)
+    text = re.sub(r'/[^ \'"]*?/tmp/tmp[a-z0-9_]+', '<TEMP>', text)
     return text.encode("utf-8")
 
 
@@ -474,7 +476,11 @@ def main():
     if not args.workload.is_dir():
         print(f"Error: workload directory not found: {args.workload}", file=sys.stderr)
         sys.exit(1)
-    
+
+    # Commands run with cwd set to a per-run temp directory, so a relative
+    # workload path would not resolve. Make it absolute up front.
+    args.workload = args.workload.resolve()
+
     output_dir = args.output_dir
     output_dir.mkdir(parents=True, exist_ok=True)
     

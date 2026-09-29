@@ -2,6 +2,7 @@
 .opencode/node_modules/
 oracle/upstream-src/
 oracle/venv/
+oracle/python313/
 /target/
 /dist/
 /.claude/scheduled_tasks.lock
