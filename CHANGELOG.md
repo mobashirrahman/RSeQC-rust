@@ -19,11 +19,13 @@ of a feature or a closed divergence, not every commit.
   interleaved paired repetitions and paired block-bootstrap intervals
   (`benchmarks/bench.py`), cost-driver sweeps (`benchmarks/scaling.py`), and
   table regeneration from raw data (`benchmarks/analyze.py`). Results for 29 commands at
-  10 repetitions are in `benchmarks/RESULTS.generated.md`; 26 are faster and **3 are
-  reproducibly slower** (`infer_experiment` 0.15x, `bam2fq` 0.33x, `inner_distance`
-  0.53x). The run is not publication-grade (shared hardware), and the measured numbers
-  show the port uses *more* memory than upstream on the 14 commands that decode the
-  whole input eagerly.
+  10 repetitions are in `benchmarks/RESULTS.generated.md`: **all 29 are faster (1.48x to
+  74.7x) and all 29 pass the output-equivalence gate**, and the port uses less memory
+  than upstream on 28 of 29. The run is not publication-grade (shared hardware), and no
+  speedup figure from it may be published without repeating it on isolated hardware.
+  The first run found three commands that were reproducibly *slower* (`infer_experiment`
+  0.18x, `bam2fq` 0.35x, `inner_distance` 0.53x) and 14 that used more memory; all four
+  issues have since been root-caused, fixed and re-measured (see **Fixed** below).
 - Full Rust ports of all 33 upstream RSeQC commands, each with an original-name PATH alias
   (`scripts/install-aliases.sh`) so existing pipelines invoking commands by their upstream name
   work unmodified.
@@ -89,14 +91,14 @@ of a feature or a closed divergence, not every commit.
     range on the chromosome once per sampled read (~1.8e9 comparisons at the 200k
     sample cap), where upstream uses `bx.intervals.Intersecter`, a bitset interval
     index. Replaced with an equivalent O(log n) index (sorted starts + running maximum
-    of ends, per distinct strand), now **1.09x**.
+    of ends, per distinct strand), now **3.43x**.
   - `bam2fq.py` was **0.35x**: its output went to an unbuffered `File`, so a FASTQ
     record's 5 writes each became a syscall -- 5,600,008 `write` calls and 4.6 s of
     system time on 800k reads. Now wrapped in a 1 MiB `BufWriter` (5,600,008 -> 178
-    syscalls), now **2.04x**.
+    syscalls), now **2.32x**.
   - `inner_distance.py` was **0.53x**: it built two `HashSet<String>` of transcript
     names per pair, twice per pair, by scanning all transcripts. Replaced with an
-    O(log n) same-transcript query, now **9.94x**.
+    O(log n) same-transcript query, now **11.18x**.
   The optimisation in each case is covered by a randomised test asserting it returns
   exactly what the code it replaced returned, and the full 84-case differential harness
   re-runs green.
