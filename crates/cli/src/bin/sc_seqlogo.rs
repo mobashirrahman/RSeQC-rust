@@ -33,6 +33,7 @@ use std::io::Write as _;
 use std::path::PathBuf;
 
 use clap::Parser;
+use rseqc_commands::pylog::log_line;
 use rseqc_commands::sc_seqlogo::{
     compute_count_matrix, fasta_iter, fastq_seq_strings, render_count_matrix_csv, CountMatrix,
 };
@@ -159,9 +160,9 @@ fn run(args: &Args) -> std::io::Result<()> {
     // with `logging.info("Reading FASTA/FASTQ file \"%s\" ...")` --
     // unconditional, before any sequence is consumed.
     if args.in_format == "fq" {
-        eprintln!("Reading FASTQ file \"{}\" ...", args.in_file.display());
+        eprintln!("{}", log_line("INFO", &format!("Reading FASTQ file \"{}\" ...", args.in_file.display())));
     } else {
-        eprintln!("Reading FASTA file \"{}\" ...", args.in_file.display());
+        eprintln!("{}", log_line("INFO", &format!("Reading FASTA file \"{}\" ...", args.in_file.display())));
     }
     let reader = rseqc_formats::open_text_input(&args.in_file)?;
     let seqs = if args.in_format == "fq" {
@@ -170,29 +171,12 @@ fn run(args: &Args) -> std::io::Result<()> {
         fasta_iter(reader)?
     };
 
-    // Upstream's `seq2countMat` also prints a `"%d sequences
-    // finished\r"` progress line every `--step-size` sequences (a
-    // `\r`-overwriting in-place counter, `end=' '` no newline) while
-    // scanning -- not reproduced here (this port reads all sequences
-    // eagerly before counting, so there's no natural mid-scan point to
-    // interleave it without restructuring `compute_count_matrix`); a
-    // disclosed, low-value gap given it only fires past --step-size
-    // sequences (default 10,000) and is a purely cosmetic, ephemeral
-    // terminal indicator, not data.
-    let matrix = compute_count_matrix(&seqs, args.max_seq, args.exclude_n)?;
+    // `compute_count_matrix` prints upstream's `seq2countMat` progress
+    // trail itself (the `--step-size` `\r`-counter, "N sequences
+    // finished", "Make data frame ...", "Filling NA ...") -- see its
+    // doc comment.
+    let matrix = compute_count_matrix(&seqs, args.max_seq, args.exclude_n, args.step_size)?;
     let sequence_length = matrix.rows.len() as i64;
-
-    // Upstream: `logging.info("%d sequences finished" % count)` after
-    // the scan loop -- `count` there is every sequence ITERATED (even
-    // ones later skipped for containing "N"), capped at --nseq-limit
-    // if the loop's own `break` fired first.
-    let processed_count = match args.max_seq {
-        Some(limit) => seqs.len().min(limit.max(0) as usize),
-        None => seqs.len(),
-    };
-    eprintln!("{processed_count} sequences finished");
-    eprintln!("Make data frame from dict of dict ...");
-    eprintln!("Filling NA as zero ...");
 
     if let Some(s) = args.highlight_start {
         if s >= sequence_length || args.highlight_end.unwrap() >= sequence_length {
@@ -213,13 +197,13 @@ fn run(args: &Args) -> std::io::Result<()> {
     let logo_path = format!("{prefix}.logo.{}", args.out_format);
 
     // Upstream: `logging.info("Making logo ...")` -- unconditional.
-    eprintln!("Making logo ...");
+    eprintln!("{}", log_line("INFO", "Making logo ..."));
     // Upstream: `if exclude_N: logging.info("'N' will be excluded.")
     // else: logging.info("'N' will be kept.")` -- unconditional.
     if args.exclude_n {
-        eprintln!("'N' will be excluded.");
+        eprintln!("{}", log_line("INFO", "'N' will be excluded."));
     } else {
-        eprintln!("'N' will be kept.");
+        eprintln!("{}", log_line("INFO", "'N' will be kept."));
     }
 
     let stack_order = StackOrder::parse(&args.stack_order).ok_or_else(|| {
@@ -239,11 +223,11 @@ fn run(args: &Args) -> std::io::Result<()> {
     // (`.logo.mean_centered.<format>`, dot-separated); reproduced
     // exactly, including the mismatch (see module doc comment).
     eprintln!(
-        "Mean-centered logo saved to \"{prefix}.logo_mean_centered.{}\".",
-        args.out_format
+        "{}",
+        log_line("INFO", &format!("Mean-centered logo saved to \"{prefix}.logo_mean_centered.{}\".", args.out_format))
     );
     if let Some((s, e)) = highlight {
-        eprintln!("Highlight logo from {s} to {e}");
+        eprintln!("{}", log_line("INFO", &format!("Highlight logo from {s} to {e}")));
     }
     let mean_centered_path = format!("{prefix}.logo.mean_centered.{}", args.out_format);
     write_logo(
@@ -257,9 +241,9 @@ fn run(args: &Args) -> std::io::Result<()> {
 
     // Upstream: `logging.info("Logo saved to \"%s\"." % (outfile +
     // '.logo.' + oformat))` -- unconditional.
-    eprintln!("Logo saved to \"{prefix}.logo.{}\".", args.out_format);
+    eprintln!("{}", log_line("INFO", &format!("Logo saved to \"{prefix}.logo.{}\".", args.out_format)));
     if let Some((s, e)) = highlight {
-        eprintln!("Highlight logo from {s} to {e}");
+        eprintln!("{}", log_line("INFO", &format!("Highlight logo from {s} to {e}")));
     }
     write_logo(
         &logo_path,
@@ -269,6 +253,15 @@ fn run(args: &Args) -> std::io::Result<()> {
         &args.out_format,
         false,
     )?;
+
+    // Upstream: `logging.info("Created %s", count_matrix_path)` /
+    // `logging.info("Created %s", logo_path)` / `logging.info("Done.")`
+    // -- printed only after every write above has succeeded (note: only
+    // the FINAL, non-mean-centered logo path gets a "Created" line --
+    // `expected_output_paths` never returns the mean-centered one).
+    eprintln!("{}", log_line("INFO", &format!("Created {count_matrix_path}")));
+    eprintln!("{}", log_line("INFO", &format!("Created {logo_path}")));
+    eprintln!("{}", log_line("INFO", "Done."));
 
     Ok(())
 }

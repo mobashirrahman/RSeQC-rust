@@ -86,11 +86,26 @@ impl PositionCounts {
     }
 }
 
-/// Ports `seq2countMat`: per-position nucleotide histograms. `limit`
-/// stops after that many sequences; `exclude_n` skips any sequence
-/// containing the literal character `'N'` entirely (not just at that
-/// position).
-fn seq2count_mat(seqs: &[String], limit: Option<i64>, exclude_n: bool) -> Vec<PositionCounts> {
+/// Ports `seq2countMat`: per-position nucleotide histograms, INCLUDING
+/// its own progress/count printing (upstream does this from inside the
+/// same loop, not as a separate pass -- see module docs' precedent in
+/// `sc_bamstat::mapping_stat` for why this compute function is
+/// side-effecting rather than pure).
+///
+/// `limit` stops after that many sequences; `exclude_n` skips any
+/// sequence containing the literal character `'N'` entirely (not just
+/// at that position). `step_size` prints a `"N sequences finished\r "`
+/// progress line (upstream: `print(..., end=' ')`, a `\r`-overwriting
+/// counter, no trailing newline) every `step_size` sequences -- but
+/// ONLY for a sequence that reaches the per-base counting step, i.e.
+/// NOT for one skipped via `exclude_n` (upstream's `continue` jumps
+/// past both the step-size check and the `limit` check for an excluded
+/// sequence). That same ordering means `count` can keep incrementing
+/// PAST `limit` if the sequences right at the limit boundary are
+/// excluded -- `count`'s final value is whatever `logging.info("%d
+/// sequences finished")` would print, not a naive
+/// `seqs.len().min(limit)`.
+fn seq2count_mat(seqs: &[String], limit: Option<i64>, exclude_n: bool, step_size: i64) -> (Vec<PositionCounts>, i64) {
     let mut mat: Vec<PositionCounts> = Vec::new();
     let mut count = 0i64;
 
@@ -105,6 +120,9 @@ fn seq2count_mat(seqs: &[String], limit: Option<i64>, exclude_n: bool) -> Vec<Po
             }
             mat[i].add(base);
         }
+        if count % step_size == 0 {
+            eprint!("{count} sequences finished\r ");
+        }
         if let Some(l) = limit {
             if count >= l {
                 break;
@@ -112,7 +130,9 @@ fn seq2count_mat(seqs: &[String], limit: Option<i64>, exclude_n: bool) -> Vec<Po
         }
     }
 
-    mat
+    eprintln!("{}", crate::pylog::log_line("INFO", &format!("{count} sequences finished")));
+
+    (mat, count)
 }
 
 pub struct CountMatrix {
@@ -123,14 +143,30 @@ pub struct CountMatrix {
 }
 
 /// Computes the full count matrix and its column order from raw input
-/// sequences. This is the whole `.count_matrix.csv` deliverable (see
-/// module docs for why the `.logo.<format>` image is out of scope).
+/// sequences, plus the final processed-sequence count (upstream's
+/// `count`, for the CLI's `logging.info("Created ...")` bookkeeping --
+/// already PRINTED by [`seq2count_mat`] itself, this is just returned so
+/// callers don't need to recompute it separately). This is the whole
+/// `.count_matrix.csv` deliverable (see module docs for why the
+/// `.logo.<format>` image is out of scope).
+///
+/// `step_size` is upstream's `--step-size`: see [`seq2count_mat`] for
+/// exactly what it controls.
 pub fn compute_count_matrix(
     seqs: &[String],
     limit: Option<i64>,
     exclude_n: bool,
+    step_size: i64,
 ) -> io::Result<CountMatrix> {
-    let mat = seq2count_mat(seqs, limit, exclude_n);
+    let (mat, _count) = seq2count_mat(seqs, limit, exclude_n, step_size);
+
+    // Upstream prints these two lines (`seq2countMat`'s own tail, fastq.py)
+    // unconditionally, BEFORE the caller's `matrix is None or matrix.empty`
+    // check -- so they must appear even on the "no usable sequences" error
+    // path below, not just the success path.
+    eprintln!("{}", crate::pylog::log_line("INFO", "Make data frame from dict of dict ..."));
+    eprintln!("{}", crate::pylog::log_line("INFO", "Filling NA as zero ..."));
+
     if mat.is_empty() {
         return Err(io::Error::new(io::ErrorKind::InvalidData, "no usable sequences were found; check the input format, sequence content, and --exclude-N setting"));
     }
@@ -208,6 +244,31 @@ mod tests {
     }
 
     #[test]
+    fn count_overshoots_limit_when_boundary_sequences_are_excluded() {
+        // Regression test for a real upstream quirk found while wiring
+        // up "N sequences finished": upstream's `count += 1` happens
+        // BEFORE the `exclude_N`/`continue` check, but the
+        // `limit`-reached `break` is UNREACHABLE for an excluded
+        // sequence (the `continue` jumps past it). So if the sequence
+        // that would have hit `limit` is itself excluded, `count` keeps
+        // climbing until a NON-excluded sequence finally triggers the
+        // break -- final `count` can be strictly greater than `limit`.
+        // Here: limit=2, but sequences 2 and 3 (1-indexed) both contain
+        // 'N' and are excluded, so the loop doesn't stop until sequence
+        // 4 (a non-excluded one) is processed, at count=4.
+        let seqs = vec!["AC".to_string(), "AN".to_string(), "GN".to_string(), "GT".to_string(), "CC".to_string()];
+        let (_mat, count) = seq2count_mat(&seqs, Some(2), true, 10_000);
+        assert_eq!(count, 4, "count should overshoot `limit` when boundary sequences are excluded");
+    }
+
+    #[test]
+    fn count_stops_exactly_at_limit_when_no_exclusion_involved() {
+        let seqs = vec!["AC".to_string(), "GT".to_string(), "CC".to_string()];
+        let (_mat, count) = seq2count_mat(&seqs, Some(2), false, 10_000);
+        assert_eq!(count, 2);
+    }
+
+    #[test]
     fn fastq_seq_strings_extracts_second_line() {
         let text = "@r1\nACGT\n+\nIIII\n@r2\nTTTT\n+\nIIII\n";
         let seqs = fastq_seq_strings(Cursor::new(text)).unwrap();
@@ -225,7 +286,7 @@ mod tests {
             "TCGT".to_string(),
             "ACGT".to_string(),
         ];
-        let matrix = compute_count_matrix(&seqs, None, false).unwrap();
+        let matrix = compute_count_matrix(&seqs, None, false, 10_000).unwrap();
         // Column order: A (pos0 first seq), T (pos0 third seq),
         // C (pos1), G (pos2) -- NOT alphabetical, NOT fixed ACGT.
         assert_eq!(matrix.bases, vec!['A', 'T', 'C', 'G']);
@@ -248,7 +309,7 @@ mod tests {
             "TCGT".to_string(),
             "ACGT".to_string(),
         ];
-        let matrix = compute_count_matrix(&seqs, None, false).unwrap();
+        let matrix = compute_count_matrix(&seqs, None, false, 10_000).unwrap();
         let csv = render_count_matrix_csv(&matrix);
         let expected = "Index,A,T,C,G\n0,3.0,1.0,0.0,0.0\n1,0.0,0.0,4.0,0.0\n2,0.0,0.0,0.0,4.0\n3,1.0,3.0,0.0,0.0\n";
         assert_eq!(csv, expected);
@@ -273,12 +334,12 @@ mod tests {
     #[test]
     fn compute_count_matrix_exclude_n_skips_whole_sequence() {
         let seqs = vec!["ACGT".to_string(), "ACGN".to_string()];
-        let with_n = compute_count_matrix(&seqs, None, false).unwrap();
+        let with_n = compute_count_matrix(&seqs, None, false, 10_000).unwrap();
         // bases order: A(pos0),C(pos1),G(pos2),T(pos3 from ACGT),N(pos3 from ACGN)
         assert_eq!(with_n.bases, vec!['A', 'C', 'G', 'T', 'N']);
         assert_eq!(with_n.rows[3], vec![0, 0, 0, 1, 1]); // T then N both counted at pos3
 
-        let without_n = compute_count_matrix(&seqs, None, true).unwrap();
+        let without_n = compute_count_matrix(&seqs, None, true, 10_000).unwrap();
         // Only "ACGT" contributes -- pos3 has just T, no N column at all.
         assert_eq!(without_n.bases, vec!['A', 'C', 'G', 'T']);
         assert_eq!(without_n.rows[3], vec![0, 0, 0, 1]);
@@ -286,8 +347,8 @@ mod tests {
 
     #[test]
     fn compute_count_matrix_errors_on_no_usable_sequences() {
-        assert!(compute_count_matrix(&[], None, false).is_err());
+        assert!(compute_count_matrix(&[], None, false, 10_000).is_err());
         let all_excluded = vec!["ACGN".to_string()];
-        assert!(compute_count_matrix(&all_excluded, None, true).is_err());
+        assert!(compute_count_matrix(&all_excluded, None, true, 10_000).is_err());
     }
 }
