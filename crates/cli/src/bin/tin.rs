@@ -18,7 +18,10 @@ use std::path::{Path, PathBuf};
 
 use clap::Parser;
 use rseqc_commands::genebody_coverage::get_bam_files;
-use rseqc_commands::tin::{build_exon_ranges, build_read_index, compute_tin, genomic_positions, render_summary, render_tin_xls};
+use rseqc_commands::tin::{
+    build_exon_ranges, build_read_index, compute_tin, compute_tin_windowed, genomic_positions, render_summary, render_tin_xls,
+    WindowedTin,
+};
 use rseqc_formats::interval::MergedRegions;
 use rseqc_formats::bed::get_exon;
 
@@ -120,9 +123,21 @@ fn process_bam(args: &Args, bam: &Path, exon_ranges: Option<&MergedRegions>) -> 
     let samples = genomic_positions(BufReader::new(refgene_file), args.sample_size)?;
 
     let (mut reader, header) = rseqc_formats::open_bam(bam)?;
-    let reads_by_chrom = build_read_index(reader.records(), &header)?;
 
-    let (records, summary) = compute_tin(&samples, &reads_by_chrom, args.minimum_coverage, exon_ranges);
+    // Sliding-window driver: scores the same TIN numbers as the whole-file
+    // index while holding only the reads that can still reach an unscored
+    // transcript, instead of every read in the BAM. Falls back to the
+    // whole-file path if the input turns out not to be coordinate-sorted,
+    // which is the one precondition the window relies on.
+    let (records, summary) = match compute_tin_windowed(reader.records(), &header, &samples, args.minimum_coverage, exon_ranges)? {
+        WindowedTin::Computed(records, summary) => (records, summary),
+        WindowedTin::NotCoordinateSorted => {
+            eprintln!("BAM is not coordinate-sorted; falling back to whole-file read index (higher memory use)");
+            let (mut reader, header) = rseqc_formats::open_bam(bam)?;
+            let reads_by_chrom = build_read_index(reader.records(), &header)?;
+            compute_tin(&samples, &reads_by_chrom, args.minimum_coverage, exon_ranges)
+        }
+    };
     for finished in (100..=records.len()).step_by(100) {
         eprintln!("{finished} transcripts finished");
     }
