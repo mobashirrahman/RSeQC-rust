@@ -35,9 +35,21 @@ fn main() -> std::process::ExitCode {
 }
 
 fn run(args: &Args) -> std::io::Result<()> {
+    // `print(f"Processing {gene_model} ...", end=" ")` then a separate
+    // `print("Done")` on the same line (one space from `end=" "`, one
+    // trailing newline from the "Done" print).
+    eprint!("Processing {} ... ", args.refgene.display());
     let model = process_gene_model(&args.refgene)?;
+    eprintln!("Done");
+
+    // `print(f"Processing {input_file} ...", end=" ")` then a separate
+    // `print("Finished\n")`: the literal "\n" plus the print's own
+    // newline give a BLANK line after "Finished", not just one newline.
+    eprint!("Processing {} ... ", args.input_file.display());
     let (header, records) = rseqc_formats::open_alignments(&args.input_file)?;
     let counts = count_read_distribution(records, &header, &model)?;
+    eprintln!("Finished\n");
+
     println!("{}", render_report(&model, &counts));
     Ok(())
 }
