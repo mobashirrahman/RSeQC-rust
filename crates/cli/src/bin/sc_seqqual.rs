@@ -12,8 +12,10 @@ use std::path::PathBuf;
 use std::process::Command;
 
 use clap::Parser;
+use rseqc_commands::pandas_repr::render_debug_matrix;
+use rseqc_commands::pylog::log_line;
 use rseqc_commands::sc_editmatrix::render_heatmap_r_script;
-use rseqc_commands::sc_seqqual::{fastq_qual_strings, qual2count_mat, render_quality_matrices};
+use rseqc_commands::sc_seqqual::{build_debug_matrices, fastq_qual_strings, qual2count_mat, render_quality_matrices};
 
 #[derive(Parser)]
 #[command(name = "sc_seqQual.py", about = "Generate sequencing-quality matrices and a heatmap from a FASTQ file.")]
@@ -96,7 +98,7 @@ fn ensure_r_dependencies(rscript: &str, install_missing: bool, cran_mirror: &str
             "R package 'pheatmap' is not installed. Install it with \"Rscript -e \\\"install.packages('pheatmap', repos='https://cloud.r-project.org')\\\"\", rerun with --install-r-deps, or use --skip-heatmap.",
         ));
     }
-    eprintln!("Installing R package pheatmap from {cran_mirror}");
+    eprintln!("{}", log_line("INFO", &format!("Installing R package pheatmap from {cran_mirror}")));
     let status = Command::new(rscript.as_ref()).arg("-e").arg(format!("install.packages('pheatmap', repos='{cran_mirror}')")).status()?;
     if !status.success() {
         return Err(std::io::Error::other("R dependency installation failed"));
@@ -117,9 +119,34 @@ fn run(args: &Args) -> std::io::Result<()> {
         return Err(std::io::Error::new(std::io::ErrorKind::InvalidInput, "--cell-width, --cell-height, and --font-size must be greater than zero"));
     }
 
+    // Ports `fastq_iter`/`qual2countMat`'s own `logging.info` calls
+    // (fastq.py), which this port's pure `fastq_qual_strings`/
+    // `qual2count_mat` compute functions don't print themselves --
+    // reproduced here in the same order, around the equivalent calls.
+    eprintln!("{}", log_line("INFO", &format!("Reading FASTQ file \"{}\" ...", args.in_file.display())));
     let quals = fastq_qual_strings(rseqc_formats::open_text_input(&args.in_file)?)?;
     let dat = qual2count_mat(&quals, args.max_seq);
+    let n_finished = match args.max_seq {
+        Some(limit) => quals.len().min(limit.max(0) as usize),
+        None => quals.len(),
+    };
+    eprintln!("{}", log_line("INFO", &format!("{n_finished} quality sequences finished")));
+    eprintln!("{}", log_line("INFO", "Make data frame from dict of dict ..."));
+    eprintln!("{}", log_line("INFO", "Filling NA as zero ..."));
+
+    if args.verbose {
+        if let Some((count_matrix, _)) = build_debug_matrices(&dat) {
+            eprintln!("{}", log_line("DEBUG", &format!("Sequence quality score matrix (raw read counts):\n{}", render_debug_matrix(&count_matrix))));
+        }
+    }
+
     let (count_csv, percent_csv) = render_quality_matrices(&dat)?;
+
+    if args.verbose {
+        if let Some((_, percent_matrix)) = build_debug_matrices(&dat) {
+            eprintln!("{}", log_line("DEBUG", &format!("Sequence quality score matrix (fraction of reads):\n{}", render_debug_matrix(&percent_matrix))));
+        }
+    }
 
     let prefix = args.out_file.to_string_lossy().into_owned();
     let count_path = format!("{prefix}.qual_count.csv");
@@ -127,8 +154,8 @@ fn run(args: &Args) -> std::io::Result<()> {
     File::create(&count_path)?.write_all(count_csv.as_bytes())?;
     File::create(&percent_path)?.write_all(percent_csv.as_bytes())?;
 
-    eprintln!("Created {count_path}");
-    eprintln!("Created {percent_path}");
+    eprintln!("{}", log_line("INFO", &format!("Created {count_path}")));
+    eprintln!("{}", log_line("INFO", &format!("Created {percent_path}")));
 
     if !args.skip_heatmap {
         ensure_r_dependencies(&args.rscript, args.install_r_deps, &args.cran_mirror)?;
@@ -149,15 +176,15 @@ fn run(args: &Args) -> std::io::Result<()> {
         // not args.rscript.
         let status = Command::new("Rscript").arg(&r_path).status();
         if !matches!(status, Ok(s) if s.success()) {
-            eprintln!("Failed to run Rscript file \"{r_path}\"");
+            eprintln!("{}", log_line("ERROR", &format!("Failed to run Rscript file \"{r_path}\"")));
         }
 
         if !std::path::Path::new(&heatmap_path).is_file() {
             return Err(std::io::Error::other(format!("heatmap generation failed; expected output was not created: {heatmap_path}")));
         }
-        eprintln!("Created {heatmap_path}");
+        eprintln!("{}", log_line("INFO", &format!("Created {heatmap_path}")));
     }
 
-    eprintln!("Done.");
+    eprintln!("{}", log_line("INFO", "Done."));
     Ok(())
 }

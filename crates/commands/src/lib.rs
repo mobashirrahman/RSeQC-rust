@@ -25,6 +25,7 @@ pub mod insertion_profile;
 pub mod junction_annotation;
 pub mod junction_saturation;
 pub mod mismatch_profile;
+pub mod pandas_repr;
 pub mod pylog;
 pub mod python_fmt;
 pub mod read_duplication;

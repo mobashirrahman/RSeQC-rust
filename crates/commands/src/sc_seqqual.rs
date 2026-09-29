@@ -24,6 +24,7 @@
 use std::collections::{BTreeSet, HashMap};
 use std::io::{self, BufRead};
 
+use crate::pandas_repr::{DebugColumn, DebugMatrix};
 use crate::python_fmt::python_str_float;
 
 /// Ports `fastq_iter(infile, mode='qual')`: yields the 4th line of each
@@ -136,6 +137,47 @@ pub fn render_quality_matrices(dat: &[HashMap<i64, i64>]) -> io::Result<(String,
     }
 
     Ok((count_csv, percent_csv))
+}
+
+/// Builds the `(raw_counts, fraction)` `DebugMatrix` pair for the CLI's
+/// `--verbose` `logging.debug("Sequence quality score matrix (...):\n%s",
+/// quality_matrix)` lines -- same row/column shape and same
+/// `fully_dense`-decided int-vs-float dtype as [`render_quality_matrices`]'s
+/// CSV output (both come from the SAME upstream `quality_matrix`/
+/// `quality_percent` objects), just rendered as a pandas `repr()` instead
+/// of a CSV. Returns `None` if `dat` is empty (mirrors
+/// `render_quality_matrices`'s own empty check; the CLI only calls this
+/// after that check has already passed, so `None` shouldn't occur in
+/// practice, but this avoids a second copy of the "empty" error).
+pub fn build_debug_matrices(dat: &[HashMap<i64, i64>]) -> Option<(DebugMatrix, DebugMatrix)> {
+    if dat.is_empty() {
+        return None;
+    }
+
+    let mut scores: BTreeSet<i64> = BTreeSet::new();
+    for pos_map in dat {
+        scores.extend(pos_map.keys().copied());
+    }
+    let scores: Vec<i64> = scores.into_iter().rev().collect(); // descending
+
+    let totals: Vec<i64> = dat.iter().map(|m| m.values().sum()).collect();
+    let fully_dense = dat.iter().all(|pos_map| scores.iter().all(|s| pos_map.contains_key(s)));
+
+    let row_labels: Vec<String> = scores.iter().map(|s| s.to_string()).collect();
+
+    let mut count_columns = Vec::with_capacity(dat.len());
+    let mut percent_columns = Vec::with_capacity(dat.len());
+    for (i, pos_map) in dat.iter().enumerate() {
+        let counts: Vec<f64> = scores.iter().map(|s| pos_map.get(s).copied().unwrap_or(0) as f64).collect();
+        let fractions: Vec<f64> = counts.iter().map(|&c| c / totals[i] as f64).collect();
+        count_columns.push(DebugColumn { label: i.to_string(), values: counts });
+        percent_columns.push(DebugColumn { label: i.to_string(), values: fractions });
+    }
+
+    let count_matrix = DebugMatrix { index_name: "pos".to_string(), row_labels: row_labels.clone(), columns: count_columns, all_integer: fully_dense };
+    let percent_matrix = DebugMatrix { index_name: "pos".to_string(), row_labels, columns: percent_columns, all_integer: false };
+
+    Some((count_matrix, percent_matrix))
 }
 
 #[cfg(test)]
