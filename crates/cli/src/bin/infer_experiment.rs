@@ -45,13 +45,31 @@ fn main() -> std::process::ExitCode {
 }
 
 fn run(args: &Args) -> std::io::Result<()> {
+    // Upstream's `validate_args` prints this warning (if any) before doing
+    // any real work -- ahead of even opening the refgene BED.
+    if args.sample_size < 1_000 {
+        eprintln!("Warning: sample size is below 1,000; the inferred protocol may be unreliable.");
+    }
+
+    // `"Reading reference gene model " + refbed + ' ...'` then `end=' '`:
+    // one space from the literal's own trailing `...`+space concatenation,
+    // no second space (unlike read_quality's "Read BAM file ...  Done").
+    eprint!("Reading reference gene model {} ... ", args.refgene.display());
     let (gene_ranges, skipped) = GeneRanges::parse(BufReader::new(File::open(&args.refgene)?))?;
     if skipped > 0 {
         eprintln!("[NOTE: input bed must be 12-column] skipped {skipped} line(s)");
     }
+    eprintln!("Done");
 
+    // `"Loading SAM/BAM file ... "` (trailing space in the literal) plus
+    // `end=' '` gives two spaces before whatever prints next.
+    eprint!("Loading SAM/BAM file ...  ");
     let (header, records) = rseqc_formats::open_alignments(&args.input_file)?;
     let result = compute_experiment(records, &header, &gene_ranges, args.sample_size, args.mapq)?;
+    if result.stopped_at_eof {
+        eprintln!("Finished");
+    }
+    eprintln!("Total {} usable reads were sampled", result.sampled_count);
 
     println!("{}", render_results(&result));
     Ok(())
