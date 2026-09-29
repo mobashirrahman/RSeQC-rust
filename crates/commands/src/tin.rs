@@ -107,9 +107,10 @@ where
 /// when the record is dropped by the qcfail/unmapped/secondary filter that
 /// every upstream fetch()-consuming function in this module applies.
 ///
-/// Shared by the whole-file index (`build_read_index`) and the windowed
-/// driver (`compute_tin_windowed`) so both decode records identically.
-fn to_indexed_read(record: &bam::Record) -> io::Result<Option<IndexedRead>> {
+/// Shared by the whole-file index (`build_read_index`) and both windowed
+/// drivers (`compute_tin_windowed`, `genebody_coverage::compute_coverage_windowed`)
+/// so they decode records identically.
+pub fn to_indexed_read(record: &bam::Record) -> io::Result<Option<IndexedRead>> {
     let flags = record.flags();
     if flags.is_qc_fail() || flags.is_unmapped() || flags.is_secondary() {
         return Ok(None);
@@ -893,8 +894,18 @@ where
         }
 
         // Pull every record that starts before this transcript ends. Records
-        // for a later reference sequence are left unconsumed for their own
+        // for a LATER reference sequence are left unconsumed for their own
         // sample to pick up.
+        //
+        // Records for an EARLIER reference sequence must be CONSUMED and
+        // discarded, not treated as a stop signal. They are left over from a
+        // previous chromosome's block: a coordinate-sorted BAM emits whole
+        // reference sequences in order, so by the time we start a new
+        // chromosome everything still unconsumed from an earlier one is
+        // garbage we will never revisit. Breaking on them instead strands the
+        // stream on the first leftover record and starves every remaining
+        // transcript -- which is exactly what a mixed fixture with an
+        // UNMAPPED-but-positioned record in each chromosome's block produces.
         while let Some(peeked) = records.peek() {
             let next = match peeked {
                 Ok(record) => record,
@@ -903,12 +914,34 @@ where
             };
             // The record's reference id IS the index into the header's
             // reference-sequence list, i.e. its coordinate-sort key.
-            let Some(next_ref) = next.reference_sequence_id().transpose()? else { break };
+            //
+            // A record with NO reference id (BAM tid -1) sorts after every
+            // real reference sequence, so it belongs to no transcript's window.
+            // It must be CONSUMED, not treated as a stop signal: in a
+            // coordinate-sorted BAM these are the trailing unmapped block, and
+            // breaking on them would abandon the rest of the stream and leave
+            // every later transcript with an empty window. They are also
+            // dropped by `to_indexed_read`'s unmapped filter, so consuming one
+            // is free.
+            let Some(next_ref) = next.reference_sequence_id().transpose()? else {
+                records.next();
+                continue;
+            };
             if header.reference_sequences().get_index(next_ref).is_none() {
                 break;
             }
-            if next_ref != s_ref {
+            // Coordinate-sorted order is header-index order, so a record for a
+            // strictly later reference sequence means this one is done.
+            if next_ref > s_ref {
                 break;
+            }
+            // Strictly earlier: a leftover from a finished chromosome's block.
+            // It can never serve this or any later transcript, so consume and
+            // discard it -- breaking here instead strands the stream on the
+            // first leftover and starves every transcript scored after it.
+            if next_ref < s_ref {
+                records.next();
+                continue;
             }
             if closed.contains(&next_ref) {
                 // This reference sequence's block already ended.
@@ -1312,6 +1345,119 @@ chr1\t0\t100\ttx2\t0\t+\t0\t100\t0\t1\t100,\t0,
         let summary = TinSummary { mean: 42.75, median: 42.75, stdev: 0.0 };
         let summary_text = render_summary("sample.bam", &summary);
         assert_eq!(summary_text, "Bam_file\tTIN(mean)\tTIN(median)\tTIN(stdev)\nsample.bam\t42.75\t42.75\t0.0\n");
+    }
+
+    /// An UNMAPPED record that still carries a reference id and position,
+    /// placed INSIDE a reference sequence's block.
+    ///
+    /// This shape is what `verification/run_diff.py`'s synthetic BAMs contain,
+    /// and it is the case that broke the windowed driver: the record's
+    /// `reference_sequence_id()` is `Some`, so it is not the trailing
+    /// tid-less block, but it is skipped by the decoder's unmapped filter.
+    /// Treating "not this chromosome" as a stop signal therefore strands the
+    /// stream on it and starves every transcript scored afterwards.
+    fn positioned_unmapped_record() -> sam::alignment::record_buf::RecordBuf {
+        use sam::alignment::record_buf::{Cigar, RecordBuf};
+
+        RecordBuf::builder()
+            .set_name("orphan")
+            .set_flags(sam::alignment::record::Flags::UNMAPPED)
+            .set_reference_sequence_id(0)
+            .set_alignment_start(noodles_core::Position::try_from(1_500).unwrap())
+            .set_cigar(Cigar::from(vec![sam::alignment::record::cigar::op::Op::new(
+                sam::alignment::record::cigar::op::Kind::Match,
+                10,
+            )]))
+            .build()
+    }
+
+    #[test]
+    fn windowed_survives_a_positioned_unmapped_record_inside_a_block() {
+        use sam::alignment::record::cigar::op::{Kind, Op};
+        use sam::alignment::record_buf::{Cigar, RecordBuf};
+
+        let header = sam::Header::builder()
+            .add_reference_sequence(
+                "chr1",
+                sam::header::record::value::Map::<sam::header::record::value::map::ReferenceSequence>::new(
+                    std::num::NonZeroUsize::new(100_000).unwrap(),
+                ),
+            )
+            .add_reference_sequence(
+                "chr2",
+                sam::header::record::value::Map::<sam::header::record::value::map::ReferenceSequence>::new(
+                    std::num::NonZeroUsize::new(100_000).unwrap(),
+                ),
+            )
+            .build();
+
+        let mut bufs: Vec<RecordBuf> = Vec::new();
+        let covered = |name: &str, ref_id: usize, start: usize| {
+            RecordBuf::builder()
+                .set_name(name.to_string())
+                .set_flags(sam::alignment::record::Flags::empty())
+                .set_reference_sequence_id(ref_id)
+                .set_alignment_start(noodles_core::Position::try_from(start + 1).unwrap())
+                .set_cigar(Cigar::from(vec![Op::new(Kind::Match, 10)]))
+                // Real bases and qualities, or the pileup counts nothing:
+                // `min_base_quality` defaults to 13.
+                .set_sequence(vec![b'A'; 10].into())
+                .set_quality_scores(vec![40; 10].into())
+                .build()
+        };
+        // A normal cluster on chr1, then the positioned-unmapped record at
+        // 1500, then MORE normal chr1 reads, then chr2 reads.
+        for i in 0..20 {
+            bufs.push(covered(&format!("a{i}"), 0, i * 10 + 9));
+        }
+        bufs.push(positioned_unmapped_record());
+        for i in 0..20 {
+            bufs.push(covered(&format!("b{i}"), 0, 5_000 + i * 10));
+        }
+        for i in 0..20 {
+            bufs.push(covered(&format!("c{i}"), 1, i * 10 + 9));
+        }
+        let records = to_bam_records(&header, &bufs);
+
+        // A transcript on chr1 that starts AFTER the unmapped record: it must
+        // still see the reads that follow it.
+        let samples = vec![
+            TranscriptSample {
+                gene_name: "late".into(),
+                chrom: "chr1".into(),
+                tx_start: 5_000,
+                tx_end: 5_200,
+                intron_size: 0,
+                chosen_bases: (5_001..=5_200).step_by(10).collect(),
+            },
+            TranscriptSample {
+                gene_name: "on_chr2".into(),
+                chrom: "chr2".into(),
+                tx_start: 0,
+                tx_end: 210,
+                intron_size: 0,
+                chosen_bases: (1..=210).step_by(10).collect(),
+            },
+        ];
+
+        let index = build_read_index(records.iter().cloned().map(Ok), &header).unwrap();
+        let (want_records, want_summary) = compute_tin(&samples, &index, 0, None);
+
+        let got = compute_tin_windowed(records.iter().cloned().map(Ok), &header, &samples, 0, None).unwrap();
+        let WindowedTin::Computed(got_records, got_summary) = got else { panic!("expected Computed") };
+
+        for (g, w) in got_records.iter().zip(&want_records) {
+            // The load-bearing assertion: a transcript scored AFTER the
+            // unmapped record must not be starved. A zero TIN here would mean
+            // the window stopped pulling at that record.
+            assert_ne!(
+                w.score, 0.0,
+                "fixture transcript {} is uncovered by the whole-file path too, so it proves nothing",
+                w.gene_name
+            );
+            assert_eq!(g.score.to_bits(), w.score.to_bits(), "score differs for {}", g.gene_name);
+        }
+        assert_eq!(got_summary.mean.to_bits(), want_summary.mean.to_bits());
     }
 
     /// Builds a coordinate-sorted record stream spanning several transcripts,

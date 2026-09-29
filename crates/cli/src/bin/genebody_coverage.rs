@@ -15,7 +15,8 @@ use std::process::Command;
 
 use clap::Parser;
 use rseqc_commands::genebody_coverage::{
-    build_index, compute_coverage_for_bam, genebody_percentile, get_bam_files, load_dataset, make_unique_sample_name, render_coverage_txt, valid_name, write_r_code,
+    build_index, compute_coverage_for_bam, compute_coverage_windowed, genebody_percentile, get_bam_files, load_dataset,
+    make_unique_sample_name, render_coverage_txt, valid_name, write_r_code, WindowedCoverage,
 };
 
 #[derive(Parser)]
@@ -97,8 +98,20 @@ fn run(args: &Args) -> std::io::Result<()> {
         eprintln!("Processing {} ...", bam_file.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default());
 
         let (mut reader, header) = rseqc_formats::open_bam(bam_file)?;
-        let reads_by_chrom = build_index(reader.records(), &header)?;
-        let (coverage, float_markers) = compute_coverage_for_bam(&reads_by_chrom, &header, &transcripts);
+        // Sliding-window driver: same aggregate, but only the reads that can
+        // still reach an unscored transcript stay resident. Exact rather than
+        // approximate because the accumulation is a sum plus an OR, both
+        // commutative, so transcript order does not affect the result. Falls
+        // back to the whole-file index if the input is not coordinate-sorted.
+        let (coverage, float_markers) = match compute_coverage_windowed(reader.records(), &header, &transcripts)? {
+            WindowedCoverage::Computed(coverage, float_markers) => (coverage, float_markers),
+            WindowedCoverage::NotCoordinateSorted => {
+                eprintln!("BAM is not coordinate-sorted; falling back to whole-file read index (higher memory use)");
+                let (mut reader, header) = rseqc_formats::open_bam(bam_file)?;
+                let reads_by_chrom = build_index(reader.records(), &header)?;
+                compute_coverage_for_bam(&reads_by_chrom, &header, &transcripts)
+            }
+        };
 
         if coverage.is_empty() {
             eprintln!("\nCannot get coverage signal from {}! Skip", bam_file.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default());

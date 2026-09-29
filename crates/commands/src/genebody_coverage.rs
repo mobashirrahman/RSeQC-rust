@@ -52,7 +52,7 @@ use noodles_bam as bam;
 use noodles_sam as sam;
 
 use crate::python_fmt::{numpy_mean, numpy_std, python_round, python_str_float};
-use crate::tin::{IndexedRead, build_read_index, genebody_coverage_with_visited};
+use crate::tin::{self, IndexedRead, build_read_index, genebody_coverage_with_visited};
 
 /// Converts a string into a valid, safe R variable name. Ports
 /// `valid_name`.
@@ -219,6 +219,174 @@ where
     I: IntoIterator<Item = io::Result<bam::Record>>,
 {
     build_read_index(records, header)
+}
+
+/// Outcome of the windowed coverage driver.
+pub enum WindowedCoverage {
+    Computed(Vec<i64>, Vec<bool>),
+    /// The input was not coordinate-sorted, so a sliding window cannot be
+    /// maintained. The caller should fall back to [`compute_coverage_for_bam`]
+    /// over a whole-file index.
+    NotCoordinateSorted,
+}
+
+/// Computes the same aggregate as [`compute_coverage_for_bam`] while holding
+/// only a **sliding window** of reads in memory instead of the whole BAM.
+///
+/// # Why this is exact
+///
+/// [`compute_coverage_for_bam`] accumulates two things per transcript: a sum
+/// (`aggregated[i] += v`) and an OR (`ever_visited[i] |= !was_visited`). Both
+/// are commutative and neither reads any other transcript's contribution, so
+/// visiting transcripts in a different ORDER cannot change the result. That is
+/// what licenses sorting them into coordinate order here, which the whole-file
+/// driver is free not to do.
+///
+/// A transcript only needs reads that overlap `[positions[0]-1,
+/// positions[last])`, so a read whose `end` is before the next transcript's
+/// window start can be dropped: every remaining transcript starts later, and a
+/// read with `start < end` and `end <= window_start` cannot overlap any of
+/// them. Reads are pushed in increasing start order and retired from the front,
+/// so the retained slice stays sorted by start.
+///
+/// The per-position counting itself is the same shared
+/// `tin::genebody_coverage_with_visited` the whole-file path uses, so this
+/// differs only in which reads are resident, never in how a resident read is
+/// counted.
+pub fn compute_coverage_windowed<I>(
+    records: I,
+    header: &sam::Header,
+    transcripts: &[TranscriptPercentiles],
+) -> io::Result<WindowedCoverage>
+where
+    I: IntoIterator<Item = io::Result<bam::Record>>,
+{
+    let valid_chroms: std::collections::HashSet<&str> =
+        header.reference_sequences().keys().map(|k| std::str::from_utf8(k).unwrap_or("")).collect();
+    let ref_ids: HashMap<&str, usize> = header
+        .reference_sequences()
+        .iter()
+        .enumerate()
+        .map(|(i, (name, _))| (std::str::from_utf8(name).unwrap_or(""), i))
+        .collect();
+    let ref_index = |chrom: &str| -> usize { ref_ids.get(chrom).copied().unwrap_or(usize::MAX) };
+
+    // Coordinate order: by the header's reference-sequence order, then by the
+    // transcript's first sampled position. Transcripts on an unknown or
+    // invalid chromosome sort last and are skipped, exactly as the whole-file
+    // path skips them.
+    let mut order: Vec<usize> = (0..transcripts.len())
+        .filter(|&i| {
+            !transcripts[i].positions.is_empty() && valid_chroms.contains(transcripts[i].chrom.as_str())
+        })
+        .collect();
+    order.sort_by_key(|&i| (ref_index(&transcripts[i].chrom), transcripts[i].positions[0], i));
+
+    let mut aggregated: Vec<i64> = Vec::new();
+    let mut ever_visited: Vec<bool> = Vec::new();
+    let mut window: Vec<IndexedRead> = Vec::new();
+    let mut window_ref: Option<usize> = None;
+    let mut closed: Vec<usize> = Vec::new();
+    let mut last_start: i64 = i64::MIN;
+    let mut records = records.into_iter().peekable();
+
+    for &ti in &order {
+        let t = &transcripts[ti];
+        let positions = &t.positions;
+        let window_start = positions[0] - 1;
+        let window_end = positions[positions.len() - 1];
+        let t_ref = ref_index(&t.chrom);
+
+        if window_ref != Some(t_ref) {
+            if let Some(r) = window_ref {
+                closed.push(r);
+            }
+            window = Vec::new();
+            window_ref = Some(t_ref);
+            last_start = i64::MIN;
+        }
+
+        // Pull every record that starts before this transcript's last sampled
+        // position.
+        //
+        // Records for a LATER reference sequence stay unconsumed for their own
+        // transcript to pick up. Records for an EARLIER reference sequence are
+        // leftovers from a finished chromosome and must be CONSUMED and
+        // discarded: coordinate-sorted BAMs emit whole reference sequences in
+        // order, so breaking on them strands the stream on the first leftover
+        // and starves every remaining transcript.
+        while let Some(peeked) = records.peek() {
+            let next = match peeked {
+                Ok(record) => record,
+                Err(_) => break,
+            };
+            // A record with NO reference id (BAM tid -1) sorts after every real
+            // reference sequence and belongs to no transcript's window, so it
+            // must be CONSUMED rather than treated as a stop signal: in a
+            // coordinate-sorted BAM these are the trailing unmapped block, and
+            // breaking on them would abandon the rest of the stream and leave
+            // every later transcript with an empty window. They are dropped by
+            // `to_indexed_read`'s unmapped filter anyway.
+            let Some(next_ref) = next.reference_sequence_id().transpose()? else {
+                records.next();
+                continue;
+            };
+            if header.reference_sequences().get_index(next_ref).is_none() {
+                break;
+            }
+            // Coordinate-sorted order is header-index order, so a record for a
+            // strictly later reference sequence means this one is done.
+            if next_ref > t_ref {
+                break;
+            }
+            // Strictly earlier: a leftover from a finished chromosome.
+            if next_ref < t_ref {
+                records.next();
+                continue;
+            }
+            if closed.contains(&next_ref) {
+                return Ok(WindowedCoverage::NotCoordinateSorted);
+            }
+            let Some(pos) = next.alignment_start().transpose()? else { break };
+            let start = (pos.get() - 1) as i64;
+            if start >= window_end {
+                break;
+            }
+            if start < last_start {
+                return Ok(WindowedCoverage::NotCoordinateSorted);
+            }
+            last_start = start;
+            let read = tin::to_indexed_read(next)?;
+            records.next();
+            if let Some(read) = read {
+                window.push(read);
+            }
+        }
+
+        window.retain(|r| r.end > window_start);
+
+        let (mut coverage, mut visited) = genebody_coverage_with_visited(&window, positions, 0.0);
+        if t.strand == "-" {
+            coverage.reverse();
+            visited.reverse();
+        }
+        if coverage.len() > aggregated.len() {
+            aggregated.resize(coverage.len(), 0);
+            ever_visited.resize(coverage.len(), false);
+        }
+        for (i, (v, was_visited)) in coverage.into_iter().zip(visited).enumerate() {
+            if !was_visited {
+                ever_visited[i] = true;
+            }
+            aggregated[i] += v as i64;
+        }
+    }
+
+    for result in records {
+        result?;
+    }
+
+    Ok(WindowedCoverage::Computed(aggregated, ever_visited))
 }
 
 /// Returns a unique R-safe sample name: `name` itself the first time it
@@ -441,6 +609,23 @@ mod tests {
     use super::*;
     use std::io::Cursor;
 
+    /// Encodes `RecordBuf`s as BAM records, mirroring the helper each module's
+    /// tests carry.
+    fn to_bam_records(header: &sam::Header, records: &[sam::alignment::record_buf::RecordBuf]) -> Vec<bam::Record> {
+        use sam::alignment::io::Write as _;
+        let mut buf = Vec::new();
+        {
+            let mut writer = bam::io::Writer::new(&mut buf);
+            writer.write_header(header).unwrap();
+            for record in records {
+                writer.write_alignment_record(header, record).unwrap();
+            }
+        }
+        let mut reader = bam::io::Reader::new(buf.as_slice());
+        reader.read_header().unwrap();
+        reader.records().collect::<Result<Vec<_>, _>>().unwrap()
+    }
+
     #[test]
     fn valid_name_replaces_spaces_and_prefixes_leading_digit() {
         assert_eq!(valid_name("my sample-1"), "my_sample_1");
@@ -597,5 +782,111 @@ png(\"out.curves.png\")
         assert!(is_bam_file(&bam));
 
         std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    /// Builds a coordinate-sorted record stream plus transcripts spanning
+    /// several reference sequences and both strands, so a windowed run has to
+    /// advance, retire and switch reference sequence.
+    fn windowed_workload() -> (sam::Header, Vec<bam::Record>, Vec<TranscriptPercentiles>) {
+        use sam::alignment::record::cigar::op::{Kind, Op};
+        use sam::alignment::record_buf::{Cigar, RecordBuf};
+
+        let header = sam::Header::builder()
+            .add_reference_sequence(
+                "chr1",
+                sam::header::record::value::Map::<sam::header::record::value::map::ReferenceSequence>::new(
+                    std::num::NonZeroUsize::new(100_000).unwrap(),
+                ),
+            )
+            .add_reference_sequence(
+                "chr2",
+                sam::header::record::value::Map::<sam::header::record::value::map::ReferenceSequence>::new(
+                    std::num::NonZeroUsize::new(100_000).unwrap(),
+                ),
+            )
+            .build();
+
+        let mut bufs: Vec<RecordBuf> = Vec::new();
+        let push = |bufs: &mut Vec<RecordBuf>, ref_id: usize, start: usize, n: usize| {
+            for i in 0..n {
+                let p = start + (i * 4);
+                bufs.push(
+                    RecordBuf::builder()
+                        .set_name(format!("{ref_id}_{i}"))
+                        .set_flags(sam::alignment::record::Flags::empty())
+                        .set_reference_sequence_id(ref_id)
+                        .set_alignment_start(noodles_core::Position::try_from(p + 1).unwrap())
+                        .set_cigar(Cigar::from(vec![Op::new(Kind::Match, 10)]))
+                        .build(),
+                );
+            }
+        };
+        push(&mut bufs, 0, 0, 60);
+        push(&mut bufs, 0, 20_000, 60);
+        push(&mut bufs, 0, 50_000, 60);
+        push(&mut bufs, 1, 1_000, 60);
+
+        let mk = |chrom: &str, strand: &str, from: i64, to: i64| TranscriptPercentiles {
+            chrom: chrom.into(),
+            strand: strand.into(),
+            positions: (from..=to).step_by(10).collect(),
+        };
+        // Deliberately NOT in coordinate order, and with a mixed strand, to pin
+        // that visiting order does not change the aggregate.
+        let transcripts = vec![
+            mk("chr1", "-", 50_000, 52_000),
+            mk("chr2", "+", 1_000, 3_000),
+            mk("chr1", "+", 0, 2_000),
+            mk("chr1", "-", 20_000, 22_000),
+        ];
+
+        (header.clone(), to_bam_records(&header, &bufs), transcripts)
+    }
+
+    #[test]
+    fn windowed_coverage_matches_whole_file_aggregate() {
+        let (header, records, transcripts) = windowed_workload();
+
+        let index = build_index(records.iter().cloned().map(Ok), &header).unwrap();
+        let (want_cov, want_float) = compute_coverage_for_bam(&index, &header, &transcripts);
+
+        let got = compute_coverage_windowed(records.iter().cloned().map(Ok), &header, &transcripts).unwrap();
+        let WindowedCoverage::Computed(got_cov, got_float) = got else { panic!("expected Computed") };
+
+        assert_eq!(got_cov, want_cov, "aggregate coverage differs");
+        assert_eq!(got_float, want_float, "float markers differ");
+        assert!(!want_cov.is_empty(), "the fixture must actually produce coverage");
+    }
+
+    #[test]
+    fn windowed_coverage_detects_an_out_of_order_start() {
+        let (header, records, transcripts) = windowed_workload();
+        let mut shuffled = records.clone();
+        shuffled.swap(5, 9);
+
+        let got = compute_coverage_windowed(shuffled.clone().into_iter().map(Ok), &header, &transcripts).unwrap();
+        assert!(matches!(got, WindowedCoverage::NotCoordinateSorted), "expected the unsorted input to be rejected");
+
+        // The whole-file path tolerates it, which is why it is the fallback.
+        let index = build_index(shuffled.into_iter().map(Ok), &header).unwrap();
+        let _ = compute_coverage_for_bam(&index, &header, &transcripts);
+    }
+
+    #[test]
+    fn windowed_coverage_skips_transcripts_on_unknown_chromosomes() {
+        let (header, records, mut transcripts) = windowed_workload();
+        transcripts.push(TranscriptPercentiles {
+            chrom: "chrZZ".into(),
+            strand: "+".into(),
+            positions: vec![1, 500, 1000],
+        });
+
+        let index = build_index(records.iter().cloned().map(Ok), &header).unwrap();
+        let (want_cov, want_float) = compute_coverage_for_bam(&index, &header, &transcripts);
+
+        let got = compute_coverage_windowed(records.iter().cloned().map(Ok), &header, &transcripts).unwrap();
+        let WindowedCoverage::Computed(got_cov, got_float) = got else { panic!("expected Computed") };
+        assert_eq!(got_cov, want_cov);
+        assert_eq!(got_float, want_float);
     }
 }
