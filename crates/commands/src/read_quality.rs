@@ -112,7 +112,9 @@ where
         let full_qual_scores: Vec<u8> = record.quality_scores().iter().collect();
         let ops: Vec<_> = record.cigar().iter().collect::<Result<Vec<_>, _>>()?;
         let mut qual_scores = trim_soft_clips(&full_qual_scores, &ops);
-        read_len = qual_scores.len();
+        // Upstream's table length is `aligned_read.rlen` (full l_qseq,
+        // soft clips included), not the trimmed `qqual` length.
+        read_len = record.sequence().len();
 
         // Reverse quality scores if the read is reverse complemented
         if record.flags().is_reverse_complemented() {
@@ -341,8 +343,10 @@ mod tests {
         let bam_records = to_bam_records(&header, &[leading_and_trailing_clip, hard_then_soft_clip]);
         let hist = compute_quality(bam_records.into_iter().map(Ok), 30).unwrap();
 
-        // Second (last-processed) record has 2 aligned bases -> read_len 2.
-        assert_eq!(hist.read_len, 2);
+        // Table length is the last record's `rlen` (full SEQ length, soft
+        // clip included, hard clip excluded) -- 3, not its 2 aligned bases.
+        // Confirmed with pysam: 5H1S2M over "AAA" gives rlen 3, qqual len 2.
+        assert_eq!(hist.read_len, 3);
         // leading_and_trailing_clip: aligned-region quals are [10, 20, 30].
         assert_eq!(hist.quality[&0][&10], 1);
         assert_eq!(hist.quality[&1][&20], 1);
