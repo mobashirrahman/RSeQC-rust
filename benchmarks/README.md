@@ -37,11 +37,11 @@ is recorded in [`CHANGES.md`](CHANGES.md).
   4.6x -- opposite trends on the same code, because ~0.09 s of the reference's time is
   fixed interpreter/import cost. Any claim must state its workload size and whether it
   includes interpreter startup.
-- The port uses **less** memory than upstream on 28 of 29 commands. The first run found
+- The port uses **less** memory than upstream on **all 29** commands. The first run found
   the opposite on 14 commands (whole-file eager decode in `open_alignments`); that reader
-  now streams, and `tin`'s own whole-file index has been replaced with a sliding window
-  (366 MB -> 20 MB). The one remaining exception is `geneBody_coverage`, which needs the
-  whole-file index because it computes coverage for every transcript in one pass.
+  now streams, and the two whole-file per-read indexes left over (`tin`'s and
+  `geneBody_coverage`'s) have been replaced with a sliding window (366 MB -> 20 MB and
+  75 MB -> 14 MB).
 - Upstream burns ~0.9 s of CPU per invocation in OpenBLAS thread-pool start-up with no
   `multiprocessing` anywhere, so thread env vars are pinned in both arms or the CPU
   column is meaningless.

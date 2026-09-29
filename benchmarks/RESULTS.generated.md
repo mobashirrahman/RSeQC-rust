@@ -275,7 +275,7 @@ wall-vs-CPU gap looks like parallelism that does not exist. All runs pin
 `OPENBLAS_NUM_THREADS=1` and friends in **both** arms (protocol §4.1). This trap would
 silently corrupt any naive benchmark of this comparison.
 
-### 6.4 Memory: the port is now lighter than upstream on 28 of 29 commands
+### 6.4 Memory: the port is now lighter than upstream on all 29 commands
 
 The first run found the port using **4-8x more** memory than upstream on 14 of 29 commands,
 with peak RSS growing linearly at ~226 bytes/record while upstream stayed flat at ~39 MB.
@@ -298,11 +298,23 @@ upstream) to **20.3 MB, 2.08x lighter than upstream**, and got faster at the sam
 | `tin` wall (E2) | 19.82 s | **11.06 s** |
 | upstream | 42.3 MB / 168.4 s | 42.3 MB / 168.4 s |
 
-The single remaining exception is **`geneBody_coverage`** (75.1 MB vs upstream's 40.6 MB).
-It routes through the same `build_read_index` helper but computes coverage over *all*
-positions of *all* transcripts in one pass, so it has no per-transcript window to stream;
-it needs the whole-file index. It is the last command heavier than upstream, and unlike
-`tin` it is not a small change -- it would need the same restructuring `tin` just got.
+`geneBody_coverage` had the same whole-file index and was the last command heavier than
+upstream (75.1 MB vs 40.6 MB). It is now windowed too, via `compute_coverage_windowed`.
+That is exact for the same reason `tin`'s is not obvious: its aggregation is a sum plus an
+OR, both commutative, so visiting transcripts in coordinate order rather than BED order
+cannot change the result. Measured: **75.1 MB -> 14.4 MB**, output byte-identical.
+
+| | before | after | upstream |
+|---|---|---|---|
+| `tin` peak RSS (600k reads) | 366 MB | **20.3 MB** | 42.3 MB |
+| `geneBody_coverage` peak RSS (119k reads, 400 tx) | 75.1 MB | **14.4 MB** | 40.6 MB |
+
+**With this change the port uses less memory than upstream on all 29 commands** -- but
+that is a claim about a *later* build than the one that produced sections 1-5 of this
+report, so the numbers in the table above still show `geneBody_coverage` at 0.541x. The
+0.541 -> 1.83x change and the 75.1 MB -> 14.4 MB figure come from the follow-up
+measurement recorded in `CHANGES.md` 2.7, not from this run. Re-running the full suite
+against the current tree would fold it into the table.
 
 ### 6.5 `RPKM_saturation` is not deterministic upstream, and the port is as close to it as upstream is to itself
 
@@ -323,7 +335,7 @@ Protocol §10 predicted six things. Outcome:
 |---|---|
 | E1 speedups far below E2 speedups | **Held.** `bam_stat` at 2,000 reads: 3.37x compute-only vs 17.61x end-to-end. The gap closes as input grows. |
 | Speedup falls with input size | **Held for E2** (17.61x -> 4.71x on `bam_stat`). **Refined**: E1 *rises* to 4.59x; the two converge at large input, which is the defensible number. |
-| Port loses memory on eager-decode commands | **Held, and it was the most consequential finding.** Now resolved for 28 of 29 commands; only `geneBody_coverage` remains heavier than upstream (§6.4). |
+| Port loses memory on eager-decode commands | **Held, and it was the most consequential finding.** Now fully resolved: the port is lighter than upstream on all 29 commands (§6.4). |
 | Whole-output buffering shows output-dependent memory growth | **Partly held.** `bam2wig` is the worst absolute case (793 MB port / 1111 MB upstream) but the port wins it. |
 | `read_hexamer` scales worse than linear in read length | **Not held.** 3.42x / 3.09x / 3.51x / 3.07x at 50/75/100/150 bp, and `read_quality` is flat at 3.46x -> 3.34x over the same range. The per-base `String` allocation is not a bottleneck at these sizes. Prediction withdrawn. |
 | At least one command is slower in the port | **Held, three times** (`infer_experiment`, `bam2fq`, `inner_distance`) -- all three now fixed and re-measured as wins (§6.1). |

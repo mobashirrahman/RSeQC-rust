@@ -148,11 +148,10 @@ this table, is the authoritative compatibility record.
   root-caused, fixed and re-measured faster, with outputs verified byte-identical
   against upstream. A memory regression the benchmark also found -- the alignment reader
   decoded whole files up front, extrapolating to ~23 GB for a 50M-read-pair BAM -- has
-  since been fixed by streaming the reader, and the last outlier (`tin`'s own whole-file read
-  index, 366 MB) by replacing it with a sliding window (20 MB). The port now uses less
-  memory than upstream on **28 of 29** measured commands; the remaining exception is
-  `geneBody_coverage`, which needs its whole-file index because it computes coverage for
-  every transcript in one pass.
+  since been fixed by streaming the reader, and the two remaining outliers -- `tin`'s and
+  `geneBody_coverage`'s own whole-file read indexes -- by replacing both with a sliding
+  window (366 MB -> 20 MB and 75 MB -> 14 MB). The port now uses less memory than
+  upstream on **all 29** measured commands.
 - **No fuzzing has been done.**
 - **Packaging covers one platform.** `.github/workflows/release.yml` builds a single Linux
   x86_64 archive; no macOS/Windows builds, container images, or Python wheel yet.

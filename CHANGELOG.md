@@ -79,11 +79,14 @@ of a feature or a closed divergence, not every commit.
   remains whole-file buffered because `noodles-cram` 0.99 exposes record iteration only
   as a single-use `records(&header)` that returns a spurious error when re-entered on a
   drained reader.
-- Together with the `tin` sliding window above, the port now uses less memory than
-  upstream on **28 of 29** benchmarked commands. The remaining exception is
-  `geneBody_coverage` (75 MB vs upstream's 41 MB), which needs its whole-file read index
-  because it computes coverage for every transcript in one pass rather than one
-  transcript at a time.
+- **`geneBody_coverage.py` no longer holds the whole BAM in memory either**, via the
+  same sliding window `tin` uses (`compute_coverage_windowed`). Exact rather than
+  approximate because its aggregation is a sum plus an OR, both commutative, so
+  visiting transcripts in coordinate order cannot change the result. Measured on the
+  400-transcript workload: peak RSS **75 MB -> 14 MB**, byte-identical output.
+- Together, the port now uses **less memory than upstream on all 29 benchmarked
+  commands** (the lowest ratio is `tin` at 2.08x lighter; the highest absolute figures
+  are `bam2wig` at 793 MB and `geneBody_coverage` at 14 MB).
 - Three performance regressions found by `benchmarks/RESULTS.generated.md` and since
   fixed, each root-caused with a profile and re-measured through the same harness with
   outputs verified byte-identical against real upstream:
