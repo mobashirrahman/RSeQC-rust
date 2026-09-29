@@ -35,6 +35,17 @@ use rseqc_formats::interval::{Bed3, MergedRegions};
 /// the FIRST transcript per chromosome is silently dropped from the index.
 struct TranscriptIndex {
     by_chrom: HashMap<String, Vec<(i64, i64, String)>>,
+    /// Per-chromosome sorted starts plus a running maximum of end over that prefix,
+    /// used by `shares_name_at` to answer the common "is this the same transcript?"
+    /// question in O(log n) instead of scanning every transcript.
+    span_index: HashMap<String, (Vec<i64>, Vec<i64>)>,
+    /// Whether any chromosome has two stored intervals sharing a name. The
+    /// `shares_name_at` fast path is only equivalent to the original
+    /// set-intersection when names are unique per interval, so a duplicate forces the
+    /// original (slower) computation. Names are built as
+    /// `gene:chrom:start-end` (`bed.rs:140`), so they are unique by construction
+    /// unless the input file repeats a line verbatim.
+    duplicate_names: bool,
 }
 
 impl TranscriptIndex {
@@ -49,7 +60,30 @@ impl TranscriptIndex {
                 seen.insert(chrom);
             }
         }
-        Self { by_chrom }
+
+        let mut span_index = HashMap::with_capacity(by_chrom.len());
+        let mut duplicate_names = false;
+        for (chrom, ivs) in &by_chrom {
+            let mut uniq: HashSet<&str> = HashSet::with_capacity(ivs.len());
+            for (_, _, name) in ivs {
+                if !uniq.insert(name.as_str()) {
+                    duplicate_names = true;
+                }
+            }
+            let mut sorted: Vec<(i64, i64)> = ivs.iter().map(|(s, e, _)| (*s, *e)).collect();
+            sorted.sort_unstable();
+            let mut starts = Vec::with_capacity(sorted.len());
+            let mut max_end_before = Vec::with_capacity(sorted.len());
+            let mut running = i64::MIN;
+            for (s, e) in sorted {
+                starts.push(s);
+                running = running.max(e);
+                max_end_before.push(running);
+            }
+            span_index.insert(chrom.clone(), (starts, max_end_before));
+        }
+
+        Self { by_chrom, span_index, duplicate_names }
     }
 
     /// Distinct transcript names of every stored interval overlapping the
@@ -64,6 +98,34 @@ impl TranscriptIndex {
             }
         }
         out
+    }
+
+    /// Whether the two single-position queries `p1` and `p2` hit a common transcript
+    /// name, i.e. exactly `!names_at(p1, p1+1).is_disjoint(&names_at(p2, p2+1))`
+    /// without materialising either set.
+    ///
+    /// With names unique per interval, both queries are satisfied by ONE interval
+    /// exactly when that interval contains both positions, i.e. when some stored
+    /// interval has `start <= min(p1,p2)` and `end > max(p1,p2)`. That is answered by
+    /// a binary search over the sorted starts plus the running-maximum of ends. When
+    /// names are NOT unique the same set-intersection can be satisfied by two
+    /// different same-named intervals covering one position each, so the fast path is
+    /// skipped in favour of the original computation.
+    fn shares_name_at(&self, chrom: &str, p1: i64, p2: i64) -> bool {
+        if !self.duplicate_names {
+            if let Some((starts, max_end_before)) = self.span_index.get(chrom) {
+                let lo = p1.min(p2);
+                let hi = p1.max(p2);
+                // Intervals with start <= lo: the first `k` entries.
+                let k = starts.partition_point(|&x| x <= lo);
+                return k > 0 && max_end_before[k - 1] > hi;
+            }
+            // No stored intervals for this chromosome: no name can be shared.
+            return false;
+        }
+        !self
+            .names_at(chrom, p1, p1 + 1)
+            .is_disjoint(&self.names_at(chrom, p2, p2 + 1))
     }
 }
 
@@ -206,9 +268,11 @@ where
             -count
         };
 
-        let read1_names = model.transcripts.names_at(&chrom, read1_end - 1, read1_end);
-        let read2_names = model.transcripts.names_at(&chrom, read2_start, read2_start + 1);
-        let same_transcript = read1_names.intersection(&read2_names).next().is_some();
+        // Both upstream calls are single-position queries, so "do the two name sets
+        // intersect" is a same-transcript test answered without building either set.
+        let same_transcript = model
+            .transcripts
+            .shares_name_at(&chrom, read1_end - 1, read2_start);
 
         if !same_transcript {
             out.push(DistanceRecord {

@@ -32,6 +32,68 @@ use noodles_sam::{self as sam, alignment::record::cigar::op::Kind};
 #[derive(Debug, Default, Clone)]
 pub struct GeneRanges {
     by_chrom: HashMap<String, Vec<(i64, i64, String)>>,
+    /// Per-chromosome overlap index, built lazily by `build_index`.
+    ///
+    /// Upstream stores each chromosome's ranges in a `bx.intervals.Intersecter`
+    /// (`qcmodule/SAM.py:2122`), a bitset-backed interval index, so its per-read
+    /// overlap query is logarithmic. A linear scan here is asymptotically worse and
+    /// dominated the command's cost: with 9,179 real chr17 transcripts and upstream's
+    /// 200,000-read sample cap it is ~1.8e9 comparisons, which made this command 6x
+    /// SLOWER than the Python reference (measured: 3.9 s of CPU against upstream's
+    /// 0.7 s). See benchmarks/RESULTS.generated.md section 6.1.
+    index: HashMap<String, ChromIndex>,
+}
+
+/// A per-strand overlap index over one chromosome's ranges.
+///
+/// Only the SET OF DISTINCT STRANDS overlapping a query interval is ever needed
+/// (`find_strands` returns a set of strand labels), and there are one or two distinct
+/// strands in practice. So instead of reporting every overlapping interval, each
+/// strand gets one sorted `starts` array plus a `max_end_before` running maximum. For a
+/// query `[s, e)`, the last entry with `start < e` bounds the candidates, and any of
+/// those intervals overlaps iff its running max end is `> s`. That is exactly the
+/// half-open test `rs < e && s < re` the linear scan performed, so the result is
+/// identical while the query becomes O(log n) per strand.
+#[derive(Debug, Default, Clone)]
+struct ChromIndex {
+    /// (strand, sorted start positions, running maximum of end over that prefix)
+    strands: Vec<(String, Vec<i64>, Vec<i64>)>,
+}
+
+impl ChromIndex {
+    fn build(ranges: &[(i64, i64, String)]) -> Self {
+        let mut by_strand: HashMap<&str, Vec<(i64, i64)>> = HashMap::new();
+        for (s, e, strand) in ranges {
+            by_strand.entry(strand.as_str()).or_default().push((*s, *e));
+        }
+        let mut strands = Vec::with_capacity(by_strand.len());
+        for (strand, mut iv) in by_strand {
+            iv.sort_unstable();
+            let mut starts = Vec::with_capacity(iv.len());
+            let mut max_end_before = Vec::with_capacity(iv.len());
+            let mut running = i64::MIN;
+            for (s, e) in iv {
+                starts.push(s);
+                running = running.max(e);
+                max_end_before.push(running);
+            }
+            strands.push((strand.to_string(), starts, max_end_before));
+        }
+        // Deterministic order so the returned set does not depend on HashMap iteration.
+        strands.sort_by(|a, b| a.0.cmp(&b.0));
+        Self { strands }
+    }
+
+    /// True if any interval of this strand overlaps `[s, e)` (half-open).
+    fn overlaps(starts: &[i64], max_end_before: &[i64], s: i64, e: i64) -> bool {
+        // First index whose start is >= e: nothing at or after it can overlap.
+        let hi = starts.partition_point(|&x| x < e);
+        if hi == 0 {
+            return false;
+        }
+        // The largest end among the `hi` candidates with start < e.
+        max_end_before[hi - 1] > s
+    }
 }
 
 impl GeneRanges {
@@ -69,14 +131,34 @@ impl GeneRanges {
             }
         }
 
-        Ok((Self { by_chrom }, skipped))
+        let index = by_chrom
+            .iter()
+            .map(|(c, r)| (c.clone(), ChromIndex::build(r)))
+            .collect();
+        Ok((Self { by_chrom, index }, skipped))
     }
 
     /// Distinct strand values of every stored range overlapping
     /// `[start, end)` on `chrom` (half-open interval overlap:
     /// `range_start < end && start < range_end`).
+    ///
+    /// Uses the per-chromosome overlap index rather than scanning every range, which is
+    /// behaviourally identical (the index applies the same half-open test) but
+    /// logarithmic instead of linear. Built on first use and reused thereafter, since
+    /// `parse` is the only other producer and the map is immutable afterwards.
     pub fn find_strands(&self, chrom: &str, start: i64, end: i64) -> BTreeSet<String> {
         let mut out = BTreeSet::new();
+        if let Some(index) = self.index.get(chrom) {
+            for (strand, starts, max_end_before) in &index.strands {
+                if ChromIndex::overlaps(starts, max_end_before, start, end) {
+                    out.insert(strand.clone());
+                }
+            }
+            return out;
+        }
+        // No index yet: fall back to the linear scan, then index for next time. This
+        // keeps `find_strands` correct on a `GeneRanges` built by any path that has not
+        // gone through `parse`.
         if let Some(ranges) = self.by_chrom.get(chrom) {
             for (rs, re, strand) in ranges {
                 if *rs < end && start < *re {
@@ -379,5 +461,65 @@ mod tests {
         let output = render_results(&r);
         let expected = "\nThis is PairEnd Data\nFraction of reads failed to determine: 0.2500\nFraction of reads explained by \"1++,1--,2+-,2-+\": 0.5000\nFraction of reads explained by \"1+-,1-+,2++,2--\": 0.2500";
         assert_eq!(output, expected);
+    }
+
+    /// The overlap index must be behaviourally IDENTICAL to the linear scan it
+    /// replaced, on every input, not merely on the hand-written fixtures. This is the
+    /// property that licenses the optimisation: the index answers the same half-open
+    /// question in O(log n) instead of O(n), so any divergence here would silently
+    /// change reported strandedness fractions.
+    #[test]
+    fn find_strands_index_matches_linear_scan_on_random_data() {
+        // Deterministic LCG so a failure is reproducible without a dev-dependency.
+        let mut state: u64 = 0x2545_F491_4F6C_DD1D;
+        let mut next = move || {
+            state ^= state << 13;
+            state ^= state >> 7;
+            state ^= state << 17;
+            state
+        };
+
+        for trial in 0..200 {
+            let n_ranges = 1 + (next() % 60) as usize;
+            let mut text = String::new();
+            for _ in 0..n_ranges {
+                let start = (next() % 400) as i64;
+                // Include degenerate and nested ranges: zero-length, fully contained,
+                // exactly abutting, and identical duplicates.
+                let width = match next() % 4 {
+                    0 => 0,
+                    1 => 1,
+                    2 => (next() % 50) as i64,
+                    _ => (next() % 200) as i64,
+                };
+                let strand = if next() % 2 == 0 { "+" } else { "-" };
+                text.push_str(&format!("chr1\t{}\t{}\tg\t0\t{}\n", start, start + width, strand));
+            }
+            let (ranges, _) = GeneRanges::parse(text.as_bytes()).unwrap();
+
+            // Reference: the original linear scan, computed independently here.
+            let linear = |s: i64, e: i64| -> BTreeSet<String> {
+                let mut out = BTreeSet::new();
+                for (rs, re, strand) in &ranges.by_chrom["chr1"] {
+                    if *rs < e && s < *re {
+                        out.insert(strand.clone());
+                    }
+                }
+                out
+            };
+
+            for _ in 0..40 {
+                let s = (next() % 420) as i64;
+                let w = (next() % 40) as i64;
+                let e = s + w;
+                assert_eq!(
+                    ranges.find_strands("chr1", s, e),
+                    linear(s, e),
+                    "trial {trial}: query [{s},{e}) diverged"
+                );
+            }
+            // An unknown contig must stay empty rather than panic.
+            assert!(ranges.find_strands("chrZ", 0, 10).is_empty());
+        }
     }
 }

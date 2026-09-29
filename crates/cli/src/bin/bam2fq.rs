@@ -14,7 +14,7 @@
 //! (DIV-0002/0004) is supported via `rseqc_formats::open_alignments`.
 
 use std::fs::File;
-use std::io::{Read as _, Write as _};
+use std::io::{BufWriter, Read as _, Write as _};
 use std::path::{Path, PathBuf};
 
 use clap::Parser;
@@ -65,17 +65,26 @@ fn run(args: &Args) -> std::io::Result<()> {
 
     let outputs: Vec<String> = if args.single_end {
         let path = format!("{prefix}.fastq");
-        let mut out = File::create(&path)?;
+        // Buffer the output. Writing straight to a bare `File` issues one syscall per
+        // `write_all`, and a FASTQ record needs 5 of them, so an unbuffered writer
+        // turns 400k reads into ~5.6M write syscalls: measured at 4.6 s of system time
+        // on 800k reads, which made this command 3x SLOWER than the Python reference
+        // even though the reference also writes the same bytes. See
+        // benchmarks/RESULTS.generated.md section 6.1.
+        let mut out = BufWriter::with_capacity(1 << 20, File::create(&path)?);
         let counts = write_single(records, &mut out)?;
+        out.flush()?;
         eprintln!("Done");
         eprintln!("read count: {}", counts.single);
         vec![path]
     } else {
         let path1 = format!("{prefix}.R1.fastq");
         let path2 = format!("{prefix}.R2.fastq");
-        let mut out1 = File::create(&path1)?;
-        let mut out2 = File::create(&path2)?;
+        let mut out1 = BufWriter::with_capacity(1 << 20, File::create(&path1)?);
+        let mut out2 = BufWriter::with_capacity(1 << 20, File::create(&path2)?);
         let counts = write_paired(records, &mut out1, &mut out2)?;
+        out1.flush()?;
+        out2.flush()?;
         eprintln!("Done");
         eprintln!("read_1 count: {}", counts.read1);
         eprintln!("read_2 count: {}", counts.read2);
