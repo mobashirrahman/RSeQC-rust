@@ -80,6 +80,15 @@ where
 
         let mut new_record = RecordBuf::try_from_alignment_record(header, &old_record)?;
         *new_record.flags_mut() = single_end_flags(old_flags);
+        // Upstream builds a *fresh* `pysam.AlignedSegment(header)` in
+        // `to_single_end_alignment()` and never sets mate reference id, mate
+        // position, or template length on it, so they keep pysam's
+        // defaults: RNEXT `*` (None), PNEXT 0 (None here), TLEN 0. Our
+        // `try_from_alignment_record` above instead copies those fields
+        // from the paired input record, so they must be reset explicitly.
+        *new_record.mate_reference_sequence_id_mut() = None;
+        *new_record.mate_alignment_start_mut() = None;
+        *new_record.template_length_mut() = 0;
 
         if old_flags.is_first_segment() {
             read1_out.write_alignment_record(header, &new_record)?;
@@ -213,6 +222,66 @@ mod tests {
         let r1_record = r1_reader.records().next().unwrap().unwrap();
         let expected_flags = Flags::from_bits_truncate(0x0010 | 0x0400);
         assert_eq!(r1_record.flags(), expected_flags);
+    }
+
+    #[test]
+    fn clears_mate_fields_like_fresh_pysam_record() {
+        // Upstream's to_single_end_alignment() builds a brand-new
+        // pysam.AlignedSegment(header) and never touches mate reference id,
+        // mate position, or template length, so those keep pysam's
+        // defaults (RNEXT `*`, PNEXT 0, TLEN 0). This guards against
+        // silently carrying over the paired input record's mate fields.
+        let header = test_header();
+
+        let mut mated_read1 = RecordBuf::builder()
+            .set_flags(Flags::SEGMENTED | Flags::FIRST_SEGMENT)
+            .set_reference_sequence_id(0)
+            .set_mapping_quality(MappingQuality::new(40).unwrap())
+            .set_cigar(Cigar::from(vec![Op::new(Kind::Match, 10)]))
+            .build();
+        *mated_read1.mate_reference_sequence_id_mut() = Some(0);
+        *mated_read1.mate_alignment_start_mut() =
+            Some(noodles_core::Position::try_from(100).unwrap());
+        *mated_read1.template_length_mut() = 250;
+
+        let bam_records = to_bam_records(&header, std::slice::from_ref(&mated_read1));
+
+        let mut r1_buf = Vec::new();
+        let mut r2_buf = Vec::new();
+        let mut unmap_buf = Vec::new();
+        let mut r1_writer = bam::io::Writer::new(&mut r1_buf);
+        let mut r2_writer = bam::io::Writer::new(&mut r2_buf);
+        let mut unmap_writer = bam::io::Writer::new(&mut unmap_buf);
+        r1_writer.write_header(&header).unwrap();
+        r2_writer.write_header(&header).unwrap();
+        unmap_writer.write_header(&header).unwrap();
+
+        split_paired_bam(
+            bam_records.into_iter().map(Ok),
+            &header,
+            &mut r1_writer,
+            &mut r2_writer,
+            &mut unmap_writer,
+        )
+        .unwrap();
+
+        drop(r1_writer);
+        drop(r2_writer);
+        drop(unmap_writer);
+
+        let mut r1_reader = bam::io::Reader::new(r1_buf.as_slice());
+        r1_reader.read_header().unwrap();
+        let r1_record = r1_reader.records().next().unwrap().unwrap();
+
+        assert_eq!(
+            r1_record.mate_reference_sequence_id().transpose().unwrap(),
+            None
+        );
+        assert_eq!(
+            r1_record.mate_alignment_start().transpose().unwrap(),
+            None
+        );
+        assert_eq!(r1_record.template_length(), 0);
     }
 
     #[test]
