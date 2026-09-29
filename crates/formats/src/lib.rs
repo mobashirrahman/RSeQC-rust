@@ -126,36 +126,219 @@ pub fn write_bai_index(path: &Path) -> io::Result<()> {
 /// non-reproducible reference fetching would be a poor fit for a QC
 /// tool's I/O layer regardless of upstream's own behavior here.
 ///
-/// The whole file is decoded eagerly into memory (not streamed) for
-/// all three formats, unlike `open_bam`'s lazy reader -- acceptable
-/// for the small/QC-scale inputs this tool targets, and it avoids
-/// needing a second, owned-iterator BAM reader type alongside the
-/// existing borrowed-iterator one. Extension detection (not content
-/// sniffing) matches upstream's own `pysam.AlignmentFile` behavior,
-/// which also dispatches by filename, not by sniffing magic bytes.
-pub fn open_alignments(path: &Path) -> io::Result<(sam::Header, Vec<io::Result<noodles_bam::Record>>)> {
+/// A streaming iterator over the alignment records of a BAM, SAM, or CRAM file.
+///
+/// Returned by the alignment-opening function below. It implements
+/// `Iterator<Item = io::Result<bam::Record>>`, so every `compute_*` function in
+/// `rseqc-commands` -- all already generic over that item type -- accepts it with no
+/// change, and no call site needed editing.
+///
+/// **Why this exists.** This used to return `Vec<io::Result<bam::Record>>`, decoding
+/// the entire file up front. The stated justification was that it "avoids needing a
+/// second, owned-iterator BAM reader type alongside the existing borrowed-iterator one"
+/// and was "acceptable for the small/QC-scale inputs this tool targets". The benchmark
+/// suite falsified the second half of that: peak RSS grew linearly at ~226 bytes per
+/// record while upstream (streaming via `pysam`) stayed flat at ~39 MB, so a
+/// 50M-read-pair human RNA-seq BAM needed ~23 GB in this port versus ~39 MB upstream
+/// (`benchmarks/RESULTS.generated.md` section 6.4). A QC tool that cannot open a normal
+/// dataset is not usable however fast it is on small ones, so that trade was the wrong
+/// way round.
+///
+/// Memory behaviour differs by format, deliberately:
+///
+/// - **BAM** -- true O(1): `read_record` decodes into one reusable buffer.
+/// - **SAM** -- O(chunk): `read_record_buf` into owned `RecordBuf`s, converted in
+///   batches of [`ROUND_TRIP_CHUNK_RECORDS`].
+/// - **CRAM** -- O(file), i.e. still buffered whole. This is a limitation of
+///   `noodles-cram` 0.99, not a preference: record iteration is exposed only as
+///   `records(&header)`, which is **single-use**. Re-entering it on a drained reader
+///   yields a spurious `InvalidData`/`TryFromIntError` instead of EOF (verified
+///   directly), and draining it partially and then re-entering does work -- so the
+///   failure is specifically at exhaustion, which is indistinguishable from a genuine
+///   mid-file decode error. Bounding the memory would need a self-referential reader
+///   (or reimplementing decode on top of `read_container`), neither of which is
+///   justified for the least common input format here. CRAM is not where the measured
+///   memory problem was: every benchmarked workload is BAM.
+pub enum AlignmentRecords {
+    /// True O(1)-memory streaming decode of a BAM file.
+    Bam {
+        reader: noodles_bam::io::Reader<noodles_bgzf::io::Reader<File>>,
+        scratch: noodles_bam::Record,
+        done: bool,
+    },
+    /// Batched encode/decode conversion for SAM text.
+    SamBuffered {
+        reader: sam::io::Reader<BufReader<File>>,
+        header: sam::Header,
+        scratch: sam::alignment::RecordBuf,
+        pending: std::collections::VecDeque<io::Result<noodles_bam::Record>>,
+        done: bool,
+    },
+    /// Whole-file buffered conversion for CRAM.
+    CramBuffered {
+        pending: std::vec::IntoIter<io::Result<noodles_bam::Record>>,
+    },
+}
+
+/// How many records the SAM path converts at a time. Bounded memory is
+/// O(chunk x record size); at this size that is well under a megabyte -- small enough to
+/// stay cache-resident, large enough that the per-chunk encode/decode overhead is
+/// irrelevant next to the decode itself.
+const ROUND_TRIP_CHUNK_RECORDS: usize = 4096;
+
+impl Iterator for AlignmentRecords {
+    type Item = io::Result<noodles_bam::Record>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        match self {
+            AlignmentRecords::Bam { reader, scratch, done } => {
+                if *done {
+                    return None;
+                }
+                // `read_record` reuses `scratch`, handing back a byte count where 0
+                // signals EOF. `mem::take` leaves a fresh default for the next call.
+                match reader.read_record(scratch) {
+                    Ok(0) => {
+                        *done = true;
+                        None
+                    }
+                    Ok(_) => Some(Ok(std::mem::take(scratch))),
+                    Err(e) => {
+                        // Match the borrowed reader's behaviour: stop at first error.
+                        *done = true;
+                        Some(Err(e))
+                    }
+                }
+            }
+            AlignmentRecords::SamBuffered { reader, header, scratch, pending, done } => {
+                if let Some(item) = pending.pop_front() {
+                    return Some(item);
+                }
+                if *done {
+                    return None;
+                }
+                // Collect a chunk of owned RecordBufs. `read_record_buf` takes
+                // `&mut self` and a reusable buffer, so unlike `records()` it can be
+                // called repeatedly and reports EOF with a 0 byte count.
+                let mut bufs = Vec::with_capacity(ROUND_TRIP_CHUNK_RECORDS);
+                while bufs.len() < ROUND_TRIP_CHUNK_RECORDS {
+                    match reader.read_record_buf(header, scratch) {
+                        Ok(0) => {
+                            *done = true;
+                            break;
+                        }
+                        Ok(_) => bufs.push(std::mem::take(scratch)),
+                        Err(e) => {
+                            *done = true;
+                            pending.push_back(Err(e));
+                            break;
+                        }
+                    }
+                }
+                if bufs.is_empty() {
+                    return pending.pop_front();
+                }
+                let chunk = encode_decode(header, bufs.into_iter());
+                let mut it = chunk.into_iter();
+                let first = it.next();
+                pending.extend(it);
+                first
+            }
+            AlignmentRecords::CramBuffered { pending } => pending.next(),
+        }
+    }
+}
+
+/// Encodes records as BAM (after the header) and decodes them back into `bam::Record`s.
+///
+/// `bam::Record` is an opaque `Vec<u8>` with no public constructor, so converting from
+/// another format requires a BAM encode/decode round trip. This is the same mechanism
+/// the previous whole-file implementation used, now applied per chunk on the SAM path.
+fn encode_decode(
+    header: &sam::Header,
+    records: impl Iterator<Item = sam::alignment::RecordBuf>,
+) -> Vec<io::Result<noodles_bam::Record>> {
+    use sam::alignment::io::Write as _;
+
+    let mut buf = Vec::new();
+    {
+        let mut writer = noodles_bam::io::Writer::new(&mut buf);
+        if writer.write_header(header).is_err() {
+            return Vec::new();
+        }
+        for record in records {
+            if let Err(e) = writer.write_alignment_record(header, &record) {
+                return vec![Err(e)];
+            }
+        }
+    }
+
+    let mut reader = noodles_bam::io::Reader::new(buf.as_slice());
+    if reader.read_header().is_err() {
+        return Vec::new();
+    }
+    reader.records().collect()
+}
+
+/// Opens a BAM, SAM, or CRAM file and returns its header plus a **streaming** record
+/// iterator, dispatching on the file extension (not content sniffing), which matches
+/// upstream's own `pysam.AlignmentFile` behaviour.
+///
+/// **CRAM's reference-sequence handling, a real scope limit, disclosed rather than
+/// silently wrong**: CRAM decodes with `noodles_cram`'s DEFAULT (empty)
+/// reference-sequence repository -- no external FASTA is consulted. This correctly
+/// decodes CRAM written with an embedded or no-reference-required encoding (confirmed
+/// via a real fixture: `pysam.AlignmentFile(path, 'wc', ...)` without an explicit
+/// `reference_filename` falls back to `embed_ref=2` -- htslib's own term for "embed the
+/// reference in the CRAM file itself" -- when no external reference is configured, which
+/// is exactly the case an empty repository can decode). A CRAM file that genuinely
+/// requires EXTERNAL reference resolution (encoded against a reference NOT embedded and
+/// not supplied here) will surface as a decode error instead of silently producing wrong
+/// sequence data. None of the 12 upstream commands that advertise `.cram` input expose a
+/// `--reference`-style flag of their own either (checked via grep across their argparse
+/// setups) -- they rely on pysam/htslib's own reference resolution, which for files
+/// lacking a local/embedded reference can fall back to fetching from a remote EBI/ENA
+/// reference server over the network. Deliberately NOT replicated: this project is
+/// offline-first by design (see README), and network-dependent, non-reproducible
+/// reference fetching would be a poor fit for a QC tool's I/O layer regardless of
+/// upstream's own behavior here.
+pub fn open_alignments(path: &Path) -> io::Result<(sam::Header, AlignmentRecords)> {
     let extension = path.extension().and_then(|ext| ext.to_str()).map(|ext| ext.to_ascii_lowercase());
 
     match extension.as_deref() {
         Some("sam") => {
             let mut text_reader = File::open(path).map(BufReader::new).map(sam::io::Reader::new)?;
             let header = text_reader.read_header()?;
-            round_trip_through_bam(header, text_reader.records())
+            let records = AlignmentRecords::SamBuffered {
+                reader: text_reader,
+                header: header.clone(),
+                scratch: sam::alignment::RecordBuf::default(),
+                pending: std::collections::VecDeque::new(),
+                done: false,
+            };
+            Ok((header, records))
         }
         Some("cram") => {
             let mut cram_reader = File::open(path).map(noodles_cram::io::Reader::new)?;
             let header = cram_reader.read_header()?;
-            // `records()` borrows `header`, so collect eagerly before
-            // it's moved into `round_trip_through_bam`.
-            let records: Vec<io::Result<sam::alignment::RecordBuf>> = cram_reader
+            // Whole-file, because `noodles_cram`'s `records(&header)` is single-use; see
+            // the `AlignmentRecords` doc comment for the measured detail.
+            let bufs: Vec<sam::alignment::RecordBuf> = cram_reader
                 .records(&header)
                 .map(|result| result.map(fix_unmapped_missing_mapping_quality))
-                .collect();
-            round_trip_through_bam(header, records.into_iter())
+                .collect::<io::Result<_>>()?;
+            let records = AlignmentRecords::CramBuffered {
+                pending: encode_decode(&header, bufs.into_iter()).into_iter(),
+            };
+            Ok((header, records))
         }
         _ => {
-            let (mut reader, header) = open_bam(path)?;
-            let records: Vec<_> = reader.records().collect();
+            let (reader, header) = open_bam(path)?;
+            let records = AlignmentRecords::Bam {
+                reader,
+                scratch: noodles_bam::Record::default(),
+                done: false,
+            };
             Ok((header, records))
         }
     }
@@ -195,28 +378,6 @@ fn fix_unmapped_missing_mapping_quality(mut record: sam::alignment::RecordBuf) -
 /// Shared by `open_alignments`' SAM-text and CRAM branches: writes any
 /// `sam::alignment::Record`-implementing records out to an in-memory
 /// BAM buffer, then reads them back as genuine `bam::Record`s.
-fn round_trip_through_bam<R>(header: sam::Header, records: impl Iterator<Item = io::Result<R>>) -> io::Result<(sam::Header, Vec<io::Result<noodles_bam::Record>>)>
-where
-    R: sam::alignment::Record,
-{
-    use sam::alignment::io::Write as _;
-
-    let mut buf = Vec::new();
-    {
-        let mut bam_writer = noodles_bam::io::Writer::new(&mut buf);
-        bam_writer.write_header(&header)?;
-        for result in records {
-            let record = result?;
-            bam_writer.write_alignment_record(&header, &record)?;
-        }
-    }
-
-    let mut bam_reader = noodles_bam::io::Reader::new(buf.as_slice());
-    bam_reader.read_header()?;
-    let records: Vec<_> = bam_reader.records().collect();
-    Ok((header, records))
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -270,6 +431,11 @@ mod tests {
         let (sam_header, sam_records) = open_alignments(&sam_path).unwrap();
 
         assert_eq!(bam_header, sam_header);
+        // A streaming iterator has no `len`, so collect. Doing so also exercises both
+        // code paths end to end: BAM via O(1) `read_record`, SAM via the chunked round
+        // trip.
+        let bam_records: Vec<_> = bam_records.collect();
+        let sam_records: Vec<_> = sam_records.collect();
         assert_eq!(bam_records.len(), 1);
         assert_eq!(sam_records.len(), 1);
 
@@ -302,6 +468,8 @@ mod tests {
         let (header, records) = open_alignments(path).unwrap();
 
         assert_eq!(header.reference_sequences().len(), 1);
+
+        let records: Vec<_> = records.collect();
         assert_eq!(records.len(), 1);
 
         let record = records.into_iter().next().unwrap().unwrap();

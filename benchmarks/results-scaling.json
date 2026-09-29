@@ -1,0 +1,560 @@
+[
+  {
+    "sweep": "A",
+    "driver": "readlen",
+    "value": 100,
+    "command": "read_quality",
+    "median_python": 2.5659187309938716,
+    "median_rust": 0.7792044529924169,
+    "ratio": 3.2929980329807518,
+    "ci95": [
+      3.267351126057546,
+      3.4050856106011325
+    ],
+    "median_python_e2e": 2.6596433719969355,
+    "median_rust_e2e": 0.7821736519981641,
+    "rss_py": 39.15234375,
+    "rss_rs": 47.83203125,
+    "gate": true
+  },
+  {
+    "sweep": "A",
+    "driver": "readlen",
+    "value": 100,
+    "command": "read_hexamer",
+    "median_python": 0.39696565200574696,
+    "median_rust": 0.10851550400548149,
+    "ratio": 3.6581468762813363,
+    "ci95": [
+      3.491211036062387,
+      3.751510471065785
+    ],
+    "median_python_e2e": 0.47275983401050325,
+    "median_rust_e2e": 0.11115569599496666,
+    "rss_py": 32.1875,
+    "rss_rs": 6.26953125,
+    "gate": true
+  },
+  {
+    "sweep": "A",
+    "driver": "readlen",
+    "value": 150,
+    "command": "read_quality",
+    "median_python": 3.747246068000095,
+    "median_rust": 1.156580617011059,
+    "ratio": 3.2399350403122518,
+    "ci95": [
+      3.225231072648569,
+      3.3094801775950846
+    ],
+    "median_python_e2e": 3.842172121992917,
+    "median_rust_e2e": 1.1594373020052444,
+    "rss_py": 39.453125,
+    "rss_rs": 63.0625,
+    "gate": true
+  },
+  {
+    "sweep": "A",
+    "driver": "readlen",
+    "value": 150,
+    "command": "read_hexamer",
+    "median_python": 0.5681506660039304,
+    "median_rust": 0.19041122499038465,
+    "ratio": 2.9838086805681794,
+    "ci95": [
+      2.8666644940683086,
+      3.085583045201909
+    ],
+    "median_python_e2e": 0.6453691250062548,
+    "median_rust_e2e": 0.19259648799197748,
+    "rss_py": 32.1640625,
+    "rss_rs": 7.140625,
+    "gate": true
+  },
+  {
+    "sweep": "A",
+    "driver": "readlen",
+    "value": 50,
+    "command": "read_quality",
+    "median_python": 1.3672007340064738,
+    "median_rust": 0.3970295780163724,
+    "ratio": 3.443574004831686,
+    "ci95": [
+      3.3652234140751807,
+      3.5299673018917463
+    ],
+    "median_python_e2e": 1.463079448993085,
+    "median_rust_e2e": 0.400392350013135,
+    "rss_py": 39.10546875,
+    "rss_rs": 34.6484375,
+    "gate": true
+  },
+  {
+    "sweep": "A",
+    "driver": "readlen",
+    "value": 50,
+    "command": "read_hexamer",
+    "median_python": 0.20723148000251967,
+    "median_rust": 0.06257823600026313,
+    "ratio": 3.3115583507602913,
+    "ci95": [
+      3.2005294762182412,
+      3.440656312584926
+    ],
+    "median_python_e2e": 0.28751589701278135,
+    "median_rust_e2e": 0.06521415000315756,
+    "rss_py": 32.4765625,
+    "rss_rs": 5.26953125,
+    "gate": true
+  },
+  {
+    "sweep": "A",
+    "driver": "readlen",
+    "value": 75,
+    "command": "read_quality",
+    "median_python": 1.977726935991086,
+    "median_rust": 0.5942042849928839,
+    "ratio": 3.328361955543237,
+    "ci95": [
+      3.119078926856943,
+      3.4003695547667823
+    ],
+    "median_python_e2e": 2.0704228739923565,
+    "median_rust_e2e": 0.5969359209993854,
+    "rss_py": 38.99609375,
+    "rss_rs": 41.265625,
+    "gate": true
+  },
+  {
+    "sweep": "A",
+    "driver": "readlen",
+    "value": 75,
+    "command": "read_hexamer",
+    "median_python": 0.2870888720062794,
+    "median_rust": 0.09472932000062428,
+    "ratio": 3.030623169303732,
+    "ci95": [
+      2.9316944162185665,
+      3.1483759579055675
+    ],
+    "median_python_e2e": 0.3663220620073844,
+    "median_rust_e2e": 0.09734868200030178,
+    "rss_py": 32.55859375,
+    "rss_rs": 5.95703125,
+    "gate": true
+  },
+  {
+    "sweep": "A",
+    "driver": "reads",
+    "value": 10000,
+    "command": "bam_stat",
+    "median_python": 0.04649911700107623,
+    "median_rust": 0.015253081990522332,
+    "ratio": 3.0485063300629314,
+    "ci95": [
+      2.8885161896049554,
+      3.6050831796698515
+    ],
+    "median_python_e2e": 0.14018219900026452,
+    "median_rust_e2e": 0.018039795992081054,
+    "rss_py": 38.40234375,
+    "rss_rs": 7.28125,
+    "gate": true
+  },
+  {
+    "sweep": "A",
+    "driver": "reads",
+    "value": 10000,
+    "command": "read_quality",
+    "median_python": 0.2623106860119151,
+    "median_rust": 0.08435886898951139,
+    "ratio": 3.109461863986453,
+    "ci95": [
+      2.763553889950766,
+      3.20651321387621
+    ],
+    "median_python_e2e": 0.36100628500571474,
+    "median_rust_e2e": 0.0868302299932111,
+    "rss_py": 38.9296875,
+    "rss_rs": 7.1953125,
+    "gate": true
+  },
+  {
+    "sweep": "A",
+    "driver": "reads",
+    "value": 10000,
+    "command": "read_NVC",
+    "median_python": 0.37388193199876696,
+    "median_rust": 0.039710858996841125,
+    "ratio": 9.41510562711595,
+    "ci95": [
+      8.818343086029932,
+      9.894438275302647
+    ],
+    "median_python_e2e": 0.46719288399617653,
+    "median_rust_e2e": 0.04232707699702587,
+    "rss_py": 39.03515625,
+    "rss_rs": 7.25,
+    "gate": true
+  },
+  {
+    "sweep": "A",
+    "driver": "reads",
+    "value": 2000,
+    "command": "bam_stat",
+    "median_python": 0.013358932003029622,
+    "median_rust": 0.005149378004716709,
+    "ratio": 2.5942807055130066,
+    "ci95": [
+      2.0520851923991885,
+      4.02092939093171
+    ],
+    "median_python_e2e": 0.10416571900714189,
+    "median_rust_e2e": 0.00731584700406529,
+    "rss_py": 38.52734375,
+    "rss_rs": 3.73046875,
+    "gate": true
+  },
+  {
+    "sweep": "A",
+    "driver": "reads",
+    "value": 2000,
+    "command": "read_quality",
+    "median_python": 0.04928832700534258,
+    "median_rust": 0.019679006989463232,
+    "ratio": 2.5046145383114666,
+    "ci95": [
+      2.4240824407996695,
+      2.998190309151819
+    ],
+    "median_python_e2e": 0.14877427500323392,
+    "median_rust_e2e": 0.02246757499233354,
+    "rss_py": 39.23828125,
+    "rss_rs": 3.859375,
+    "gate": true
+  },
+  {
+    "sweep": "A",
+    "driver": "reads",
+    "value": 2000,
+    "command": "read_NVC",
+    "median_python": 0.07340636399749201,
+    "median_rust": 0.010226288010017015,
+    "ratio": 7.17820228861028,
+    "ci95": [
+      6.181294546631586,
+      8.907658278431995
+    ],
+    "median_python_e2e": 0.17272540299745742,
+    "median_rust_e2e": 0.012786108010914177,
+    "rss_py": 38.7734375,
+    "rss_rs": 3.80859375,
+    "gate": true
+  },
+  {
+    "sweep": "A",
+    "driver": "reads",
+    "value": 200000,
+    "command": "bam_stat",
+    "median_python": 0.8906625760137103,
+    "median_rust": 0.24273778198403306,
+    "ratio": 3.669237515206005,
+    "ci95": [
+      3.5208827481450067,
+      3.788986792508351
+    ],
+    "median_python_e2e": 0.9826771100051701,
+    "median_rust_e2e": 0.245702435990097,
+    "rss_py": 38.27734375,
+    "rss_rs": 92.80859375,
+    "gate": true
+  },
+  {
+    "sweep": "A",
+    "driver": "reads",
+    "value": 200000,
+    "command": "read_quality",
+    "median_python": 5.1181973940110765,
+    "median_rust": 1.544664078988717,
+    "ratio": 3.313469552138438,
+    "ci95": [
+      3.2889075906836243,
+      3.329196056265283
+    ],
+    "median_python_e2e": 5.215737044010893,
+    "median_rust_e2e": 1.5473303129983833,
+    "rss_py": 39.1171875,
+    "rss_rs": 92.90625,
+    "gate": true
+  },
+  {
+    "sweep": "A",
+    "driver": "reads",
+    "value": 200000,
+    "command": "read_NVC",
+    "median_python": 7.4801554279983975,
+    "median_rust": 0.7050184709951282,
+    "ratio": 10.609871564698462,
+    "ci95": [
+      10.276975799041738,
+      10.792039884594905
+    ],
+    "median_python_e2e": 7.573474143995554,
+    "median_rust_e2e": 0.7079153359954944,
+    "rss_py": 39.109375,
+    "rss_rs": 92.97265625,
+    "gate": true
+  },
+  {
+    "sweep": "A",
+    "driver": "reads",
+    "value": 50000,
+    "command": "bam_stat",
+    "median_python": 0.23353081198001746,
+    "median_rust": 0.06705807500111405,
+    "ratio": 3.482515893516743,
+    "ci95": [
+      3.367697227709254,
+      3.658759738476318
+    ],
+    "median_python_e2e": 0.32701019498927053,
+    "median_rust_e2e": 0.06972161300654989,
+    "rss_py": 38.5625,
+    "rss_rs": 25.1640625,
+    "gate": true
+  },
+  {
+    "sweep": "A",
+    "driver": "reads",
+    "value": 50000,
+    "command": "read_quality",
+    "median_python": 1.2883792750071734,
+    "median_rust": 0.4000941519916523,
+    "ratio": 3.2201902192113385,
+    "ci95": [
+      3.1354615704791717,
+      3.3387327448096635
+    ],
+    "median_python_e2e": 1.3847976329998346,
+    "median_rust_e2e": 0.40269549199729227,
+    "rss_py": 38.94140625,
+    "rss_rs": 25.30859375,
+    "gate": true
+  },
+  {
+    "sweep": "A",
+    "driver": "reads",
+    "value": 50000,
+    "command": "read_NVC",
+    "median_python": 1.878272650996223,
+    "median_rust": 0.18520946401986293,
+    "ratio": 10.141342727468755,
+    "ci95": [
+      9.79137020163741,
+      10.416653485928114
+    ],
+    "median_python_e2e": 1.9784842250082875,
+    "median_rust_e2e": 0.18762544001219794,
+    "rss_py": 38.89453125,
+    "rss_rs": 25.28125,
+    "gate": true
+  },
+  {
+    "sweep": "A",
+    "driver": "reads",
+    "value": 800000,
+    "command": "bam_stat",
+    "median_python": 3.5057608150091255,
+    "median_rust": 0.9193794390012044,
+    "ratio": 3.8131816595960797,
+    "ci95": [
+      3.776102650028601,
+      3.9099494879624235
+    ],
+    "median_python_e2e": 3.597944182009087,
+    "median_rust_e2e": 0.9224669480026932,
+    "rss_py": 38.62109375,
+    "rss_rs": 363.9296875,
+    "gate": true
+  },
+  {
+    "sweep": "A",
+    "driver": "reads",
+    "value": 800000,
+    "command": "read_quality",
+    "median_python": 20.468641170999035,
+    "median_rust": 6.094603302990436,
+    "ratio": 3.358486213689363,
+    "ci95": [
+      3.3245645071154764,
+      3.3920778557978535
+    ],
+    "median_python_e2e": 20.563048185998923,
+    "median_rust_e2e": 6.097350741998525,
+    "rss_py": 38.98828125,
+    "rss_rs": 364.03515625,
+    "gate": true
+  },
+  {
+    "sweep": "A",
+    "driver": "reads",
+    "value": 800000,
+    "command": "read_NVC",
+    "median_python": 29.810649468985503,
+    "median_rust": 2.744598721998045,
+    "ratio": 10.861569390837433,
+    "ci95": [
+      10.670070560414104,
+      11.07302252891724
+    ],
+    "median_python_e2e": 29.90327242598869,
+    "median_rust_e2e": 2.747415171994362,
+    "rss_py": 38.796875,
+    "rss_rs": 364.0625,
+    "gate": true
+  },
+  {
+    "sweep": "A",
+    "driver": "transcripts",
+    "value": 1000,
+    "command": "read_distribution",
+    "median_python": 1.3867328310152516,
+    "median_rust": 0.3103587349905865,
+    "ratio": 4.468161113806938,
+    "ci95": [
+      4.344988032031692,
+      4.59953424236469
+    ],
+    "median_python_e2e": 1.4871783410053467,
+    "median_rust_e2e": 0.3135035129962489,
+    "rss_py": 56.328125,
+    "rss_rs": 92.99609375,
+    "gate": true
+  },
+  {
+    "sweep": "A",
+    "driver": "transcripts",
+    "value": 1000,
+    "command": "FPKM_count",
+    "median_python": 13.105570891988464,
+    "median_rust": 0.9317388810159173,
+    "ratio": 14.065712142117397,
+    "ci95": [
+      13.941745562762243,
+      14.14954135573741
+    ],
+    "median_python_e2e": 13.201971955990302,
+    "median_rust_e2e": 0.9342266830062727,
+    "rss_py": 43.3984375,
+    "rss_rs": 19.4921875,
+    "gate": true
+  },
+  {
+    "sweep": "A",
+    "driver": "transcripts",
+    "value": 200,
+    "command": "read_distribution",
+    "median_python": 1.1605344269919442,
+    "median_rust": 0.2862244020070648,
+    "ratio": 4.054631327217513,
+    "ci95": [
+      3.8763916823038134,
+      4.129808828874029
+    ],
+    "median_python_e2e": 1.2593619059916819,
+    "median_rust_e2e": 0.28892638300021645,
+    "rss_py": 45.55859375,
+    "rss_rs": 92.40625,
+    "gate": true
+  },
+  {
+    "sweep": "A",
+    "driver": "transcripts",
+    "value": 200,
+    "command": "FPKM_count",
+    "median_python": 7.242025493993424,
+    "median_rust": 0.511762264999561,
+    "ratio": 14.151151793107754,
+    "ci95": [
+      14.030643122827163,
+      14.230532563796809
+    ],
+    "median_python_e2e": 7.337011424999218,
+    "median_rust_e2e": 0.5143743039952824,
+    "rss_py": 40.64453125,
+    "rss_rs": 18.1484375,
+    "gate": true
+  },
+  {
+    "sweep": "A",
+    "driver": "transcripts",
+    "value": 20000,
+    "command": "read_distribution",
+    "median_python": 1.9550854100089055,
+    "median_rust": 0.563678999998956,
+    "ratio": 3.4684375504720357,
+    "ci95": [
+      3.370537386462622,
+      3.5660148080798124
+    ],
+    "median_python_e2e": 2.0548635120067047,
+    "median_rust_e2e": 0.5663439609925263,
+    "rss_py": 70.5703125,
+    "rss_rs": 93.6171875,
+    "gate": true
+  },
+  {
+    "sweep": "A",
+    "driver": "transcripts",
+    "value": 20000,
+    "command": "FPKM_count",
+    "median_python": 15.445019312013756,
+    "median_rust": 2.3997988030023407,
+    "ratio": 6.435964253624428,
+    "ci95": [
+      6.271600166238668,
+      6.5704075773427135
+    ],
+    "median_python_e2e": 15.53962005401263,
+    "median_rust_e2e": 2.402486969003803,
+    "rss_py": 57.81640625,
+    "rss_rs": 26.07421875,
+    "gate": true
+  },
+  {
+    "sweep": "A",
+    "driver": "transcripts",
+    "value": 5000,
+    "command": "read_distribution",
+    "median_python": 1.6909563950030133,
+    "median_rust": 0.4290596380160423,
+    "ratio": 3.9410754244373587,
+    "ci95": [
+      3.7918766514215445,
+      4.091942841954304
+    ],
+    "median_python_e2e": 1.790874578000512,
+    "median_rust_e2e": 0.4315010020072805,
+    "rss_py": 64.46484375,
+    "rss_rs": 93.52734375,
+    "gate": true
+  },
+  {
+    "sweep": "A",
+    "driver": "transcripts",
+    "value": 5000,
+    "command": "FPKM_count",
+    "median_python": 14.21301260398468,
+    "median_rust": 1.6842227640008787,
+    "ratio": 8.438914915400861,
+    "ci95": [
+      8.378154537722095,
+      8.582264733421967
+    ],
+    "median_python_e2e": 14.306624085991643,
+    "median_rust_e2e": 1.686752958004945,
+    "rss_py": 53.42578125,
+    "rss_rs": 25.046875,
+    "gate": true
+  }
+]
