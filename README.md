@@ -138,6 +138,21 @@ this table, is the authoritative compatibility record.
 - **Real biological / held-out dataset validation has not been performed.** Verification so far
   is fixture-based differential testing against the real upstream CLI, not large real-world
   datasets. See `testing.md` sections 10-11.
+- **Performance has been benchmarked, but not to publication standard.** A preregistered
+  run over 29 commands (10 paired repetitions each, structural equivalence gate, cost-driver
+  sweeps) is in `benchmarks/RESULTS.generated.md`. It was measured on shared, non-isolated
+  hardware, so it is internal engineering evidence: **no speedup figure from it may be
+  published** without repeating it on isolated hardware with locked frequency. The
+  benchmark found three commands that were genuinely *slower* than upstream
+  (`infer_experiment`, `bam2fq`, `inner_distance`); all three have since been
+  root-caused, fixed and re-measured faster, with outputs verified byte-identical
+  against upstream. A memory regression the benchmark also found -- the alignment reader
+  decoded whole files up front, extrapolating to ~23 GB for a 50M-read-pair BAM -- has
+  since been fixed by streaming the reader, and the last outlier (`tin`'s own whole-file read
+  index, 366 MB) by replacing it with a sliding window (20 MB). The port now uses less
+  memory than upstream on **28 of 29** measured commands; the remaining exception is
+  `geneBody_coverage`, which needs its whole-file index because it computes coverage for
+  every transcript in one pass.
 - **No fuzzing has been done.**
 - **Packaging covers one platform.** `.github/workflows/release.yml` builds a single Linux
   x86_64 archive; no macOS/Windows builds, container images, or Python wheel yet.

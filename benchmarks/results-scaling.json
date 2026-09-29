@@ -1,560 +1,653 @@
 [
   {
     "sweep": "A",
-    "driver": "readlen",
-    "value": 100,
-    "command": "read_quality",
-    "median_python": 2.5659187309938716,
-    "median_rust": 0.7792044529924169,
-    "ratio": 3.2929980329807518,
-    "ci95": [
-      3.267351126057546,
-      3.4050856106011325
-    ],
-    "median_python_e2e": 2.6596433719969355,
-    "median_rust_e2e": 0.7821736519981641,
-    "rss_py": 39.15234375,
-    "rss_rs": 47.83203125,
-    "gate": true
-  },
-  {
-    "sweep": "A",
-    "driver": "readlen",
-    "value": 100,
-    "command": "read_hexamer",
-    "median_python": 0.39696565200574696,
-    "median_rust": 0.10851550400548149,
-    "ratio": 3.6581468762813363,
-    "ci95": [
-      3.491211036062387,
-      3.751510471065785
-    ],
-    "median_python_e2e": 0.47275983401050325,
-    "median_rust_e2e": 0.11115569599496666,
-    "rss_py": 32.1875,
-    "rss_rs": 6.26953125,
-    "gate": true
-  },
-  {
-    "sweep": "A",
-    "driver": "readlen",
-    "value": 150,
-    "command": "read_quality",
-    "median_python": 3.747246068000095,
-    "median_rust": 1.156580617011059,
-    "ratio": 3.2399350403122518,
-    "ci95": [
-      3.225231072648569,
-      3.3094801775950846
-    ],
-    "median_python_e2e": 3.842172121992917,
-    "median_rust_e2e": 1.1594373020052444,
-    "rss_py": 39.453125,
-    "rss_rs": 63.0625,
-    "gate": true
-  },
-  {
-    "sweep": "A",
-    "driver": "readlen",
-    "value": 150,
-    "command": "read_hexamer",
-    "median_python": 0.5681506660039304,
-    "median_rust": 0.19041122499038465,
-    "ratio": 2.9838086805681794,
-    "ci95": [
-      2.8666644940683086,
-      3.085583045201909
-    ],
-    "median_python_e2e": 0.6453691250062548,
-    "median_rust_e2e": 0.19259648799197748,
-    "rss_py": 32.1640625,
-    "rss_rs": 7.140625,
-    "gate": true
-  },
-  {
-    "sweep": "A",
-    "driver": "readlen",
-    "value": 50,
-    "command": "read_quality",
-    "median_python": 1.3672007340064738,
-    "median_rust": 0.3970295780163724,
-    "ratio": 3.443574004831686,
-    "ci95": [
-      3.3652234140751807,
-      3.5299673018917463
-    ],
-    "median_python_e2e": 1.463079448993085,
-    "median_rust_e2e": 0.400392350013135,
-    "rss_py": 39.10546875,
-    "rss_rs": 34.6484375,
-    "gate": true
-  },
-  {
-    "sweep": "A",
-    "driver": "readlen",
-    "value": 50,
-    "command": "read_hexamer",
-    "median_python": 0.20723148000251967,
-    "median_rust": 0.06257823600026313,
-    "ratio": 3.3115583507602913,
-    "ci95": [
-      3.2005294762182412,
-      3.440656312584926
-    ],
-    "median_python_e2e": 0.28751589701278135,
-    "median_rust_e2e": 0.06521415000315756,
-    "rss_py": 32.4765625,
-    "rss_rs": 5.26953125,
-    "gate": true
-  },
-  {
-    "sweep": "A",
-    "driver": "readlen",
-    "value": 75,
-    "command": "read_quality",
-    "median_python": 1.977726935991086,
-    "median_rust": 0.5942042849928839,
-    "ratio": 3.328361955543237,
-    "ci95": [
-      3.119078926856943,
-      3.4003695547667823
-    ],
-    "median_python_e2e": 2.0704228739923565,
-    "median_rust_e2e": 0.5969359209993854,
-    "rss_py": 38.99609375,
-    "rss_rs": 41.265625,
-    "gate": true
-  },
-  {
-    "sweep": "A",
-    "driver": "readlen",
-    "value": 75,
-    "command": "read_hexamer",
-    "median_python": 0.2870888720062794,
-    "median_rust": 0.09472932000062428,
-    "ratio": 3.030623169303732,
-    "ci95": [
-      2.9316944162185665,
-      3.1483759579055675
-    ],
-    "median_python_e2e": 0.3663220620073844,
-    "median_rust_e2e": 0.09734868200030178,
-    "rss_py": 32.55859375,
-    "rss_rs": 5.95703125,
-    "gate": true
-  },
-  {
-    "sweep": "A",
-    "driver": "reads",
-    "value": 10000,
-    "command": "bam_stat",
-    "median_python": 0.04649911700107623,
-    "median_rust": 0.015253081990522332,
-    "ratio": 3.0485063300629314,
-    "ci95": [
-      2.8885161896049554,
-      3.6050831796698515
-    ],
-    "median_python_e2e": 0.14018219900026452,
-    "median_rust_e2e": 0.018039795992081054,
-    "rss_py": 38.40234375,
-    "rss_rs": 7.28125,
-    "gate": true
-  },
-  {
-    "sweep": "A",
-    "driver": "reads",
-    "value": 10000,
-    "command": "read_quality",
-    "median_python": 0.2623106860119151,
-    "median_rust": 0.08435886898951139,
-    "ratio": 3.109461863986453,
-    "ci95": [
-      2.763553889950766,
-      3.20651321387621
-    ],
-    "median_python_e2e": 0.36100628500571474,
-    "median_rust_e2e": 0.0868302299932111,
-    "rss_py": 38.9296875,
-    "rss_rs": 7.1953125,
-    "gate": true
-  },
-  {
-    "sweep": "A",
-    "driver": "reads",
-    "value": 10000,
-    "command": "read_NVC",
-    "median_python": 0.37388193199876696,
-    "median_rust": 0.039710858996841125,
-    "ratio": 9.41510562711595,
-    "ci95": [
-      8.818343086029932,
-      9.894438275302647
-    ],
-    "median_python_e2e": 0.46719288399617653,
-    "median_rust_e2e": 0.04232707699702587,
-    "rss_py": 39.03515625,
-    "rss_rs": 7.25,
-    "gate": true
-  },
-  {
-    "sweep": "A",
     "driver": "reads",
     "value": 2000,
     "command": "bam_stat",
-    "median_python": 0.013358932003029622,
-    "median_rust": 0.005149378004716709,
-    "ratio": 2.5942807055130066,
+    "median_python": 0.012188787019113079,
+    "median_rust": 0.003617990994825959,
+    "median_python_e2e": 0.11397312302142382,
+    "median_rust_e2e": 0.006472531997133046,
+    "floor_py": 0.10178433600231074,
+    "floor_rs": 0.002854541002307087,
+    "ratio": 3.368937909614507,
     "ci95": [
-      2.0520851923991885,
-      4.02092939093171
+      1.7830179663083014,
+      5.223159971905424
     ],
-    "median_python_e2e": 0.10416571900714189,
-    "median_rust_e2e": 0.00731584700406529,
-    "rss_py": 38.52734375,
-    "rss_rs": 3.73046875,
-    "gate": true
+    "rss_py": 37.57421875,
+    "rss_rs": 2.80859375,
+    "gate": true,
+    "n_transcripts": 9179
   },
   {
     "sweep": "A",
     "driver": "reads",
     "value": 2000,
     "command": "read_quality",
-    "median_python": 0.04928832700534258,
-    "median_rust": 0.019679006989463232,
-    "ratio": 2.5046145383114666,
+    "median_python": 0.050047576980432495,
+    "median_rust": 0.01981509500183165,
+    "median_python_e2e": 0.16072022600565106,
+    "median_rust_e2e": 0.022400249989004806,
+    "floor_py": 0.11067264902521856,
+    "floor_rs": 0.002585154987173155,
+    "ratio": 2.5257298527110894,
     "ci95": [
-      2.4240824407996695,
-      2.998190309151819
+      2.099341346187925,
+      3.083084398260291
     ],
-    "median_python_e2e": 0.14877427500323392,
-    "median_rust_e2e": 0.02246757499233354,
-    "rss_py": 39.23828125,
-    "rss_rs": 3.859375,
-    "gate": true
+    "rss_py": 38.2265625,
+    "rss_rs": 3.140625,
+    "gate": true,
+    "n_transcripts": 9179
   },
   {
     "sweep": "A",
     "driver": "reads",
     "value": 2000,
     "command": "read_NVC",
-    "median_python": 0.07340636399749201,
-    "median_rust": 0.010226288010017015,
-    "ratio": 7.17820228861028,
+    "median_python": 0.08060986202326603,
+    "median_rust": 0.009678725007688627,
+    "median_python_e2e": 0.18776810800773092,
+    "median_rust_e2e": 0.011942184995859861,
+    "floor_py": 0.10715824598446488,
+    "floor_rs": 0.0022634599881712347,
+    "ratio": 8.328562073954041,
     "ci95": [
-      6.181294546631586,
-      8.907658278431995
+      7.176853455319818,
+      9.444825889211327
     ],
-    "median_python_e2e": 0.17272540299745742,
-    "median_rust_e2e": 0.012786108010914177,
-    "rss_py": 38.7734375,
-    "rss_rs": 3.80859375,
-    "gate": true
+    "rss_py": 38.09765625,
+    "rss_rs": 2.95703125,
+    "gate": true,
+    "n_transcripts": 9179
   },
   {
     "sweep": "A",
     "driver": "reads",
-    "value": 200000,
+    "value": 10000,
     "command": "bam_stat",
-    "median_python": 0.8906625760137103,
-    "median_rust": 0.24273778198403306,
-    "ratio": 3.669237515206005,
+    "median_python": 0.04728338000131771,
+    "median_rust": 0.015320655977120623,
+    "median_python_e2e": 0.15105562898679636,
+    "median_rust_e2e": 0.017684658989310265,
+    "floor_py": 0.10377224898547865,
+    "floor_rs": 0.0023640030121896416,
+    "ratio": 3.0862503584656684,
     "ci95": [
-      3.5208827481450067,
-      3.788986792508351
+      2.8372466132168688,
+      3.9126908609937123
     ],
-    "median_python_e2e": 0.9826771100051701,
-    "median_rust_e2e": 0.245702435990097,
-    "rss_py": 38.27734375,
-    "rss_rs": 92.80859375,
-    "gate": true
+    "rss_py": 37.73828125,
+    "rss_rs": 2.9765625,
+    "gate": true,
+    "n_transcripts": 9179
   },
   {
     "sweep": "A",
     "driver": "reads",
-    "value": 200000,
+    "value": 10000,
     "command": "read_quality",
-    "median_python": 5.1181973940110765,
-    "median_rust": 1.544664078988717,
-    "ratio": 3.313469552138438,
+    "median_python": 0.28150907502276823,
+    "median_rust": 0.08972959400853142,
+    "median_python_e2e": 0.38862773499567993,
+    "median_rust_e2e": 0.09227331500733271,
+    "floor_py": 0.1071186599729117,
+    "floor_rs": 0.002543720998801291,
+    "ratio": 3.1373046778301767,
     "ci95": [
-      3.2889075906836243,
-      3.329196056265283
+      2.9903427164324365,
+      3.373840114076823
     ],
-    "median_python_e2e": 5.215737044010893,
-    "median_rust_e2e": 1.5473303129983833,
-    "rss_py": 39.1171875,
-    "rss_rs": 92.90625,
-    "gate": true
+    "rss_py": 38.38671875,
+    "rss_rs": 3.26171875,
+    "gate": true,
+    "n_transcripts": 9179
   },
   {
     "sweep": "A",
     "driver": "reads",
-    "value": 200000,
+    "value": 10000,
     "command": "read_NVC",
-    "median_python": 7.4801554279983975,
-    "median_rust": 0.7050184709951282,
-    "ratio": 10.609871564698462,
+    "median_python": 0.4038606410031207,
+    "median_rust": 0.04336396401049569,
+    "median_python_e2e": 0.5109213000105228,
+    "median_rust_e2e": 0.046102948021143675,
+    "floor_py": 0.10706065900740214,
+    "floor_rs": 0.0027389840106479824,
+    "ratio": 9.313277746134357,
     "ci95": [
-      10.276975799041738,
-      10.792039884594905
+      8.778531149911077,
+      10.119745654882466
     ],
-    "median_python_e2e": 7.573474143995554,
-    "median_rust_e2e": 0.7079153359954944,
-    "rss_py": 39.109375,
-    "rss_rs": 92.97265625,
-    "gate": true
+    "rss_py": 38.0546875,
+    "rss_rs": 2.98828125,
+    "gate": true,
+    "n_transcripts": 9179
   },
   {
     "sweep": "A",
     "driver": "reads",
     "value": 50000,
     "command": "bam_stat",
-    "median_python": 0.23353081198001746,
-    "median_rust": 0.06705807500111405,
-    "ratio": 3.482515893516743,
+    "median_python": 0.2529029479774181,
+    "median_rust": 0.06651272499584593,
+    "median_python_e2e": 0.36375110398512334,
+    "median_rust_e2e": 0.06874031099141575,
+    "floor_py": 0.11084815600770526,
+    "floor_rs": 0.002227585995569825,
+    "ratio": 3.80232426190948,
     "ci95": [
-      3.367697227709254,
-      3.658759738476318
+      3.7410158490178738,
+      4.246982332530854
     ],
-    "median_python_e2e": 0.32701019498927053,
-    "median_rust_e2e": 0.06972161300654989,
-    "rss_py": 38.5625,
-    "rss_rs": 25.1640625,
-    "gate": true
+    "rss_py": 37.41015625,
+    "rss_rs": 2.9296875,
+    "gate": true,
+    "n_transcripts": 9179
   },
   {
     "sweep": "A",
     "driver": "reads",
     "value": 50000,
     "command": "read_quality",
-    "median_python": 1.2883792750071734,
-    "median_rust": 0.4000941519916523,
-    "ratio": 3.2201902192113385,
+    "median_python": 1.4035829160129651,
+    "median_rust": 0.4140891539864242,
+    "median_python_e2e": 1.5111053969885688,
+    "median_rust_e2e": 0.4165783099888358,
+    "floor_py": 0.10752248097560368,
+    "floor_rs": 0.002489156002411619,
+    "ratio": 3.3895669628163727,
     "ci95": [
-      3.1354615704791717,
-      3.3387327448096635
+      3.1472923638468937,
+      3.432489666726031
     ],
-    "median_python_e2e": 1.3847976329998346,
-    "median_rust_e2e": 0.40269549199729227,
-    "rss_py": 38.94140625,
-    "rss_rs": 25.30859375,
-    "gate": true
+    "rss_py": 38.296875,
+    "rss_rs": 3.24609375,
+    "gate": true,
+    "n_transcripts": 9179
   },
   {
     "sweep": "A",
     "driver": "reads",
     "value": 50000,
     "command": "read_NVC",
-    "median_python": 1.878272650996223,
-    "median_rust": 0.18520946401986293,
-    "ratio": 10.141342727468755,
+    "median_python": 2.024720001994865,
+    "median_rust": 0.19359246900421567,
+    "median_python_e2e": 2.1329532919917256,
+    "median_rust_e2e": 0.19608995600719936,
+    "floor_py": 0.10823328999686055,
+    "floor_rs": 0.0024974870029836893,
+    "ratio": 10.458671313039428,
     "ci95": [
-      9.79137020163741,
-      10.416653485928114
+      9.971875089888742,
+      10.951609753316863
     ],
-    "median_python_e2e": 1.9784842250082875,
-    "median_rust_e2e": 0.18762544001219794,
-    "rss_py": 38.89453125,
-    "rss_rs": 25.28125,
-    "gate": true
+    "rss_py": 37.82421875,
+    "rss_rs": 3.07421875,
+    "gate": true,
+    "n_transcripts": 9179
+  },
+  {
+    "sweep": "A",
+    "driver": "reads",
+    "value": 200000,
+    "command": "bam_stat",
+    "median_python": 0.9913660820166115,
+    "median_rust": 0.22212253700126894,
+    "median_python_e2e": 1.0983049049973488,
+    "median_rust_e2e": 0.22438611698453315,
+    "floor_py": 0.10693882298073731,
+    "floor_rs": 0.002263579983264208,
+    "ratio": 4.463149464256966,
+    "ci95": [
+      4.110822887570571,
+      4.611706644551269
+    ],
+    "rss_py": 37.703125,
+    "rss_rs": 2.92578125,
+    "gate": true,
+    "n_transcripts": 9179
+  },
+  {
+    "sweep": "A",
+    "driver": "reads",
+    "value": 200000,
+    "command": "read_quality",
+    "median_python": 5.541350639978191,
+    "median_rust": 1.6271268770215102,
+    "median_python_e2e": 5.651062037999509,
+    "median_rust_e2e": 1.6299543320201337,
+    "floor_py": 0.10971139802131802,
+    "floor_rs": 0.0028274549986235797,
+    "ratio": 3.4056045156858015,
+    "ci95": [
+      3.3168598801280207,
+      3.4816615013514185
+    ],
+    "rss_py": 38.30859375,
+    "rss_rs": 3.21875,
+    "gate": true,
+    "n_transcripts": 9179
+  },
+  {
+    "sweep": "A",
+    "driver": "reads",
+    "value": 200000,
+    "command": "read_NVC",
+    "median_python": 8.124539386015385,
+    "median_rust": 0.7371403860161081,
+    "median_python_e2e": 8.239217843016377,
+    "median_rust_e2e": 0.7397315679991152,
+    "floor_py": 0.11467845700099133,
+    "floor_rs": 0.002591181983007118,
+    "ratio": 11.021698905855155,
+    "ci95": [
+      10.656686646199589,
+      11.092042079244399
+    ],
+    "rss_py": 38.09375,
+    "rss_rs": 2.94921875,
+    "gate": true,
+    "n_transcripts": 9179
   },
   {
     "sweep": "A",
     "driver": "reads",
     "value": 800000,
     "command": "bam_stat",
-    "median_python": 3.5057608150091255,
-    "median_rust": 0.9193794390012044,
-    "ratio": 3.8131816595960797,
+    "median_python": 3.889121272979537,
+    "median_rust": 0.8466368340014014,
+    "median_python_e2e": 3.998198538989527,
+    "median_rust_e2e": 0.8494736980064772,
+    "floor_py": 0.10907726600999013,
+    "floor_rs": 0.0028368640050757676,
+    "ratio": 4.5936121803237056,
     "ci95": [
-      3.776102650028601,
-      3.9099494879624235
+      4.486441072532653,
+      4.6997095447461605
     ],
-    "median_python_e2e": 3.597944182009087,
-    "median_rust_e2e": 0.9224669480026932,
-    "rss_py": 38.62109375,
-    "rss_rs": 363.9296875,
-    "gate": true
+    "rss_py": 37.609375,
+    "rss_rs": 2.94140625,
+    "gate": true,
+    "n_transcripts": 9179
   },
   {
     "sweep": "A",
     "driver": "reads",
     "value": 800000,
     "command": "read_quality",
-    "median_python": 20.468641170999035,
-    "median_rust": 6.094603302990436,
-    "ratio": 3.358486213689363,
+    "median_python": 22.401096271991264,
+    "median_rust": 6.529216450988315,
+    "median_python_e2e": 22.515974276990164,
+    "median_rust_e2e": 6.531685933994595,
+    "floor_py": 0.1148780049989,
+    "floor_rs": 0.0024694830062799156,
+    "ratio": 3.4309011563861467,
     "ci95": [
-      3.3245645071154764,
-      3.3920778557978535
+      3.397641644555478,
+      3.433521663278353
     ],
-    "median_python_e2e": 20.563048185998923,
-    "median_rust_e2e": 6.097350741998525,
-    "rss_py": 38.98828125,
-    "rss_rs": 364.03515625,
-    "gate": true
+    "rss_py": 38.16796875,
+    "rss_rs": 3.21484375,
+    "gate": true,
+    "n_transcripts": 9179
   },
   {
     "sweep": "A",
     "driver": "reads",
     "value": 800000,
     "command": "read_NVC",
-    "median_python": 29.810649468985503,
-    "median_rust": 2.744598721998045,
-    "ratio": 10.861569390837433,
+    "median_python": 32.51821856200695,
+    "median_rust": 2.907233630976407,
+    "median_python_e2e": 32.638918454991654,
+    "median_rust_e2e": 2.9095818209752906,
+    "floor_py": 0.12069989298470318,
+    "floor_rs": 0.002348189998883754,
+    "ratio": 11.185278752807207,
     "ci95": [
-      10.670070560414104,
-      11.07302252891724
+      10.937146680399863,
+      11.299891583824671
     ],
-    "median_python_e2e": 29.90327242598869,
-    "median_rust_e2e": 2.747415171994362,
-    "rss_py": 38.796875,
-    "rss_rs": 364.0625,
-    "gate": true
-  },
-  {
-    "sweep": "A",
-    "driver": "transcripts",
-    "value": 1000,
-    "command": "read_distribution",
-    "median_python": 1.3867328310152516,
-    "median_rust": 0.3103587349905865,
-    "ratio": 4.468161113806938,
-    "ci95": [
-      4.344988032031692,
-      4.59953424236469
-    ],
-    "median_python_e2e": 1.4871783410053467,
-    "median_rust_e2e": 0.3135035129962489,
-    "rss_py": 56.328125,
-    "rss_rs": 92.99609375,
-    "gate": true
-  },
-  {
-    "sweep": "A",
-    "driver": "transcripts",
-    "value": 1000,
-    "command": "FPKM_count",
-    "median_python": 13.105570891988464,
-    "median_rust": 0.9317388810159173,
-    "ratio": 14.065712142117397,
-    "ci95": [
-      13.941745562762243,
-      14.14954135573741
-    ],
-    "median_python_e2e": 13.201971955990302,
-    "median_rust_e2e": 0.9342266830062727,
-    "rss_py": 43.3984375,
-    "rss_rs": 19.4921875,
-    "gate": true
+    "rss_py": 38.1875,
+    "rss_rs": 2.9765625,
+    "gate": true,
+    "n_transcripts": 9179
   },
   {
     "sweep": "A",
     "driver": "transcripts",
     "value": 200,
     "command": "read_distribution",
-    "median_python": 1.1605344269919442,
-    "median_rust": 0.2862244020070648,
-    "ratio": 4.054631327217513,
+    "median_python": 1.303731653984869,
+    "median_rust": 0.25833302800310776,
+    "median_python_e2e": 1.4243758809752762,
+    "median_rust_e2e": 0.26117839899961837,
+    "floor_py": 0.12064422699040733,
+    "floor_rs": 0.00284537099651061,
+    "ratio": 5.04670914153952,
     "ci95": [
-      3.8763916823038134,
-      4.129808828874029
+      4.957799472252279,
+      5.115917587130454
     ],
-    "median_python_e2e": 1.2593619059916819,
-    "median_rust_e2e": 0.28892638300021645,
-    "rss_py": 45.55859375,
-    "rss_rs": 92.40625,
-    "gate": true
+    "rss_py": 44.203125,
+    "rss_rs": 3.60546875,
+    "gate": true,
+    "n_transcripts": 200
   },
   {
     "sweep": "A",
     "driver": "transcripts",
     "value": 200,
     "command": "FPKM_count",
-    "median_python": 7.242025493993424,
-    "median_rust": 0.511762264999561,
-    "ratio": 14.151151793107754,
+    "median_python": 8.218315352976788,
+    "median_rust": 0.6135991619958077,
+    "median_python_e2e": 8.338340283982689,
+    "median_rust_e2e": 0.6165289350028615,
+    "floor_py": 0.12002493100590073,
+    "floor_rs": 0.002929773007053882,
+    "ratio": 13.393622191799764,
     "ci95": [
-      14.030643122827163,
-      14.230532563796809
+      13.200229596579273,
+      13.526480496654575
     ],
-    "median_python_e2e": 7.337011424999218,
-    "median_rust_e2e": 0.5143743039952824,
-    "rss_py": 40.64453125,
-    "rss_rs": 18.1484375,
-    "gate": true
+    "rss_py": 39.2109375,
+    "rss_rs": 17.51953125,
+    "gate": true,
+    "n_transcripts": 200
   },
   {
     "sweep": "A",
     "driver": "transcripts",
-    "value": 20000,
+    "value": 1000,
     "command": "read_distribution",
-    "median_python": 1.9550854100089055,
-    "median_rust": 0.563678999998956,
-    "ratio": 3.4684375504720357,
+    "median_python": 1.6078958860016428,
+    "median_rust": 0.29701931701856665,
+    "median_python_e2e": 1.7335142829979304,
+    "median_rust_e2e": 0.2994245270092506,
+    "floor_py": 0.12561839699628763,
+    "floor_rs": 0.002405209990683943,
+    "ratio": 5.413438769375169,
     "ci95": [
-      3.370537386462622,
-      3.5660148080798124
+      5.38572795544797,
+      5.611654853373831
     ],
-    "median_python_e2e": 2.0548635120067047,
-    "median_rust_e2e": 0.5663439609925263,
-    "rss_py": 70.5703125,
-    "rss_rs": 93.6171875,
-    "gate": true
+    "rss_py": 55.49609375,
+    "rss_rs": 5.8984375,
+    "gate": true,
+    "n_transcripts": 1000
   },
   {
     "sweep": "A",
     "driver": "transcripts",
-    "value": 20000,
+    "value": 1000,
     "command": "FPKM_count",
-    "median_python": 15.445019312013756,
-    "median_rust": 2.3997988030023407,
-    "ratio": 6.435964253624428,
+    "median_python": 14.974202737997985,
+    "median_rust": 1.2234353089879733,
+    "median_python_e2e": 15.095282410999062,
+    "median_rust_e2e": 1.2259250200004317,
+    "floor_py": 0.12107967300107703,
+    "floor_rs": 0.0024897110124584287,
+    "ratio": 12.239472433066084,
     "ci95": [
-      6.271600166238668,
-      6.5704075773427135
+      11.959779044786513,
+      12.57850750363864
     ],
-    "median_python_e2e": 15.53962005401263,
-    "median_rust_e2e": 2.402486969003803,
-    "rss_py": 57.81640625,
-    "rss_rs": 26.07421875,
-    "gate": true
+    "rss_py": 42.16796875,
+    "rss_rs": 18.953125,
+    "gate": true,
+    "n_transcripts": 1000
   },
   {
     "sweep": "A",
     "driver": "transcripts",
     "value": 5000,
     "command": "read_distribution",
-    "median_python": 1.6909563950030133,
-    "median_rust": 0.4290596380160423,
-    "ratio": 3.9410754244373587,
+    "median_python": 1.9532828579831403,
+    "median_rust": 0.4403817679849453,
+    "median_python_e2e": 2.072424442972988,
+    "median_rust_e2e": 0.4427173549775034,
+    "floor_py": 0.11914158498984762,
+    "floor_rs": 0.002335586992558092,
+    "ratio": 4.435430801145052,
     "ci95": [
-      3.7918766514215445,
-      4.091942841954304
+      4.327379636960304,
+      4.498508715720675
     ],
-    "median_python_e2e": 1.790874578000512,
-    "median_rust_e2e": 0.4315010020072805,
-    "rss_py": 64.46484375,
-    "rss_rs": 93.52734375,
-    "gate": true
+    "rss_py": 63.5234375,
+    "rss_rs": 13.734375,
+    "gate": true,
+    "n_transcripts": 5000
   },
   {
     "sweep": "A",
     "driver": "transcripts",
     "value": 5000,
     "command": "FPKM_count",
-    "median_python": 14.21301260398468,
-    "median_rust": 1.6842227640008787,
-    "ratio": 8.438914915400861,
+    "median_python": 16.256168479972985,
+    "median_rust": 2.6114066790032666,
+    "median_python_e2e": 16.375140163989272,
+    "median_rust_e2e": 2.6140230849850923,
+    "floor_py": 0.11897168401628733,
+    "floor_rs": 0.0026164059818256646,
+    "ratio": 6.225061998454301,
     "ci95": [
-      8.378154537722095,
-      8.582264733421967
+      6.174987260937768,
+      6.402923344378276
     ],
-    "median_python_e2e": 14.306624085991643,
-    "median_rust_e2e": 1.686752958004945,
-    "rss_py": 53.42578125,
-    "rss_rs": 25.046875,
-    "gate": true
+    "rss_py": 52.25390625,
+    "rss_rs": 24.87109375,
+    "gate": true,
+    "n_transcripts": 5000
+  },
+  {
+    "sweep": "A",
+    "driver": "transcripts",
+    "value": 20000,
+    "command": "read_distribution",
+    "median_python": 2.301467572018737,
+    "median_rust": 0.5876905279583298,
+    "median_python_e2e": 2.4209105480113067,
+    "median_rust_e2e": 0.5902062909735832,
+    "floor_py": 0.1194429759925697,
+    "floor_rs": 0.0025157630152534693,
+    "ratio": 3.9161216023238725,
+    "ci95": [
+      3.7339824014720415,
+      3.9882972277718642
+    ],
+    "rss_py": 69.66015625,
+    "rss_rs": 18.52734375,
+    "gate": true,
+    "n_transcripts": 9179
+  },
+  {
+    "sweep": "A",
+    "driver": "transcripts",
+    "value": 20000,
+    "command": "FPKM_count",
+    "median_python": 17.689325246028602,
+    "median_rust": 3.8403888079919852,
+    "median_python_e2e": 17.806514762021834,
+    "median_rust_e2e": 3.8432259440014604,
+    "floor_py": 0.11718951599323191,
+    "floor_rs": 0.0028371360094752163,
+    "ratio": 4.606128736032271,
+    "ci95": [
+      4.230703063057491,
+      4.6778953214190615
+    ],
+    "rss_py": 56.68359375,
+    "rss_rs": 25.62109375,
+    "gate": true,
+    "n_transcripts": 9179
+  },
+  {
+    "sweep": "A",
+    "driver": "readlen",
+    "value": 50,
+    "command": "read_quality",
+    "median_python": 1.4999570750223938,
+    "median_rust": 0.43374385600327514,
+    "median_python_e2e": 1.6214338990102988,
+    "median_rust_e2e": 0.4360564350208733,
+    "floor_py": 0.12147682398790494,
+    "floor_rs": 0.002312579017598182,
+    "ratio": 3.4581632783083567,
+    "ci95": [
+      3.4290300810760597,
+      3.5233226853261788
+    ],
+    "rss_py": 37.84375,
+    "rss_rs": 3.0390625,
+    "gate": true,
+    "n_transcripts": 9245
+  },
+  {
+    "sweep": "A",
+    "driver": "readlen",
+    "value": 50,
+    "command": "read_hexamer",
+    "median_python": 0.2303452709747944,
+    "median_rust": 0.06730343299568631,
+    "median_python_e2e": 0.32345808899844997,
+    "median_rust_e2e": 0.07027119499980472,
+    "floor_py": 0.09311281802365556,
+    "floor_rs": 0.0029677620041184127,
+    "ratio": 3.4224891765856573,
+    "ci95": [
+      3.3056240386899676,
+      3.5336659572340663
+    ],
+    "rss_py": 31.8828125,
+    "rss_rs": 5.45703125,
+    "gate": true,
+    "n_transcripts": 9245
+  },
+  {
+    "sweep": "A",
+    "driver": "readlen",
+    "value": 75,
+    "command": "read_quality",
+    "median_python": 2.1607964140130207,
+    "median_rust": 0.6356422210228629,
+    "median_python_e2e": 2.2804715640086215,
+    "median_rust_e2e": 0.6385449290100951,
+    "floor_py": 0.1196751499956008,
+    "floor_rs": 0.0029027079872321337,
+    "ratio": 3.3993909506764823,
+    "ci95": [
+      3.3508695269242037,
+      3.439180700349512
+    ],
+    "rss_py": 38.09765625,
+    "rss_rs": 3.04296875,
+    "gate": true,
+    "n_transcripts": 9226
+  },
+  {
+    "sweep": "A",
+    "driver": "readlen",
+    "value": 75,
+    "command": "read_hexamer",
+    "median_python": 0.33273964599356987,
+    "median_rust": 0.10763232599128969,
+    "median_python_e2e": 0.427850041014608,
+    "median_rust_e2e": 0.11055461099022068,
+    "floor_py": 0.09511039502103813,
+    "floor_rs": 0.0029222849989309907,
+    "ratio": 3.0914471366204364,
+    "ci95": [
+      3.0345133107587983,
+      3.1550628386454633
+    ],
+    "rss_py": 31.54296875,
+    "rss_rs": 5.7734375,
+    "gate": true,
+    "n_transcripts": 9226
+  },
+  {
+    "sweep": "A",
+    "driver": "readlen",
+    "value": 100,
+    "command": "read_quality",
+    "median_python": 2.8144901909981854,
+    "median_rust": 0.839168716018321,
+    "median_python_e2e": 2.9327858769975137,
+    "median_rust_e2e": 0.8418961419956759,
+    "floor_py": 0.11829568599932827,
+    "floor_rs": 0.0027274259773548692,
+    "ratio": 3.353902662568678,
+    "ci95": [
+      3.343815759000056,
+      3.3945978070371026
+    ],
+    "rss_py": 38.05859375,
+    "rss_rs": 3.234375,
+    "gate": true,
+    "n_transcripts": 9179
+  },
+  {
+    "sweep": "A",
+    "driver": "readlen",
+    "value": 100,
+    "command": "read_hexamer",
+    "median_python": 0.4380732590216212,
+    "median_rust": 0.12471742698107846,
+    "median_python_e2e": 0.5349788270250428,
+    "median_rust_e2e": 0.12741960500716232,
+    "floor_py": 0.09690556800342165,
+    "floor_rs": 0.002702178026083857,
+    "ratio": 3.5125264337604047,
+    "ci95": [
+      3.3665299062541556,
+      3.7729879195005416
+    ],
+    "rss_py": 31.63671875,
+    "rss_rs": 6.2734375,
+    "gate": true,
+    "n_transcripts": 9179
+  },
+  {
+    "sweep": "A",
+    "driver": "readlen",
+    "value": 150,
+    "command": "read_quality",
+    "median_python": 4.214019429986365,
+    "median_rust": 1.2615340710035525,
+    "median_python_e2e": 4.329334246984217,
+    "median_rust_e2e": 1.2647733089979738,
+    "floor_py": 0.11531481699785218,
+    "floor_rs": 0.0032392379944212735,
+    "ratio": 3.3403928810532286,
+    "ci95": [
+      3.323747836431553,
+      3.36186592055105
+    ],
+    "rss_py": 38.1640625,
+    "rss_rs": 3.43359375,
+    "gate": true,
+    "n_transcripts": 9141
+  },
+  {
+    "sweep": "A",
+    "driver": "readlen",
+    "value": 150,
+    "command": "read_hexamer",
+    "median_python": 0.6231446269666776,
+    "median_rust": 0.20317459900979884,
+    "median_python_e2e": 0.7183374549786095,
+    "median_rust_e2e": 0.20592424299684353,
+    "floor_py": 0.09519282801193185,
+    "floor_rs": 0.002749643987044692,
+    "ratio": 3.067040023721785,
+    "ci95": [
+      2.9737794232798658,
+      3.129151101989943
+    ],
+    "rss_py": 31.69140625,
+    "rss_rs": 7.1484375,
+    "gate": true,
+    "n_transcripts": 9141
   }
 ]

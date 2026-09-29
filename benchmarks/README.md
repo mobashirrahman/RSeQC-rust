@@ -1,8 +1,52 @@
-# Benchmark Runner
+# Benchmark suite
 
-This directory contains scaffolding to measure and compare performance between the upstream Python RSeQC implementation and the Rust port.
+**Status: measured.** Results from a full 10-repetition, gate-checked run are in
+[`RESULTS.generated.md`](RESULTS.generated.md), regenerated from
+[`results-main.json`](results-main.json) and [`results-scaling.json`](results-scaling.json)
+by `analyze.py`. The protocol these runs followed is frozen in
+[`protocol.md`](protocol.md); every post-freeze change to the protocol or the harness
+is recorded in [`CHANGES.md`](CHANGES.md).
 
-**Important:** Results from this sandbox are **not** suitable for publication. All measurements here run on shared, non-isolated hardware. See [testing.md](../testing.md) section 12 for the protocol required for publishable performance claims.
+> **These numbers are not publication-grade.** They were measured on shared,
+> non-isolated hardware. See [`protocol.md` §2](protocol.md) and RESULTS §7.
+
+## What is here
+
+| File | Role |
+|---|---|
+| `protocol.md` | Frozen preregistration: datasets, experiment classes, estimator, exclusions, predicted results. Written **before** any measurement. |
+| `CHANGES.md` | Every post-freeze change, split into protocol clarifications and harness bugs whose results were discarded and re-measured. |
+| `generate_workload_real.py` | Tier A/B workload generator: real hg38 chromosomes + real RefSeq BED12, reads simulated from real transcript sequences. Validates every generated BAM against the reference before writing a manifest. |
+| `generate_workload.py` | Tier C legacy generator (1 contig, 3 genes). Retained for pinning old numbers; **not used for any claim**. |
+| `bench.py` | The harness: process-tree resources via `/usr/bin/time -v`, structural equivalence gate, randomised interleaved paired repetitions, paired block-bootstrap intervals. |
+| `scaling.py` | Cost-driver sweeps (read count, transcript count, read length). |
+| `analyze.py` | Regenerates every table in RESULTS.generated.md from the raw JSON. |
+| `run_benchmarks.py` | **Superseded** by `bench.py`. Kept for reference; it covered 5 commands and compared exit codes plus a raw file diff. |
+| `results-main.json` | Raw per-run measurements, environment manifest, gate outcomes, failures. |
+| `results-scaling.json` | Raw per-run measurements for each scaling point. |
+
+## Headline
+
+- **All 29 measured commands are faster, and all 29 passed the equivalence gate.** The
+  first run found three that were not (`infer_experiment` 0.18x, `bam2fq` 0.35x,
+  `inner_distance` 0.53x); all three were root-caused, fixed and re-measured at 3.43x,
+  2.32x and 11.18x. See RESULTS §6.1 — notably the three shared a *symptom* but had
+  three *different* causes.
+- Speedup is **not** a single number. For `bam_stat` the end-to-end figure falls from
+  17.6x at 2k reads to 4.7x at 800k while the compute-only figure *rises* from 3.4x to
+  4.6x -- opposite trends on the same code, because ~0.09 s of the reference's time is
+  fixed interpreter/import cost. Any claim must state its workload size and whether it
+  includes interpreter startup.
+- The port uses **less** memory than upstream on 28 of 29 commands. The first run found
+  the opposite on 14 commands (whole-file eager decode in `open_alignments`); that reader
+  now streams, and `tin`'s own whole-file index has been replaced with a sliding window
+  (366 MB -> 20 MB). The one remaining exception is `geneBody_coverage`, which needs the
+  whole-file index because it computes coverage for every transcript in one pass.
+- Upstream burns ~0.9 s of CPU per invocation in OpenBLAS thread-pool start-up with no
+  `multiprocessing` anywhere, so thread env vars are pinned in both arms or the CPU
+  column is meaningless.
+
+See RESULTS.generated.md §6 for the full findings and §7 for what is not established.
 
 ## Overview
 
