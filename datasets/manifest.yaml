@@ -133,29 +133,64 @@ splits:
         never by re-inspecting this one.
     strata:
       - id: cross_lab
-        description: a different submitting institution, standard Illumina chemistry
-        status: not_selected
-        rationale: >
-            Selection requires confirming the submitting institution from the
-            archive rather than assuming it, so this is deliberately left open
-            rather than filled with a plausible-looking accession.
+        description: >
+            A different submitting institution and a different wet-lab source
+            (patient-derived tumour tissue rather than the reference RNA the
+            development set is built from), sequenced on a different Illumina
+            instrument.
+        study: "SUMO and proteasome inhibition in multiple myeloma"
+        bioproject: PRJEB51059
+        submitting_institution: >
+            Charite Universitaitsmedizin (Berlin), per the archive's own
+            center_name. Verified from the study record rather than inferred
+            from the accession, because selecting this stratum means
+            confirming the institution -- that was the reason it was left
+            unselected rather than filled with a plausible-looking study.
+        instrument: Illumina HiSeq 2500
+        library: cDNA, paired-end
+        run: ERR10015758
+        status: selected_and_fetched
+        exposure: >
+            NOT YET INSPECTED. Fetched and MD5-verified only. No RSeQC command
+            has been run against this run, and none will be until the
+            development-side work is final.
       - id: cross_chemistry
         description: >
-            A non-Illumina platform (e.g. BGISEQ-500 / DNBSEQ), which
-            exercises a different base-quality encoding and therefore a
-            different path through the port's quality handling -- the class of
-            input where the `min_base_quality` and overlap-quality paths are
-            most likely to diverge.
-        candidate_study: PRJEB53454
-        status: candidate
+            A non-Illumina platform. This is the stratum most likely to find
+            real divergence, because DNBSEQ data differs in base-quality
+            encoding and RSeQC filters on base quality, so a wrong quality
+            offset would silently change which bases are counted. That is a
+            property of the DATA, not of either implementation -- both arms
+            read the same BAM -- but it exercises a path the Illumina-only
+            panel never touches.
+        study: PRJEB53454
+        submitting_institution: >
+            University of Tartu, Institute of Biomedicine and Translational
+            Medicine (Estonia), per the archive's center_name.
+        instrument: BGISEQ-500 (DNBSEQ)
+        library: cDNA, paired-end
+        run: ERR10229623
+        status: selected_and_fetched
+        exposure: NOT YET INSPECTED, as above.
       - id: cross_organism
         description: >
-            A second organism, to test that nothing assumes human chromosome
-            naming or a particular transcript structure (§11.1 lists "a second
-            organism/reference structure" as a required domain).
-        candidate_study: SEQC rat arm, PRJNA239561
-        candidate_reference: mRatBN7.2
-        status: candidate
+            A second organism, for testing that nothing assumes human
+            chromosome naming or a particular transcript structure
+            (testing.md section 11.1 lists this as a required domain).
+        study: SEQC rat arm
+        bioproject: PRJNA239561
+        submitting_institution: >
+            Center for Pharmacogenomics, School of Life Sciences, Fudan
+            University (the same submitting centre as the development study,
+            but a different organism and a different library -- this is a
+            cross-ORGANISM stratum, not a cross-lab one; cross-lab coverage
+            comes from cross_lab above).
+        instrument: Illumina HiScanSQ
+        library: cDNA, paired-end
+        run: SRR1177982
+        reference_required: mRatBN7.2 (NOT YET BUILT -- a second STAR index)
+        status: selected_and_fetched
+        exposure: NOT YET INSPECTED, as above.
 
 # ----------------------------------------------------------------------
 # Not yet satisfied

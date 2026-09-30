@@ -27,3 +27,10 @@ datasets/logs/run_metadata.json
 # Regenerated on demand by run_diff.py; only reads.bam/.bai and model.bed12 are committed
 verification/fixtures/genebody_coverage_float/*.fastq
 verification/fixtures/genebody_coverage_float/manifest.json
+
+# T4 held-out stratum reads: 9.5 GB of FASTQ, regenerable from the run
+# accessions recorded in datasets/manifest.yaml via datasets/fetch_fastq.py
+# (per-run MD5 verified against the archive). Never commit these: they are the
+# held-out set, and the discipline that makes them worth having is that they
+# are inspected exactly once, at final validation.
+datasets/heldout/

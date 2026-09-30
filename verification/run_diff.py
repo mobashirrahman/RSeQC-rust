@@ -803,6 +803,7 @@ REAL_EQUIVALENTS = {
     "pe.bam": "pe.bam",
     "se.bam": "se.bam",
     "model.bed12": "model.bed12",
+    "chrom.sizes": "chrom.sizes",
 }
 
 
@@ -871,9 +872,25 @@ def _real_data_gaps(case: Case) -> list[str]:
         argv = list(case.py_args(probe)) + list(case.rust_args(probe))
     except Exception:  # a builder that cannot run without real inputs
         return ["<args unavailable>"]
+    # Match on the resolved fixture PATH, not on a substring of the argument.
+    # A substring test flagged read_hexamer's cases as needing "reads.fa" because
+    # their argument contains "regression_hexamer_reads.fa" -- a different file,
+    # from a different fixture family, that the real panel is not expected to
+    # provide. Two fixtures skipped for a bogus reason is worse than one missed.
+    # Multi-input commands take a COMMA-JOINED list in a single argument
+    # (`"-i", pe + "," + se + "," + sc`), so each argument has to be split
+    # before comparing. Without the split, no multi-BAM case was ever
+    # recognised as needing a fixture, and genebody_coverage's three-sample
+    # case ran the real pe/se against the SYNTHETIC sc.bam -- which has no
+    # coverage in the real model's window, so both arms raised the same
+    # ZeroDivisionError and the row was reported as a failure of both.
+    tokens = [tok for a in argv for tok in a.split(",") if tok]
     missing = []
     for name in sorted(REAL_FIXTURE_NAMES):
-        if any(name in a for a in argv) and _real_path(name) is None:
+        if _real_path(name) is not None:
+            continue
+        synthetic_path = str(SYNTHETIC_DIR / name)
+        if any(tok == synthetic_path for tok in tokens):
             missing.append(name)
     return missing
 
