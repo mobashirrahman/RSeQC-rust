@@ -22,7 +22,17 @@ ENV_NAME="${ENV_NAME:-t4star}"
 
 GENOME="$REF_DIR/hg38.fa.gz"
 GTF="$REF_DIR/gencode.v47.annotation.gtf.gz"
-SA_INDEX_NBASES=11
+# STAR's own ceiling, in MB, on how much RAM genomeGenerate may plan for. The
+# default is 31000, which on a 31 GB machine is a promise the kernel cannot
+# keep: the first build here was OOM-killed at "inserting junctions into the
+# genome indices" (Log.out ends there, process died) after completing the
+# 34-minute suffix array. Setting the limit makes STAR choose a smaller
+# genomeSAindexNbases itself, which is the mechanism the option exists for --
+# better than hand-tuning the index parameter and getting it subtly wrong.
+# NOTE the unit: STAR parses --limitGenomeGenerateRAM as BYTES, and passing
+# "20000" meaning megabytes is rejected as "too small for your genome" with a
+# minimum of 8746522208 (i.e. ~8.1 GiB expressed in bytes). 21 GB in bytes.
+LIMIT_RAM_BYTES="${LIMIT_RAM_BYTES:-21000000000}"
 # 149 = 2*75 - 1 for 2x100 Illumina. Recorded because STAR uses it to size the
 # junction database, and a mismatch against the actual read length degrades
 # splice detection at the long end.
@@ -33,7 +43,7 @@ for f in "$GENOME" "$GTF"; do
   [[ -f "$f" ]] || { echo "error: missing $f (run datasets/fetch_reference.sh first)" >&2; exit 1; }
 done
 
-STAMP="$IDX_DIR/.built-${SA_INDEX_NBASES}-${SJDB_OVERHANG}"
+STAMP="$IDX_DIR/.built-${LIMIT_RAM_BYTES}-${SJDB_OVERHANG}"
 if [[ -f "$STAMP" ]]; then
   echo "ok       STAR index already built ($(cat "$STAMP"))"
   exit 0
@@ -48,8 +58,9 @@ MM="${MICROMAMBA:-/scratch/mdra00001/tmp/bin/micromamba}"
 export MAMBA_ROOT_PREFIX
 STAR="$MM run -n $ENV_NAME STAR"
 
-echo "building  STAR index (genomeSAindexNbases=$SA_INDEX_NBASES sjdbOverhang=$SJDB_OVERHANG)"
-echo "          this takes ~30-60 min and ~16 GB RAM"
+echo "building  STAR index (limitGenomeGenerateRAM=$LIMIT_RAM_BYTES bytes sjdbOverhang=$SJDB_OVERHANG)"
+echo "          STAR chooses genomeSAindexNbases from the RAM limit; the chosen"
+echo "          value is read back from Log.out and recorded in the stamp."
 # STAR cannot read a gzipped genome OR a gzipped GTF: --sjdbGTFfile silently
 # yields an empty junction database from a .gz (its own error text is the clue:
 # "Make sure the GTF file is unzipped"). Decompressed once and reused.
@@ -67,11 +78,15 @@ $STAR --runMode genomeGenerate \
   --genomeFastaFiles "$IDX_DIR/genome.fa" \
   --sjdbGTFfile "$IDX_DIR/annotation.gtf" \
   --sjdbOverhang "$SJDB_OVERHANG" \
-  --genomeSAindexNbases "$SA_INDEX_NBASES" \
+  --limitGenomeGenerateRAM "$LIMIT_RAM_BYTES" \
   --runThreadN "$THREADS" \
   --outFileNamePrefix "$IDX_DIR/"
 
-printf 'genome=%s\ngtf=%s\nsjdbOverhang=%s\ngenomeSAindexNbases=%s\n' \
-  "$(basename "$GENOME")" "$(basename "$GTF")" "$SJDB_OVERHANG" "$SA_INDEX_NBASES" > "$STAMP"
+# Read the genomeSAindexNbases STAR actually chose back out of its log rather
+# than asserting one, so the stamp records what happened and not what was
+# requested.
+CHOSEN="$(grep -oE 'genomeSAindexNbases *= *[0-9]+' "$IDX_DIR/Log.out" | tail -1 | grep -oE '[0-9]+' || echo unknown)"
+printf 'genome=%s\ngtf=%s\nsjdbOverhang=%s\nlimitGenomeGenerateRAM_bytes=%s\ngenomeSAindexNbases=%s\n' \
+  "$(basename "$GENOME")" "$(basename "$GTF")" "$SJDB_OVERHANG" "$LIMIT_RAM_BYTES" "$CHOSEN" > "$STAMP"
 
 echo "ok       index built: $IDX_DIR"
