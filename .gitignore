@@ -11,6 +11,19 @@ __pycache__/
 benchmarks/workloads/
 benchmarks/benchmark_results/
 
+# T4 real-data panel: every byte under datasets/ except the manifest, the
+# fetch/align scripts, and the logs that record what was fetched. The reads,
+# the reference, the STAR index and the resulting BAMs are all regenerable from
+# datasets/fetch_reference.sh + datasets/fetch_fastq.py + the pinned digests
+# below, so committing them would mean committing ~4 GB of data that can only
+# be verified by re-deriving it.
+datasets/reference/
+datasets/raw/
+datasets/aligned/
+datasets/star_index/
+datasets/logs/*.log
+datasets/logs/run_metadata.json
+
 # Regenerated on demand by run_diff.py; only reads.bam/.bai and model.bed12 are committed
 verification/fixtures/genebody_coverage_float/*.fastq
 verification/fixtures/genebody_coverage_float/manifest.json
