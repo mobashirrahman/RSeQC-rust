@@ -29,12 +29,12 @@ is recorded in [`CHANGES.md`](CHANGES.md).
 
 - **All 29 measured commands are faster, and all 29 passed the equivalence gate.** The
   first run found three that were not (`infer_experiment` 0.18x, `bam2fq` 0.35x,
-  `inner_distance` 0.53x); all three were root-caused, fixed and re-measured at 3.36x,
-  2.28x and 10.93x. See RESULTS §6.1 — notably the three shared a *symptom* but had
+  `inner_distance` 0.53x); all three were root-caused, fixed and re-measured at 3.35x,
+  2.30x and 10.93x. See RESULTS §6.1 — notably the three shared a *symptom* but had
   three *different* causes.
 - Speedup is **not** a single number. For `bam_stat` the end-to-end figure falls from
-  17.6x at 2k reads to 4.7x at 800k while the compute-only figure *rises* from 3.4x to
-  4.6x -- opposite trends on the same code, because ~0.09 s of the reference's time is
+  14.2x at 2k reads to 4.8x at 800k while the compute-only figure *rises* from 2.3x to
+  4.7x -- opposite trends on the same code, because ~0.09 s of the reference's time is
   fixed interpreter/import cost. Any claim must state its workload size and whether it
   includes interpreter startup.
 - The port uses **less** memory than upstream on **all 29** commands. The first run found

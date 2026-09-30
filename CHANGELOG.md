@@ -20,8 +20,9 @@ of a feature or a closed divergence, not every commit.
   (`benchmarks/bench.py`), cost-driver sweeps (`benchmarks/scaling.py`), and
   table regeneration from raw data (`benchmarks/analyze.py`). Results for 29 commands at
   10 repetitions are in `benchmarks/RESULTS.generated.md`: **all 29 are faster (1.51x to
-  74.5x) and all 29 pass the output-equivalence gate**, and the port uses less memory
-  than upstream on all 29. The run is not publication-grade (shared hardware), and no
+  71.6x) and all 29 pass the output-equivalence gate**, and the port uses less memory
+  than upstream on all 29. Those results trace to a clean commit (`3a5b88c`,
+  `git_dirty: false`), satisfying PORTING_PLAN.md gate G6b. The run is not publication-grade (shared hardware), and no
   speedup figure from it may be published without repeating it on isolated hardware.
   The first run found three commands that were reproducibly *slower* (`infer_experiment`
   0.18x, `bam2fq` 0.35x, `inner_distance` 0.53x) and 14 that used more memory; all four

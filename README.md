@@ -151,7 +151,7 @@ this table, is the authoritative compatibility record.
   since been fixed by streaming the reader, and the two remaining outliers -- `tin`'s and
   `geneBody_coverage`'s own whole-file read indexes -- by replacing both with a sliding
   window (366 MB -> 20 MB and 75 MB -> 14 MB). The port now uses less memory than
-  upstream on **all 29** measured commands, from 1.4x lighter (`bam2wig`) to 15.6x
+  upstream on **all 29** measured commands, from 1.4x lighter (`bam2wig`) to 15.7x
   (`sc_seqQual`).
 - **No fuzzing has been done.**
 - **Packaging covers one platform.** `.github/workflows/release.yml` builds a single Linux
