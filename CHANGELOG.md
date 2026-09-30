@@ -19,9 +19,9 @@ of a feature or a closed divergence, not every commit.
   interleaved paired repetitions and paired block-bootstrap intervals
   (`benchmarks/bench.py`), cost-driver sweeps (`benchmarks/scaling.py`), and
   table regeneration from raw data (`benchmarks/analyze.py`). Results for 29 commands at
-  10 repetitions are in `benchmarks/RESULTS.generated.md`: **all 29 are faster (1.48x to
-  74.7x) and all 29 pass the output-equivalence gate**, and the port uses less memory
-  than upstream on 28 of 29. The run is not publication-grade (shared hardware), and no
+  10 repetitions are in `benchmarks/RESULTS.generated.md`: **all 29 are faster (1.51x to
+  74.5x) and all 29 pass the output-equivalence gate**, and the port uses less memory
+  than upstream on all 29. The run is not publication-grade (shared hardware), and no
   speedup figure from it may be published without repeating it on isolated hardware.
   The first run found three commands that were reproducibly *slower* (`infer_experiment`
   0.18x, `bam2fq` 0.35x, `inner_distance` 0.53x) and 14 that used more memory; all four
@@ -66,6 +66,8 @@ of a feature or a closed divergence, not every commit.
   byte-identical to upstream on all 3,000 transcripts (600k reads) and all 26,590
   (400k reads), with and without `--subtract-background`. A non-coordinate-sorted input is
   detected and falls back to the whole-file path.
+  Re-measured after the fix: **16.32x** against upstream, 20.3 MB against upstream's
+  42.3 MB.
 - **The alignment reader now streams.** `open_alignments` returned
   `Vec<io::Result<Record>>`, decoding the entire input before any work, which the 14
   commands routed through it used as their working set. It now returns a streaming
@@ -81,9 +83,22 @@ of a feature or a closed divergence, not every commit.
   drained reader.
 - **`geneBody_coverage.py` no longer holds the whole BAM in memory either**, via the
   same sliding window `tin` uses (`compute_coverage_windowed`). Exact rather than
-  approximate because its aggregation is a sum plus an OR, both commutative, so
-  visiting transcripts in coordinate order cannot change the result. Measured on the
-  400-transcript workload: peak RSS **75 MB -> 14 MB**, byte-identical output.
+  approximate, but for a different reason than `tin`'s: `geneBody_coverage` aggregates
+  across *all* transcripts at once, so `tin`'s "a later transcript cannot need this read"
+  argument does not apply -- but its accumulation is a sum plus an OR, both commutative,
+  so visiting transcripts in coordinate order instead of BED order cannot change the
+  result. Measured on the 400-transcript workload: peak RSS **75.1 MB -> 14.4 MB**
+  (upstream 40.6 MB), and the command got faster too, **36.2x -> 46.6x**, with
+  byte-identical output.
+- **Fixed a regression the two windowed drivers introduced in the change above**: the pull
+  loop treated *any* record not belonging to the chromosome being scored as "this block is
+  over" and stopped, which stranded the record iterator and left every later transcript
+  scoring 0.0. Triggered by ordinary input: an UNMAPPED record that still carries a
+  reference id and a position, and a leftover from an earlier chromosome. Both are now
+  consumed rather than treated as a stop signal.
+  `verification/run_diff.py` caught this at 7 of 84 cases failing; the benchmark's own
+  generated workloads could not, because they are cleanly block-separated by chromosome
+  and never produce that record shape. See `benchmarks/CHANGES.md` 2.7.
 - Together, the port now uses **less memory than upstream on all 29 benchmarked
   commands** (the lowest ratio is `tin` at 2.08x lighter; the highest absolute figures
   are `bam2wig` at 793 MB and `geneBody_coverage` at 14 MB).
