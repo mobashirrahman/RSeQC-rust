@@ -531,20 +531,75 @@ pub struct DatasetEntry {
 /// rather than re-parsing that text back off disk -- a lossless
 /// simplification (same class as `RPKM_saturation.py`'s
 /// `build_quartile_plot_data`), not a behavioral change.
-pub fn load_dataset(samples: &[(String, Vec<i64>, Vec<bool>)]) -> Vec<DatasetEntry> {
-    let mut out: Vec<DatasetEntry> = samples
-        .iter()
-        .map(|(name, raw, _float_markers)| {
-            let raw_f: Vec<f64> = raw.iter().map(|&v| v as f64).collect();
-            let skewness = pearson_moment_coefficient(&raw_f);
-            let min = raw_f.iter().cloned().fold(f64::INFINITY, f64::min);
-            let max = raw_f.iter().cloned().fold(f64::NEG_INFINITY, f64::max);
-            let normalized = raw_f.iter().map(|&v| (v - min) / (max - min)).collect();
-            DatasetEntry { name: name.clone(), normalized, skewness }
-        })
-        .collect();
-    out.sort_by(|a, b| b.skewness.partial_cmp(&a.skewness).unwrap());
-    out
+/// Total ordering by descending skewness, NaN last.
+///
+/// `skewness` is NaN whenever the sample's standard deviation is 0, which is
+/// the same condition `load_dataset` rejects earlier as a zero range. It is
+/// therefore a backstop rather than the primary defence -- but a comparator
+/// that can abort the process is not an acceptable backstop, and
+/// `partial_cmp().unwrap()` is exactly that. Python's `sort` tolerates a NaN
+/// key (the resulting order is unspecified but it does not crash); this
+/// matches that in not crashing, and additionally fixes the order as
+/// NaN-last then by name, so the output is at least deterministic.
+fn order_by_skewness_desc(a: &DatasetEntry, b: &DatasetEntry) -> std::cmp::Ordering {
+    match b.skewness.partial_cmp(&a.skewness) {
+        Some(ord) => ord,
+        None => a
+            .skewness
+            .is_nan()
+            .cmp(&b.skewness.is_nan())
+            .then_with(|| a.name.cmp(&b.name)),
+    }
+}
+
+/// Failure modes that mirror an upstream Python exception.
+#[derive(Debug)]
+pub enum GeneBodyCoverageError {
+    /// Upstream's `ZeroDivisionError` from `(value - min) / (max - min)` when a
+    /// sample has no coverage over the model. `geneBody_coverage.py` reports
+    /// it as "error: float division by zero" and exits 1.
+    ZeroRange { sample: String },
+}
+
+impl std::fmt::Display for GeneBodyCoverageError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            // The sample name is deliberately NOT in upstream's message, so
+            // including it would be an invented diagnostic that a byte-diff of
+            // the two stderr streams would flag as a divergence.
+            GeneBodyCoverageError::ZeroRange { .. } => write!(f, "float division by zero"),
+        }
+    }
+}
+
+impl std::error::Error for GeneBodyCoverageError {}
+
+pub fn load_dataset(samples: &[(String, Vec<i64>, Vec<bool>)]) -> Result<Vec<DatasetEntry>, GeneBodyCoverageError> {
+    let mut out: Vec<DatasetEntry> = Vec::with_capacity(samples.len());
+    for (name, raw, _float_markers) in samples {
+        let raw_f: Vec<f64> = raw.iter().map(|&v| v as f64).collect();
+        let skewness = pearson_moment_coefficient(&raw_f);
+        let min = raw_f.iter().cloned().fold(f64::INFINITY, f64::min);
+        let max = raw_f.iter().cloned().fold(f64::NEG_INFINITY, f64::max);
+        // Upstream computes `(value - minimum) / (maximum - minimum)`. When a
+        // sample has no coverage at all over the model, min == max == 0, and
+        // Python's `0.0 / 0.0` raises ZeroDivisionError -- which
+        // geneBody_coverage.py reports as
+        // "geneBody_coverage.py: error: float division by zero" and exits 1.
+        //
+        // Rust's float division yields NaN instead of raising, so without this
+        // check the port silently carried NaN into the dataset and then
+        // PANICKED in the sort below, aborting with SIGABRT where upstream
+        // produced a clean diagnostic. Reproducing the error is the
+        // compatibility-correct behaviour AND the non-crashing one.
+        if max - min == 0.0 {
+            return Err(GeneBodyCoverageError::ZeroRange { sample: name.clone() });
+        }
+        let normalized = raw_f.iter().map(|&v| (v - min) / (max - min)).collect();
+        out.push(DatasetEntry { name: name.clone(), normalized, skewness });
+    }
+    out.sort_by(order_by_skewness_desc);
+    Ok(out)
 }
 
 /// Renders the R heatmap+curves plotting script. Ports `write_r_code`.
@@ -696,13 +751,50 @@ chr1\t0\t300\ttx1\t0\t+\t0\t300\t0\t1\t300,\t0,
             ("low_skew".to_string(), vec![1i64, 2, 3, 4, 5], vec![false; 5]),
             ("high_skew".to_string(), vec![1i64, 1, 1, 1, 100], vec![false; 5]),
         ];
-        let dataset = load_dataset(&samples);
+        let dataset = load_dataset(&samples).expect("both samples have a non-zero range");
         // high_skew should sort first (larger positive skewness from the outlier).
         assert_eq!(dataset[0].name, "high_skew");
         assert_eq!(dataset[1].name, "low_skew");
         // normalized values are min-max in [0,1] with min->0.0 and max->1.0.
         assert_eq!(dataset[1].normalized[0], 0.0);
         assert_eq!(dataset[1].normalized[4], 1.0);
+    }
+
+    #[test]
+    fn load_dataset_reports_zero_range_instead_of_panicking() {
+        // Found by the T4 real-data panel (2026-09-30): a sample with no
+        // coverage over the model makes every value 0, so max - min == 0.
+        // Python raises ZeroDivisionError on 0.0/0.0; Rust yields NaN, and the
+        // NaN skewness then panicked the sort's partial_cmp().unwrap(),
+        // aborting the process where upstream printed one clean line.
+        let samples = vec![
+            ("with_signal".to_string(), (1..=100).collect::<Vec<i64>>(), vec![false; 100]),
+            ("no_coverage".to_string(), vec![0i64; 100], vec![false; 100]),
+        ];
+        let err = load_dataset(&samples).unwrap_err();
+        assert!(matches!(err, GeneBodyCoverageError::ZeroRange { .. }));
+        // The message must be exactly upstream's, with no invented detail.
+        assert_eq!(err.to_string(), "float division by zero");
+    }
+
+    #[test]
+    fn order_by_skewness_desc_is_total_over_nan() {
+        // A NaN skewness cannot actually reach load_dataset -- zero variance
+        // is the zero-range case it rejects first -- so the total-order
+        // guarantee of the comparator is asserted directly, on the invariant
+        // that matters: it must never panic, whatever it is handed.
+        let e = |name: &str, skewness: f64| DatasetEntry { name: name.into(), normalized: vec![], skewness };
+        let mut got = vec![
+            e("nan_a", f64::NAN),
+            e("hi", 2.0),
+            e("nan_b", f64::NAN),
+            e("lo", 1.0),
+        ];
+        got.sort_by(order_by_skewness_desc);
+        let names: Vec<&str> = got.iter().map(|d| d.name.as_str()).collect();
+        // Descending among finite values; NaNs last, tie-broken by name so the
+        // result is deterministic rather than merely non-crashing.
+        assert_eq!(names, vec!["hi", "lo", "nan_a", "nan_b"]);
     }
 
     #[test]

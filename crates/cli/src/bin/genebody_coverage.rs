@@ -126,7 +126,13 @@ fn run(args: &Args) -> std::io::Result<()> {
 
     File::create(&coverage_path)?.write_all(render_coverage_txt(&samples).as_bytes())?;
 
-    let dataset = load_dataset(&samples);
+    // Upstream raises ZeroDivisionError here (a sample with no coverage over
+    // the model) and geneBody_coverage.py reports it as
+    // "geneBody_coverage.py: error: float division by zero" with exit 1. The
+    // "geneBody_coverage.py: error: " prefix is added once, by main(), for
+    // every error this binary reports. The coverage .txt is already written at
+    // this point, matching upstream.
+    let dataset = load_dataset(&samples).map_err(|e| std::io::Error::other(e.to_string()))?;
     if dataset.is_empty() {
         return Err(std::io::Error::new(std::io::ErrorKind::InvalidData, "no valid coverage profiles were generated"));
     }

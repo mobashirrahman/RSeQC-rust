@@ -63,14 +63,31 @@ aligner:
       machine, and the bioconda STAR tarball alone does not run (it needs
       libhts.so.3, which is not installed), so a conda env is the reproducible
       route rather than the convenient one.
+  contigs: chr1, chr17, chrM
   parameters:
     sjdbOverhang: 149          # 2*75-1, for 2x100 Illumina
     genomeSAindexNbases: 11    # NOT STAR's recommended 14
     outSAMtype: BAM SortedByCoordinate
-    # genomeSAindexNbases is reduced from 14 to 11 because STAR's human index
-    # needs ~30 GB at 14 and this machine has 31 GB total. The value is
-    # recorded here rather than left implicit: it costs mapping speed, not
-    # mapping correctness, and a reader must know which index produced a BAM.
+  contig_scope_is_a_hardware_limit: >
+      A whole-genome GENCODE index does not build on this machine. It was
+      OOM-killed three times at "inserting junctions into the genome
+      indices" -- at genomeSAindexNbases 14, 11 and 8, and with
+      --limitGenomeGenerateRAM honoured. The suffix array is not the binding
+      constraint; the junction database built from GENCODE's 2,155,005 exon
+      records is, and it is allocated ON TOP of the finished SA index, so
+      honouring a RAM limit does not help. Swap is not permitted in this
+      container, so the fix had to be a smaller problem, not a slower one.
+      The scope is therefore pinned to chr1 + chr17 + chrM, which matches the
+      generated benchmark workloads' scope so the two are comparable, and
+      still yields 50,725 real transcripts and 311,211 real exons.
+      CONSEQUENCE: this panel does not validate whole-genome behaviour. It
+      validates the port against upstream on real reads, on three contigs.
+  genomeSAindexNbases_note: >
+      Reduced from STAR's recommended 14, which needs ~30 GB for human
+      against this machine's 31 GB total. A smaller suffix-array index means
+      marginally more reads land as ambiguous near boundaries: a real cost,
+      recorded rather than left implicit. It does not affect whether the port
+      agrees with upstream, because both arms read the same BAM.
   samtools: 1.24              # sort/index the BAM
   provenance_caveat: >
       Every BAM in this panel shares one aligner, one annotation and one

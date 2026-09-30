@@ -12,6 +12,16 @@ of a feature or a closed divergence, not every commit.
 
 ### Added
 
+- A **real-data validation panel** (`datasets/`) implementing `testing.md` section 11.1:
+  real RNA-seq reads from public archives, fetched with per-run MD5 verification from the
+  archive, aligned by a pinned third-party aligner (STAR 2.7.11b) rather than by this
+  project's own tooling -- a BAM from our own generator would encode our own assumptions
+  about transcripts, strand and junctions, so testing the port against upstream on it
+  would test the port against us. The existing 90-case differential matrix runs against
+  the real panel via `RSEQC_REAL_DATA`; **79 pass and 11 are skipped with a printed
+  reason** because the panel has no equivalent fixture. A development/held-out split at
+  study level is recorded in `datasets/manifest.yaml`, with the held-out strata left
+  explicitly unselected rather than filled with a plausible-looking accession.
 - A measured performance benchmark suite: a preregistered protocol
   (`benchmarks/protocol.md`), a workload generator over **real** hg38 sequence and real
   RefSeq BED12 annotation (`benchmarks/generate_workload_real.py`), a harness with
@@ -50,6 +60,17 @@ of a feature or a closed divergence, not every commit.
 
 ### Fixed
 
+- **`geneBody_coverage.py` no longer aborts the process on a sample with no coverage.**
+  Found by the T4 real-data panel, not by the synthetic matrix. When a sample has no
+  coverage over the gene model, every coverage value is 0, so `max - min` is 0 and
+  upstream's `(value - min) / (max - min)` raises `ZeroDivisionError`, which it reports
+  as `geneBody_coverage.py: error: float division by zero` and exit 1. Rust's float
+  division yields NaN instead of raising, so the NaN skewness then reached
+  `partial_cmp().unwrap()` in the sample sort and **panicked**, aborting with SIGABRT
+  (exit 101) where upstream printed one clean line and still wrote its coverage table.
+  The port now reproduces upstream's error and exit code exactly, and the sort comparator
+  is total (NaN last, tie-broken by name) so a NaN can never abort the process again.
+  The coverage `.txt` it writes before failing is byte-identical to upstream's.
 - **`tin.py` no longer holds the whole BAM in memory.** It built a whole-file per-read
   index, retaining every read for the whole run, at roughly 600 bytes per read (query
   name, qualities, sequence, CIGAR and two block lists are all per-read heap buffers).

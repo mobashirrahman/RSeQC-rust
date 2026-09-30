@@ -124,8 +124,12 @@ class Case:
     # timestamps can never be byte-reproduced (DIV-0019/DIV-0022 context).
     strip_log_prefixes: bool = False
     # Wall-clock limit for each implementation.  A timeout is a failed run,
-    # never an equivalent result.
-    timeout_s: float = 120.0
+    # never an equivalent result. None means "use the default for the current
+    # input class" -- 120s for the synthetic fixtures, much longer for the real
+    # panel, which is orders of magnitude bigger. It must be None here and not
+    # a number: this field is always passed to run() explicitly, so a numeric
+    # default would silently win over any real-data-aware default.
+    timeout_s: float | None = None
 
 
 @dataclasses.dataclass
@@ -787,11 +791,45 @@ REAL_FIXTURE_NAMES = (
     "chrom.sizes", "genes.info.txt", "htseq_counts.txt",
 )
 # Maps a synthetic fixture name to the real panel file that replaces it.
+#
+# The panel directory IS a fixture directory: it uses the same names, so a
+# case's expected outputs (which are derived from the BAM's stem, e.g.
+# "pe.tin.xls") keep matching. An earlier revision renamed them to
+# real_pe.bam etc. and then, because the lookup was a plain `is_file()` that
+# returned None on a miss, silently fell back to the SYNTHETIC fixtures -- so a
+# run that printed "real-data panel:" in its banner was in fact validating
+# nothing real. `require_real_panel` below exists to make that impossible.
 REAL_EQUIVALENTS = {
-    "pe.bam": "real_pe.bam",
-    "se.bam": "real_se.bam",
-    "model.bed12": "real_model.bed12",
+    "pe.bam": "pe.bam",
+    "se.bam": "se.bam",
+    "model.bed12": "model.bed12",
 }
+
+
+def require_real_panel() -> None:
+    """Refuses to run under RSEQC_REAL_DATA unless every required file is present.
+
+    Without this, a typo'd panel path or a misnamed file produces a run whose
+    header says "real-data panel: ..." while every case silently reads the
+    synthetic fixtures. That is the worst possible failure for this harness:
+    it looks like a pass.
+    """
+    if not REAL_DATA_DIR:
+        return
+    root = Path(REAL_DATA_DIR)
+    if not root.is_dir():
+        sys.exit(f"error: RSEQC_REAL_DATA={root} is not a directory -- refusing to fall "
+                 f"back to the synthetic fixtures, which would make this run validate "
+                 f"nothing real")
+    missing = [f"{k} (expected {v})" for k, v in sorted(REAL_EQUIVALENTS.items())
+               if not (root / v).is_file()]
+    if missing:
+        joined = "; ".join(missing)
+        sys.exit(
+            f"error: real-data panel {root} is missing required fixture(s): {joined}\n"
+            f"       Refusing to fall back to the synthetic fixtures: a run that "
+            f"silently used them would report 'real-data' results it never produced."
+        )
 
 
 def _real_path(name: str) -> str | None:
@@ -817,15 +855,25 @@ def _real_data_gaps(case: Case) -> list[str]:
 
     Non-empty means the case cannot be run under RSEQC_REAL_DATA without
     quietly falling back to synthetic input, so it is skipped instead.
+
+    The arg builders are CALLED, not stringified. An earlier revision did
+    `str(case.py_args)`, which for a lambda is `"<function <lambda> at 0x...>"`
+    and contains no fixture names at all -- so this function never detected a
+    single gap and every case ran, the ones needing absent fixtures included.
+    They then failed for a data-shape reason (a synthetic 8 KB BAM against a
+    real 3,000-transcript model: zero exonic fragments) which read like a port
+    defect and was not one.
     """
     if not REAL_DATA_DIR:
         return []
-    text = " ".join(
-        [str(case.py_args), str(case.rust_args)]
-    )
+    probe = Path(os.environ.get("TMPDIR", "/tmp")) / "rseqc_realdata_probe"
+    try:
+        argv = list(case.py_args(probe)) + list(case.rust_args(probe))
+    except Exception:  # a builder that cannot run without real inputs
+        return ["<args unavailable>"]
     missing = []
     for name in sorted(REAL_FIXTURE_NAMES):
-        if name in text and _real_path(name) is None:
+        if any(name in a for a in argv) and _real_path(name) is None:
             missing.append(name)
     return missing
 
@@ -2816,6 +2864,7 @@ def main() -> int:
         print(f"error: {RUST_BIN_DIR} not found -- run `cargo build --workspace --release` first", file=sys.stderr)
         return 2
 
+    require_real_panel()
     if REAL_DATA_DIR:
         print(f"real-data panel: {REAL_DATA_DIR}")
         for k, v in sorted(REAL_EQUIVALENTS.items()):
