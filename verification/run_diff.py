@@ -141,8 +141,10 @@ def run(
     pythonpath: str | None = None,
     *,
     cwd: Path = REPO_ROOT,
-    timeout_s: float = 120.0,
+    timeout_s: float | None = None,
 ) -> RunResult:
+    if timeout_s is None:
+        timeout_s = 3600.0 if REAL_DATA_DIR else 120.0
     env = dict(os.environ)
     if pythonpath is not None:
         env["PYTHONPATH"] = pythonpath
@@ -761,8 +763,71 @@ def ensure_genebody_coverage_edge_fixture() -> None:
 SYNTHETIC_DIR = REPO_ROOT / "verification" / "fixtures" / "synthetic"
 
 
+# Real-data panel redirection (testing.md section 11 / T4).
+#
+# Setting RSEQC_REAL_DATA=<dir> re-points the *bulk* fixtures at the real
+# aligned panel, so the same 90 cases -- same comparators, same tolerances,
+# same expected divergences -- run against real sequenced reads instead of
+# generated ones. The point is not a parallel second harness that could drift
+# from the first; it is the existing matrix, unchanged, fed different input.
+#
+# Only the bulk fixtures have real equivalents. The single-cell and BigWig
+# fixtures do not, so cases needing them are SKIPPED with a printed reason
+# rather than silently falling back to synthetic -- silently falling back is
+# how a "real-data validation" ends up validating nothing real.
+REAL_DATA_DIR_ENV = "RSEQC_REAL_DATA"
+REAL_DATA_DIR = os.environ.get(REAL_DATA_DIR_ENV) or None
+# Every synthetic fixture a case may ask for. Used to detect, per case, whether
+# it needs something the real panel does not provide.
+REAL_FIXTURE_NAMES = (
+    "pe.bam", "se.bam", "sc.bam", "pe_placed.bam", "se_placed.bam",
+    "model.bed12", "model_hdr.bed12", "sig1.bw", "sig2.bw",
+    "barcodes.fq", "barcodes.fa", "barcodes.fq.gz",
+    "reads.fq", "reads.fq.gz", "reads.fa", "mrna.fa", "genome.fa",
+    "chrom.sizes", "genes.info.txt", "htseq_counts.txt",
+)
+# Maps a synthetic fixture name to the real panel file that replaces it.
+REAL_EQUIVALENTS = {
+    "pe.bam": "real_pe.bam",
+    "se.bam": "real_se.bam",
+    "model.bed12": "real_model.bed12",
+}
+
+
+def _real_path(name: str) -> str | None:
+    """Real-panel path for a synthetic fixture name, or None if there isn't one."""
+    if not REAL_DATA_DIR:
+        return None
+    replacement = REAL_EQUIVALENTS.get(name)
+    if replacement is None:
+        return None
+    candidate = Path(REAL_DATA_DIR) / replacement
+    return str(candidate) if candidate.is_file() else None
+
+
 def _synthetic(name: str) -> str:
+    real = _real_path(name)
+    if real is not None:
+        return real
     return str(SYNTHETIC_DIR / name)
+
+
+def _real_data_gaps(case: Case) -> list[str]:
+    """Which of a case's fixtures have no real-panel equivalent.
+
+    Non-empty means the case cannot be run under RSEQC_REAL_DATA without
+    quietly falling back to synthetic input, so it is skipped instead.
+    """
+    if not REAL_DATA_DIR:
+        return []
+    text = " ".join(
+        [str(case.py_args), str(case.rust_args)]
+    )
+    missing = []
+    for name in sorted(REAL_FIXTURE_NAMES):
+        if name in text and _real_path(name) is None:
+            missing.append(name)
+    return missing
 
 
 def ensure_synthetic_fixtures() -> None:
@@ -2751,8 +2816,23 @@ def main() -> int:
         print(f"error: {RUST_BIN_DIR} not found -- run `cargo build --workspace --release` first", file=sys.stderr)
         return 2
 
+    if REAL_DATA_DIR:
+        print(f"real-data panel: {REAL_DATA_DIR}")
+        for k, v in sorted(REAL_EQUIVALENTS.items()):
+            print(f"  {_synthetic(k) if _real_path(k) else '(no real equivalent)':>0s} {k} <- {v}")
+        print()
+
     all_ok = True
+    skipped = 0
     for case in cases:
+        gaps = _real_data_gaps(case)
+        if gaps:
+            skipped += 1
+            print(f"=== {case.name} ===")
+            print(f"  SKIPPED: no real-data equivalent for {', '.join(gaps)} "
+                  f"(the real panel has no such sample; running this on synthetic "
+                  f"input would make a 'real-data' run validate nothing real)")
+            continue
         all_ok &= run_case(case)
         print()
 
