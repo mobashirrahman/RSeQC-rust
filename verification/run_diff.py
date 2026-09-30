@@ -436,6 +436,66 @@ def run_case(case: Case) -> bool:
     return ok
 
 
+def ensure_malformed_bam_fixtures() -> None:
+    """Builds the degenerate-input fixtures the negative branch cases need.
+
+    Three shapes, all in `verification/fixtures/`:
+
+    - `empty.bam` (+`.bai`): a real BAM header copied from the synthetic
+      panel with ZERO alignment records. This is not a corrupt file -- it is
+      what a filtering or post-processing pipeline legitimately produces,
+      and it is the input class that exposed DIV-0023 (upstream's
+      `readsNVC` crashes with an unhandled `UnboundLocalError` on it).
+    - `junk.bam`: a syntactically valid but empty gzip member. The
+      container decompresses fine and then the reader hits EOF where a BAM
+      header is required, so this exercises header handling specifically
+      rather than gzip parsing.
+    - `noidx.bam`: a normal BAM with its `.bai` removed, for the commands
+      whose CLI requires an index sidecar.
+
+    Generated rather than committed because `empty.bam` must share the
+    synthetic panel's header exactly; both are deterministic, so a
+    regeneration is byte-identical.
+    """
+    import pysam
+
+    out_dir = REPO_ROOT / "verification" / "fixtures"
+    empty = out_dir / "empty.bam"
+    junk = out_dir / "junk.bam"
+    noidx = out_dir / "noidx.bam"
+    if empty.is_file() and junk.is_file() and noidx.is_file():
+        return
+    ensure_synthetic_fixtures()
+    with pysam.AlignmentFile(SYNTHETIC_DIR / "pe.bam") as src:
+        header = src.header
+    if not empty.is_file():
+        with pysam.AlignmentFile(empty, "wb", header=header):
+            pass
+        pysam.index(str(empty))
+    if not junk.is_file():
+        # A genuine BGZF member holding no alignment block at all: the
+        # container parses and then the reader hits EOF where a BAM header
+        # is required. Chosen over random bytes because it fails as a BAM
+        # rather than as a gzip.
+        import gzip as _gzip
+        junk.write_bytes(_gzip.compress(b"", mtime=0))
+    if not noidx.is_file():
+        import shutil as _shutil
+        _shutil.copy(SYNTHETIC_DIR / "pe.bam", noidx)
+    # A BED12 whose every line is unparseable (too few columns, then a
+    # non-integer coordinate). Upstream skips such lines individually with
+    # a stderr note rather than aborting, so the command still succeeds
+    # with an empty transcript set; the port must match that, and in
+    # particular must not abort on the first bad line.
+    malformed = out_dir / "malformed.bed12"
+    if not malformed.is_file():
+        malformed.write_text(
+            "chr1\t0\t100\n"
+            "chr1\t0\t100\tg\t0\t+\n"
+            "chr1\tX\t100\tg\t0\t+\t0\t100\t0\t1\t100,\t0,\n"
+        )
+
+
 def ensure_bam_stat_fixture() -> None:
     fixture = REPO_ROOT / "verification" / "fixtures" / "bam_stat_basic.bam"
     if fixture.is_file():
@@ -2548,6 +2608,128 @@ CASES: list[Case] = [
         normalize_paths=True,
         strip_log_prefixes=True,
         compare_files=("pe.tin.xls", "pe.summary.txt", "se.tin.xls", "se.summary.txt"),
+    ),
+
+    # ------------------------------------------------------------------
+    # Negative / degenerate-input branch cases.
+    #
+    # PUBLICATION_PLAN.md 3 item 5 requires error, option, and overwrite
+    # branches per command; until 2026-09-30 the 84-case matrix was almost
+    # entirely happy-path, which is precisely the gap that let the
+    # sliding-window `tin` regression ship. These are the first of that
+    # class. Each was checked against real upstream before being written
+    # down: where the two sides legitimately differ, the difference is
+    # recorded as a per-side exit override (and, if behavioural, in
+    # `compatibility/divergences.yaml`) rather than asserted away.
+    # ------------------------------------------------------------------
+    Case(
+        name="bam_stat_empty_bam",
+        # Zero records, valid header+index. Upstream prints its full
+        # all-zero report and exits 0; so does the port. Pins that the
+        # streaming reader handles a legitimately empty file rather than
+        # treating EOF as an error.
+        ensure_fixture=ensure_malformed_bam_fixtures,
+        py_script="bam_stat.py",
+        rust_bin="bam_stat",
+        py_args=lambda d: ["-i", str(REPO_ROOT / "verification" / "fixtures" / "empty.bam")],
+        rust_args=lambda d: ["-i", str(REPO_ROOT / "verification" / "fixtures" / "empty.bam")],
+        compare_stream="stdout",
+        stream_format="exact",
+        required_labels=("Total records", "Unmapped reads", "Read-1"),
+    ),
+    Case(
+        name="bam_stat_not_a_bam",
+        # Truncated at the header: a valid gzip member containing no BAM
+        # header. Both sides must fail, and must not be allowed to "agree"
+        # on a success: `expected_exit_code=1` plus
+        # the harness's identical-exit assertion means a case like this
+        # cannot pass by both sides erroring in different, mutually
+        # satisfying ways -- only by both failing as upstream does.
+        # The messages differ (upstream: "file does not contain alignment
+        # data"; port: the underlying IO error), so only the exit status
+        # and the stdout stream are compared.
+        ensure_fixture=ensure_malformed_bam_fixtures,
+        py_script="bam_stat.py",
+        rust_bin="bam_stat",
+        py_args=lambda d: ["-i", str(REPO_ROOT / "verification" / "fixtures" / "junk.bam")],
+        rust_args=lambda d: ["-i", str(REPO_ROOT / "verification" / "fixtures" / "junk.bam")],
+        compare_stream="none",
+        expected_exit_code=1,
+    ),
+    Case(
+        name="read_GC_empty_bam",
+        # Same empty-but-valid input. Upstream exits 0 here; so does the
+        # port, and both write a degenerate report.
+        ensure_fixture=ensure_malformed_bam_fixtures,
+        py_script="read_GC.py",
+        rust_bin="read_GC",
+        py_args=lambda d: ["-i", str(REPO_ROOT / "verification" / "fixtures" / "empty.bam"),
+                           "--skip-plot", "-o", str(d / "gc")],
+        rust_args=lambda d: ["-i", str(REPO_ROOT / "verification" / "fixtures" / "empty.bam"),
+                             "--skip-plot", "-o", str(d / "gc")],
+        compare_stream="none",
+        compare_files=("gc.GC.xls",),
+    ),
+    Case(
+        name="read_NVC_empty_bam_diverges_from_upstream",
+        # DIV-0023. Upstream CRASHES here with an unhandled
+        # `UnboundLocalError` (`RNA_read` is only bound inside the
+        # per-read loop, so zero records leaves it unbound before the
+        # post-loop code dereferences it). The port exits 0 with a
+        # well-formed empty report.
+        #
+        # This is recorded as a DIVERGENCE, not asserted as agreement: the
+        # per-side exit overrides make the harness check each side against
+        # its own documented value and skip the identical-exit assertion,
+        # so a future change that makes either side behave differently in
+        # an unrecorded way fails here.
+        ensure_fixture=ensure_malformed_bam_fixtures,
+        py_script="read_NVC.py",
+        rust_bin="read_NVC",
+        py_args=lambda d: ["-i", str(REPO_ROOT / "verification" / "fixtures" / "empty.bam"),
+                           "--skip-plot", "-o", str(d / "nvc")],
+        rust_args=lambda d: ["-i", str(REPO_ROOT / "verification" / "fixtures" / "empty.bam"),
+                             "--skip-plot", "-o", str(d / "nvc")],
+        compare_stream="none",
+        py_expected_exit=1,
+        rust_expected_exit=0,
+    ),
+    Case(
+        name="tin_missing_bai_sidecar",
+        # tin.py resolves `-i` through getBamFiles, which requires a `.bai`
+        # next to each BAM. Removing it must produce the same "no BAM files
+        # found" outcome and the same non-zero exit on both sides -- the
+        # silent-success risk here is the port accepting an unindexed file
+        # and then quietly scoring everything 0.0, which is the exact shape
+        # of the regression fixed in 6cd93e6.
+        ensure_fixture=ensure_malformed_bam_fixtures,
+        py_script="tin.py",
+        rust_bin="tin",
+        py_args=lambda d: ["-i", str(REPO_ROOT / "verification" / "fixtures" / "noidx.bam"),
+                           "-r", _synthetic("model.bed12"), "-o", str(d)],
+        rust_args=lambda d: ["-i", str(REPO_ROOT / "verification" / "fixtures" / "noidx.bam"),
+                             "-r", _synthetic("model.bed12"), "-o", str(d)],
+        compare_stream="stderr",
+        stream_format="exact",
+        strip_log_prefixes=True,
+        expected_exit_code=1,
+    ),
+    Case(
+        name="tin_malformed_bed12_lines",
+        # Every line is too short / non-integer. Upstream wraps each line in
+        # a broad `except` and skips it with a stderr note, so it succeeds
+        # with an empty transcript set; the port does the same, and both
+        # must produce the same (header-only) report rather than one side
+        # aborting on the first bad line.
+        ensure_fixture=ensure_malformed_bam_fixtures,
+        py_script="tin.py",
+        rust_bin="tin",
+        py_args=lambda d: ["-i", _synthetic("pe.bam"), "-r", str(REPO_ROOT / "verification" / "fixtures" / "malformed.bed12"),
+                           "-o", str(d)],
+        rust_args=lambda d: ["-i", _synthetic("pe.bam"), "-r", str(REPO_ROOT / "verification" / "fixtures" / "malformed.bed12"),
+                             "-o", str(d)],
+        compare_stream="none",
+        compare_files=("pe.tin.xls", "pe.summary.txt"),
     ),
 ]
 

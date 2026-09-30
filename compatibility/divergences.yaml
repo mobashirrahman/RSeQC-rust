@@ -749,3 +749,50 @@ divergences:
       this file, revisit. Follows the same precedent and rationale as
       DIV-0018 (sc_bamStat.py CWD file pollution).
     status: accepted
+
+  - id: DIV-0023
+    command_or_api: read_NVC.py, read_GC.py, read_quality.py
+    description: >
+      Found 2026-09-30 while adding the first negative/empty-input branch
+      cases to `verification/run_diff.py` (PUBLICATION_PLAN.md 3 item 5 /
+      5.1). On a VALID BUT EMPTY BAM -- a real header, a real `.bai`, zero
+      alignment records -- upstream's nucleotide-frequency path crashes with
+      an unhandled Python `UnboundLocalError` rather than producing a
+      report or a diagnostic:
+
+          File ".../qcmodule/SAM.py", line 2995, in readsNVC
+      UnboundLocalError: cannot access local variable 'RNA_read' where it
+      is not associated with a value
+
+      `RNA_read` is only ever assigned inside the per-read loop of the
+      `try:` block that consumes the iterator, so with zero records the name
+      is never bound before the post-loop code dereferences it. The same
+      shape exists in the sibling per-base commands: `read_GC.py` exits 0 on
+      an empty BAM but its report is degenerate, and `read_quality.py` is
+      expected to behave likewise (both verified to the extent the pinned
+      oracle environment permits).
+
+      This port exits 0 and writes its own (empty-but-valid) report
+      instead. That is a real behavioural difference on this input class
+      and was previously invisible because all 84 differential cases used
+      non-empty fixtures.
+    classification: upstream-bug
+    decision: >
+      NOT replicated. Replicating a Python `UnboundLocalError` traceback
+      would mean deliberately reintroducing a crash on a legitimate input
+      (an empty-but-valid BAM is a normal thing for a filtering or
+      post-processing pipeline to produce), and a stack trace is not a
+      portable contract across a language boundary. Per
+      PORTING_PLAN.md Step 1.7 the port does not silently "correct"
+      algorithms in compatibility mode, so this is scoped narrowly: the
+      port's own behaviour on an empty input is to succeed with a
+      well-formed, if empty, report, and that difference is declared here
+      rather than left implicit.
+
+      It is recorded as `accepted` rather than `fixed` because there is no
+      bug in THIS port to fix -- the open question is whether the port
+      should instead *also* fail loudly on empty input, to match upstream
+      more closely, and that is a product decision, not a bug fix. If a real
+      consumer depends on upstream's non-zero exit here, revisit and add
+      an explicit empty-input failure mode.
+    status: accepted
