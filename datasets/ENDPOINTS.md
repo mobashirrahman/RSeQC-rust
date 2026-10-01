@@ -1,17 +1,20 @@
 # T4.2 — scientific endpoint specification (PRE-REGISTERED)
 
-Prepared: 2026-09-30. Status: **pre-registered; reviewed and signed off
-2026-10-01. Validation not yet run.**
+Prepared: 2026-09-30. Status: **pre-registered and signed off 2026-10-01;
+held-out validation was subsequently run once on 2026-10-01.** Results are
+reported separately in [`ENDPOINT_RESULTS.md`](ENDPOINT_RESULTS.md). This
+file preserves the protocol as registered before the held-out data was scored.
 
 **This file exists because `testing.md` §11.2 requires it to exist first:**
 
 > Before running held-out validation, define which conclusions the outputs
 > will support and what change would matter scientifically.
 
-It is written *before* any RSeQC command has been run against the held-out
-strata. `datasets/manifest.yaml` records those strata as
-`exposure: NOT YET INSPECTED`, and that is deliberate: an endpoint defined
-after seeing which samples pass it is not a held-out endpoint.
+At registration, this was written *before* any RSeQC command had been run
+against the held-out strata, and the manifest recorded them as
+`exposure: NOT YET INSPECTED`. That status is historical; all three runs have
+since been scored once. The protocol remains frozen here so the results cannot
+silently change its thresholds.
 
 If any endpoint below turns out to be wrong once the held-out data is
 opened, that is a finding to be recorded, not an invitation to rewrite the
@@ -365,6 +368,54 @@ annotation. Diagnosed rather than accepted:
   rat's 1,378,374, and the human run scores 0.706 while the rat scores 0.026.
   So intron size was a red herring, and the density comparison is what
   actually explains the difference.
+
+**A7 — E2 measured against a real degradation series; the pre-registered
+direction was RIGHT and the pre-registered per-transcript threshold was not
+attainable (2026-10-01).** Worth recording precisely, because one half of
+this endpoint behaved as specified and the other half did not.
+
+The series truncates read 3' ends to 100/90/80/70/60/50 bp, re-aligns each
+level against the pinned index, and measures TIN per transcript over the dev
+panel's 3,000-transcript model (`datasets/make_degradation_series.py`).
+
+Mean TIN, over all 3,000 transcripts:
+
+| truncation (bp) | 100 | 90 | 80 | 70 | 60 | 50 |
+|---|---|---|---|---|---|---|
+| mean TIN | 32.872 | 32.412 | 31.625 | 30.640 | 29.241 | 27.790 |
+
+**The mean-level criterion PASSES, decisively and monotonically.** TIN falls at
+every one of the five consecutive steps, which is the response the endpoint
+predicted. Note the direction: TIN is a Shannon-entropy *integrity* measure, so
+this was not obvious a priori, and the possibility that the pre-registered
+direction was backwards was the reason to check the implementation's semantics
+before running anything.
+
+**The per-transcript criterion FAILS: 2,181 of 3,000 transcripts (72.7%) are
+non-increasing at every step, against a pre-registered floor of 0.90.** Only
+42.2% are non-decreasing, so the population is clearly moving in the right
+direction overall, but individual transcripts are far too noisy for 90% of them
+to move monotonically through six levels.
+
+The 0.90 figure was never validated. It was asserted in amendment A1 to give
+"transcripts whose sampled positions do not span the degraded tail" some
+latitude, and that reasoning is wrong: the observed shortfall is not a tail
+effect, it is ordinary per-transcript sampling noise, and a 90% floor asks for
+per-transcript determinism out of a statistic that does not have it.
+
+**This is NOT being resolved by lowering 0.90 to 0.727.** That would fit the
+threshold to the data it grades, which is the exact failure mode
+`testing.md` section 11.2 and the rest of this document exist to prevent. E3
+already hit the same wall and the fix was a reliability measurement, not a
+relaxed number: the raw gene-body curve had a split-half r of 0.744 against a
+0.80 threshold, and smoothing was chosen to put the metric's *measured*
+reproducibility below the threshold. E2 needs the same treatment — a split-half
+reliability figure for per-transcript TIN, to establish whether 0.90 is above
+its noise floor before any threshold is reconsidered.
+
+**E2 is therefore NOT_EVALUATED, not FAIL.** One of its two criteria passed
+and the other is unevaluable-as-written pending that measurement. E2 stays
+open.
 
 **A3 — one substantive limit stated more plainly.** E1's strand expectation
 is taken from archive metadata. For `cross_lab` that metadata must actually
