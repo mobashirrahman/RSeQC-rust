@@ -149,11 +149,13 @@ splits:
         instrument: Illumina HiSeq 2500
         library: cDNA, paired-end
         run: ERR10015758
-        status: selected_and_fetched
+        status: selected_fetched_pending_alignment
         exposure: >
-            NOT YET INSPECTED. Fetched and MD5-verified only. No RSeQC command
-            has been run against this run, and none will be until the
-            development-side work is final.
+            NOT YET INSPECTED. No RSeQC command has been run against this run,
+            and none will be until the development-side work is final and
+            datasets/ENDPOINTS.md has been signed off. Aligning is not
+            inspecting: it produces a BAM without revealing anything about
+            whether the port agrees with upstream.
       - id: cross_chemistry
         description: >
             A non-Illumina platform. This is the stratum most likely to find
@@ -170,13 +172,21 @@ splits:
         instrument: BGISEQ-500 (DNBSEQ)
         library: cDNA, paired-end
         run: ERR10229623
-        status: selected_and_fetched
+        status: selected_fetched_pending_alignment
         exposure: NOT YET INSPECTED, as above.
       - id: cross_organism
         description: >
-            A second organism, for testing that nothing assumes human
-            chromosome naming or a particular transcript structure
-            (testing.md section 11.1 lists this as a required domain).
+            A second organism, for testing that nothing assumes a particular
+            transcript structure or a single assembly's coordinate
+            conventions (testing.md section 11.1 lists "a second organism /
+            reference structure" as a required domain).
+
+            WEAKER THAN FIRST ASSUMED, and recorded rather than glossed:
+            rn6 uses the same `chr1`-style contig naming as hg38, so this
+            stratum does NOT test chromosome naming. It tests transcript
+            structure, exon-coordinate handling and contig-length assumptions.
+            testing.md's phrase "chromosome naming" is therefore NOT covered
+            by this panel at all.
         study: SEQC rat arm
         bioproject: PRJNA239561
         submitting_institution: >
@@ -188,8 +198,25 @@ splits:
         instrument: Illumina HiScanSQ
         library: cDNA, paired-end
         run: SRR1177982
-        reference_required: mRatBN7.2 (NOT YET BUILT -- a second STAR index)
-        status: selected_and_fetched
+        reference:
+          assembly: rn6 / mRatBN7.2
+          url: https://hgdownload.soe.ucsc.edu/goldenPath/rn6/bigZips/rn6.fa.gz
+          sha256: 4a564948ecf93e64ebb1e347cf66731c5b3393eb7f8ff06d0ff2dad5165ca021
+          annotation:
+            source: UCSC database/refGene.txt.gz (a TABLE, not a GTF)
+            sha256: c171f0251a6f09c3650e26805495ede4b489527319527d8a882c83ca894de8b0
+            conversion: datasets/refgene_to_gtf.py
+            why_a_table: >
+                GENCODE's rat annotation was unreachable from this network
+                (release_47 and release_46 paths both 404) and UCSC's rn6
+                genes/ directory serves no RefSeq GTF under any name this
+                project could resolve -- the same upstream drift that forced
+                GENCODE v47 for the human strata. The table converts to both
+                a GTF (for STAR's junction database) and a BED12 (for the
+                RSeQC commands) deterministically.
+            records: 19160 transcripts / 179173 exons across all contigs
+        status: reference_fetched_annotated_index_pending
+        status: selected_fetched_pending_alignment
         exposure: NOT YET INSPECTED, as above.
 
 # ----------------------------------------------------------------------
