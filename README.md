@@ -156,8 +156,10 @@ this table, is the authoritative compatibility record.
 - **No fuzzing has been done.**
 - **Packaging covers one platform.** `.github/workflows/release.yml` builds a single Linux
   x86_64 archive; no macOS/Windows builds, container images, or Python wheel yet.
-- **No LICENSE file is bundled yet.** This project's own release license is pending resolution of
-  DIV-0003 (upstream's own license metadata is internally inconsistent — see that entry).
+- **Licensing is settled and bundled.** The root `LICENSE` carries the canonical GPLv3 text and
+  this project is released as **GPL-3.0-or-later** (DIV-0003 resolved 2026-10-01). Upstream's own
+  license metadata is internally inconsistent — its README says GPL-3.0-or-later while a packaging
+  classifier says GPLv2 — and that inconsistency is recorded rather than reproduced.
 - **Clean-room testing has been done once, on Linux x86_64 only** (2026-09-28): the built
   distribution archive was extracted and run with `PATH` limited to its own `bin/` directory (no
   Python/R/`wigToBigWig`). Core commands and `sc_seqLogo.py` work standalone; `bam2wig.py` falls

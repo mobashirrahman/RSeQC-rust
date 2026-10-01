@@ -58,8 +58,21 @@ divergences:
       states GPL-3.0-or-later, LICENSE file contains GPLv3 text, and a
       packaging classifier says GPLv2.
     classification: upstream-bug
-    decision: Resolve before choosing this project's own release license metadata (PORTING_PLAN.md Step 1.7 / Step 11.2); not yet resolved.
-    status: open
+    decision: >
+      Resolved. This project's own release license is GPL-3.0-or-later, chosen
+      by the maintainer on 2026-10-01, and a root LICENSE file now carries the
+      canonical GPLv3 text fetched from gnu.org (sha256 3972dc97..., 674 lines,
+      all 17 sections present).
+      "or-later" is consistent with the text itself: GPLv3 section 14
+      explicitly permits a program to be licensed under a later version, so a
+      bare GPLv3 text file is not in tension with a GPL-3.0-or-later
+      declaration. The upstream inconsistency is recorded here and NOT carried
+      into this project's metadata: Cargo.toml and CITATION.cff both say
+      GPL-3.0-or-later, with no GPLv2 classifier anywhere, because the
+      classifier is the outlier of the three.
+      The upstream discrepancy is preserved for packaging fidelity under
+      DIV-0004's file-level rules; it is not a defect this port reproduces.
+    status: accepted
 
   - id: DIV-0004
     command_or_api: >
