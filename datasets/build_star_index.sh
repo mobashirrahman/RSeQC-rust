@@ -46,6 +46,11 @@ CONTIGS="${CONTIGS:-chr1 chr17 chrM}"
 # cross-organism endpoint E5 measures. The human dev/held-out runs are 150 bp
 # (overhang 149); the rat run is 101 bp (overhang 100). The first rat index
 # was built with the human default and had to be discarded.
+#
+# TRAP: do NOT read this value off STAR's own progress output. STAR's
+# "Read length" column reports the SUMMED mate length, so a 2x101 library
+# displays 202 and a 2x150 library displays 300. The overhang must come from
+# the FASTQ, and it is (single mate length - 1), not (displayed length - 1).
 SJDB_OVERHANG="${SJDB_OVERHANG:-149}"
 
 # Overridable so the same script builds the rat index for the
