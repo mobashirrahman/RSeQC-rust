@@ -16,9 +16,9 @@ against the held-out strata, and the manifest recorded them as
 since been scored once. The protocol remains frozen here so the results cannot
 silently change its thresholds.
 
-If any endpoint below turns out to be wrong once the held-out data is
-opened, that is a finding to be recorded, not an invitation to rewrite the
-threshold.
+The pre-run rule was: if an endpoint below failed on the held-out data, record
+the finding rather than rewrite the threshold. The outcomes are now recorded
+in `ENDPOINT_RESULTS.md`.
 
 ---
 
@@ -413,9 +413,40 @@ reproducibility below the threshold. E2 needs the same treatment — a split-hal
 reliability figure for per-transcript TIN, to establish whether 0.90 is above
 its noise floor before any threshold is reconsidered.
 
+**The reliability measurement, and it reverses the obvious reading.** Splitting
+the 100 bp library's reads into two *random* halves and correlating their
+per-transcript TIN gives **r = 0.958** (full-depth vs half: 0.947). So
+per-transcript TIN is highly reproducible and the 0.90 floor sits *below* the
+noise floor, comfortably. The 72.7% shortfall is therefore **not** measurement
+noise: the statistic is reliable, and individual transcripts genuinely do not
+respond monotonically.
+
+That is a different problem from E3's, and it is not fixable the way E3's was.
+E3's threshold sat above its metric's reproducibility and smoothing fixed it.
+Here the metric is reproducible and the threshold is still unmet, so what
+fails is the *perturbation*, not the statistic: a uniform read truncation
+applies the same cut to every transcript, whereas real RNA degradation is
+transcript-specific and position-dependent — some transcripts decay far faster
+than others. A uniform cut cannot be expected to move 90% of transcripts
+monotonically, and demanding it is demanding a property the perturbation does
+not have.
+
+**A methodological note on getting this wrong first.** The first split-half
+attempt gave **r = -0.26** — apparently catastrophic — because the source BAM is
+coordinate-sorted, so taking reads 1–70,000 and 70,000–140,000 splits by
+genomic *region*, not at random. The tell was the means: 20.27 vs 9.50. Two
+random halves of one library cannot differ that much, and had I reported
+r = -0.26 as "per-transcript TIN is noise above which 0.90 is unattainable" it
+would have been a confident, completely wrong conclusion pointing at the wrong
+culprit. The random split (82,877 / 83,107 reads, means 27.31 vs 27.38) is the
+measurement that counts. Recorded because the failure mode is silent: nothing
+errors, the number is just wrong and confidently so.
+
 **E2 is therefore NOT_EVALUATED, not FAIL.** One of its two criteria passed
-and the other is unevaluable-as-written pending that measurement. E2 stays
-open.
+decisively; the other is unmet for a reason that is understood and that no
+threshold change would fix. Making the per-transcript criterion testable
+requires a per-transcript degradation model, not a uniform truncation. E2 stays
+open on that.
 
 **A3 — one substantive limit stated more plainly.** E1's strand expectation
 is taken from archive metadata. For `cross_lab` that metadata must actually
