@@ -39,6 +39,15 @@ ENV_NAME="${ENV_NAME:-t4star}"
 # behaviour.
 CONTIGS="${CONTIGS:-chr1 chr17 chrM}"
 
+# sjdbOverhang MUST be (read length - 1) of the reads this index will be used
+# for. It is a required override rather than a derived default because the
+# index is built before the reads are chosen, and getting it wrong silently
+# degrades splice-junction detection -- which is precisely what the
+# cross-organism endpoint E5 measures. The human dev/held-out runs are 150 bp
+# (overhang 149); the rat run is 101 bp (overhang 100). The first rat index
+# was built with the human default and had to be discarded.
+SJDB_OVERHANG="${SJDB_OVERHANG:-149}"
+
 # Overridable so the same script builds the rat index for the
 # cross-organism held-out stratum rather than duplicating it. The contig
 # scope, RAM limit and SA-index size are overridden too: rn6 needs its own
@@ -79,10 +88,6 @@ LIMIT_RAM_BYTES="${LIMIT_RAM_BYTES:-16000000000}"
 # same BAM.
 SA_INDEX_NBASES="${SA_INDEX_NBASES:-11}"
 
-# 149 = 2*75 - 1 for 2x100 Illumina. Recorded because STAR uses it to size the
-# junction database, and a mismatch against the actual read length degrades
-# splice detection at the long end.
-SJDB_OVERHANG=149
 THREADS="${THREADS:-$(nproc)}"
 
 for f in "$GENOME" "$GTF"; do
