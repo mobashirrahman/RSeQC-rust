@@ -264,6 +264,69 @@ the coarsest defensible definition — it will not catch isoforms that differ
 only in UTR structure, which is a known false-negative and is recorded here
 rather than hidden.
 
+**A4 — E3 and E5 re-specified after DEV-side calibration (2026-10-01).**
+This is the second amendment and the most important one, because E3 and E5
+were found to be **unevaluable as written**. They were calibrated on
+DEVELOPMENT data only, before any held-out output was seen, and the held-out
+BAMs did not exist yet when the calibration was run. That ordering is the
+whole point: the pre-registration is binding on the held-out data, and
+development data is what calibration is *for*.
+
+*E3 was not reproducible at its own threshold.* Splitting the dev panel's
+reads into two independent halves and correlating their gene-body curves
+gives **r = 0.744** — below E3's own 0.80 threshold. The peak percentile moves
+from 63 to 75 between two halves of the same library. So the 100-point curve
+is dominated by sampling noise at this depth, and E3 would have failed for
+reasons unrelated to either the biology or the port. Measured reliability as a
+function of smoothing:
+
+| smoothing | split-half r | clears 0.80? |
+|---|---|---|
+| none (raw 100 points) | 0.744 | no |
+| centred moving average, width 9  | 0.801 | barely |
+| centred moving average, width 11 | 0.816 | yes |
+| **centred moving average, width 15** | **0.842** | **yes, with margin** |
+| centred moving average, width 21 | 0.871 | yes |
+
+Reducing the number of bins instead does **not** work (50 bins 0.751, 25 bins
+0.770, 10 bins 0.784), so smoothing over the existing 100 points is the
+mechanism, not coarser quantisation. **E3 is therefore specified as: smooth the
+100-point curve with a centred moving average of width 15, then correlate.**
+Width 15 rather than 9, because 9 clears the threshold by 0.001 and that is not
+a margin. This window is frozen here and is not retuned per stratum.
+
+The circularity is stated plainly: the window was chosen because it is the
+smallest that puts the metric's *measured sampling reliability* comfortably
+below the threshold. The honest reading is that E3 is a test of whether a
+held-out library reproduces the characteristic SEQC 3' skew shape, and it is
+only meaningful at a smoothing level where the shape is reproducible at all.
+
+*E5's absolute junction window was depth-dependent and therefore meaningless.*
+The pre-registered 1e5–1e7 total-junction window assumed a full-depth library.
+The dev panel (324,270 reads, 3 contigs) yields 2,038 junctions and fails the
+window while its substantive claim — annotated junctions outnumber
+non-canonical ones — passes comfortably (1,420 known vs 132 novel, 69.7%).
+**E5 is therefore specified as: known-fraction ≥ 0.50**, with the absolute
+junction count retained as a reported diagnostic but no longer as a pass
+condition. The 0.50 floor is not derived from the dev value (0.697); it is set
+below it deliberately, because the rat stratum's annotation is UCSC refGene
+rather than GENCODE and a lower annotated fraction there is a property of the
+annotation, not evidence of a port defect. Held on a GENCODE-tight threshold,
+this endpoint would fail the cross-organism stratum for a reason that has
+nothing to do with the software.
+
+*Limit on the E3 calibration's own strength, stated so it is not
+over-read.* The dev cross-check scores the dev PE panel against the dev SE
+curve and returns r = 0.999. That number is **not** evidence that E3 will hold
+on a different lab or organism: the PE and SE panels are two views of the
+*same* SEQC reads, so they are near-duplicates and their agreement is close to
+guaranteed. The cross-check establishes only that the statistic is not
+degenerate and that the code path works. Whether r >= 0.80 survives a change
+of laboratory, sequencer and species is exactly what the held-out strata are
+for, and it remains genuinely open. `validate_endpoints.py` additionally
+refuses to score any run against a reference curve derived from that same run,
+which would return r = 1.0 by construction.
+
 **A3 — one substantive limit stated more plainly.** E1's strand expectation
 is taken from archive metadata. For `cross_lab` that metadata must actually
 be checked before the endpoint is evaluated rather than assumed, because

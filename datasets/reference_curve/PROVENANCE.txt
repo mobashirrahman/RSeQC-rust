@@ -1,0 +1,13 @@
+Reference gene-body curves for endpoint E3 (datasets/ENDPOINTS.md 6.1 A4).
+
+Both are the 100-percentile geneBody_coverage curve of the development panel
+(datasets/aligned/real/), against the same GENCODE v47 model
+(datasets/aligned/real/model.bed12). Smoothing width 15 is applied at scoring
+time, not here, so the stored curves stay raw.
+
+  dev_pe.geneBodyCoverage.txt   from pe.bam
+  dev_se.geneBodyCoverage.txt   from se.bam
+
+USE: score held-out strata against dev_pe (the independent reference). Scoring
+a run against the curve derived from ITSELF yields r = 1.0 by construction and
+is rejected by validate_endpoints.py, which reads this file to detect it.
