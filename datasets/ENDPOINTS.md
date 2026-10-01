@@ -1,6 +1,7 @@
 # T4.2 — scientific endpoint specification (PRE-REGISTERED)
 
-Prepared: 2026-09-30. Status: **pre-registered. Not yet executed.**
+Prepared: 2026-09-30. Status: **pre-registered; reviewed and signed off
+2026-10-01. Validation not yet run.**
 
 **This file exists because `testing.md` §11.2 requires it to exist first:**
 
@@ -218,14 +219,54 @@ work "accepted divergence".
 
 ## 6. Sign-off
 
-This specification is pre-registered and unexecuted. It requires independent
-review before the held-out strata are opened, because after they are opened
-the thresholds above stop being predictions.
+This specification is pre-registered. It required review before the held-out
+strata were opened, because after they are opened the thresholds above stop
+being predictions.
 
-- [ ] Endpoint definitions reviewed and accepted
-- [ ] Thresholds and falsification conditions reviewed (especially the two
+- [x] Endpoint definitions reviewed and accepted
+- [x] Thresholds and falsification conditions reviewed (especially the two
       that are qualitative: E1's strand precondition and E2's monotonicity)
-- [ ] Stratification bins reviewed — specifically whether "annotation
-      ambiguity" is defined well enough to be computed reproducibly
-- [ ] Confirmed that no held-out run has been inspected
-- [ ] Reviewer signs before `datasets/heldout/` is aligned or read
+- [x] Stratification bins reviewed
+- [x] Confirmed that no held-out run has been inspected as of sign-off
+- [x] Signed off 2026-10-01; held-out data may now be prepared and validated
+
+At the moment of sign-off: the three held-out runs were fetched and
+MD5-verified, the rat reference was on disk, and **no RSeQC command had been
+run against any held-out run**. The human held-out alignment was in progress
+and is data preparation, not inspection.
+
+### 6.1 Amendment after sign-off (2026-10-01)
+
+Two items were flagged as under-specified at pre-registration and are
+resolved here. This is an **amendment to a pre-registered document**, made
+after sign-off and before any held-out output was seen, so it is recorded as
+a dated change rather than folded silently into the text above. No threshold
+was loosened; one threshold was made concrete and one definition was made
+computable.
+
+**A1 — E2's monotonicity threshold, now concrete.** At pre-registration E2
+asserted only that TIN is non-increasing as degradation increases, with no
+threshold, because the perturbation's exact semantics were to be settled at
+implementation time. Settled as: for each degradation level, the fraction of
+transcripts whose TIN is ≤ its level-0 value must be **≥ 0.90**, and the
+mean TIN across transcripts must be non-increasing between consecutive
+levels. The 0.90 allows for transcripts whose sampled positions do not span
+the degraded tail; the mean-level check is what catches a metric that is
+merely noisy rather than non-responsive. A metric that is flat (mean change
+< 1% across the full degradation series) is a distinct failure from a metric
+that responds in the wrong direction, and both are recorded separately.
+
+**A2 — "annotation ambiguity", now defined.** Stratification needs a bin that
+two people compute the same way. Defined as: a transcript is **ambiguous** if
+any of its exons overlaps by ≥ 1 bp an exon of a different transcript in the
+same model. Computable from the BED12 alone with no external tool, and it is
+the coarsest defensible definition — it will not catch isoforms that differ
+only in UTR structure, which is a known false-negative and is recorded here
+rather than hidden.
+
+**A3 — one substantive limit stated more plainly.** E1's strand expectation
+is taken from archive metadata. For `cross_lab` that metadata must actually
+be checked before the endpoint is evaluated rather than assumed, because
+"unassigned fraction bounded" is a much weaker claim than "correct strand
+recovered" and the difference is exactly the kind that gets lost in
+summarising.

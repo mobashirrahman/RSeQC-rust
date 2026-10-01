@@ -39,8 +39,13 @@ ENV_NAME="${ENV_NAME:-t4star}"
 # behaviour.
 CONTIGS="${CONTIGS:-chr1 chr17 chrM}"
 
-GENOME="$REF_DIR/hg38.fa.gz"
-GTF="$REF_DIR/gencode.v47.annotation.gtf.gz"
+# Overridable so the same script builds the rat index for the
+# cross-organism held-out stratum rather than duplicating it. The contig
+# scope, RAM limit and SA-index size are overridden too: rn6 needs its own
+# contig choice, and a rat index over a chromosome set chosen for hg38 would
+# either be empty or full-genome (which is what OOMs).
+GENOME="${GENOME:-$REF_DIR/hg38.fa.gz}"
+GTF="${GTF:-$REF_DIR/gencode.v47.annotation.gtf.gz}"
 # STAR's own ceiling, in MB, on how much RAM genomeGenerate may plan for. The
 # default is 31000, which on a 31 GB machine is a promise the kernel cannot
 # keep: the first build here was OOM-killed at "inserting junctions into the
@@ -106,9 +111,26 @@ echo "          into the stamp, so the stamp records what happened not what was 
 # STAR cannot read a gzipped genome OR a gzipped GTF: --sjdbGTFfile silently
 # yields an empty junction database from a .gz (its own error text is the clue:
 # "Make sure the GTF file is unzipped"). Decompressed once and reused.
-if [[ ! -f "$IDX_DIR/genome.fa" ]]; then
-  echo "unpack    hg38.fa.gz -> genome.fa (STAR requires uncompressed FASTA)"
-  gunzip -c "$GENOME" > "$IDX_DIR/genome.fa"
+# Unpack via a temp file and move it into place only on success. A plain
+# `gunzip -c in > out` CREATES `out` even when gunzip then fails, and `set -e`
+# does not remove it -- so one failed unpack leaves a zero-byte file that
+# every later run then trusts as "already unpacked" and silently builds an
+# empty index. That is exactly what happened on the rat attempt, where a
+# plain-text annotation was fed to gunzip.
+unpack() {
+  local src="$1" dst="$2"
+  echo "unpack    $(basename "$src") -> $(basename "$dst") (STAR requires uncompressed input)"
+  if [[ "$src" == *.gz ]]; then
+    gunzip -c "$src" > "$dst.tmp"
+  else
+    cp "$src" "$dst.tmp"
+  fi
+  [[ -s "$dst.tmp" ]] || { echo "error: unpack of $src produced an empty file" >&2; exit 1; }
+  mv "$dst.tmp" "$dst"
+}
+
+if [[ ! -s "$IDX_DIR/genome.fa" ]]; then
+  unpack "$GENOME" "$IDX_DIR/genome.fa"
 fi
 
 # Subset the FASTA and the GTF to CONTIGS. Both the index AND the splice
@@ -117,9 +139,11 @@ fi
 # in 31 GB.
 SUBSET_GTF="$IDX_DIR/annotation.subset.gtf"
 if [[ ! -f "$IDX_DIR/genome.subset.fa" || ! -f "$SUBSET_GTF" ]]; then
-  if [[ ! -f "$IDX_DIR/annotation.gtf" ]]; then
-    echo "unpack    gencode.gtf.gz -> annotation.gtf (STAR requires uncompressed GTF)"
-    gunzip -c "$GTF" > "$IDX_DIR/annotation.gtf"
+  # Only unpack when the annotation is actually gzipped. The rat annotation is
+  # produced by datasets/refgene_to_gtf.py as plain text, and an unconditional
+  # gunzip fails on it -- which is how this got found.
+  if [[ ! -s "$IDX_DIR/annotation.gtf" ]]; then
+    unpack "$GTF" "$IDX_DIR/annotation.gtf"
   fi
   echo "subset    contigs: $CONTIGS"
   python3 - "$IDX_DIR/genome.fa" "$IDX_DIR/genome.subset.fa" $CONTIGS <<'PYEOF'
