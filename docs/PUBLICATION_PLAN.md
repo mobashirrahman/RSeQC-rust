@@ -18,8 +18,7 @@ Prepared: 2026-09-17. Baseline: working tree at `6d088e5` (plus uncommitted
 >    so a final re-run against a clean tree is required before any performance
 >    claim may cite them.
 >
-> Still open and unchanged: T4 (no `datasets/manifest.yaml`, no real-data panel, no
-> held-out split), the LICENSE decision and DIV-0003, `crates/python` (still a
+> Still open and unchanged: the LICENSE decision and DIV-0003, `crates/python` (still a
 > 2-line stub), and the R1 matrix's missing **negative / option / overwrite**
 > branches — 84 cases but only ~2 exercise a failure path, which is the gap that let
 > a real `tin` regression ship (see §5.1).
@@ -147,8 +146,14 @@ T0–T6, summarized as actionable gates:
 - **T3 matrix:** differential + semantic BAM/BigWig/FASTQ comparators,
   full option/artifact/error branches, mutation + property tests for all 33
   rows (§7) — the 12 missing commands land here.
-- **T4 science:** `datasets/manifest.yaml`, dev/held-out split, biological
-  endpoints + downstream workflow pins (§11).
+- **T4 science: PARTIAL.** `datasets/manifest.yaml`, the dev/held-out split, a
+  pre-registered endpoint spec (`datasets/ENDPOINTS.md`, signed 2026-10-01)
+  and a three-stratum held-out panel all exist, and the port is byte-identical
+  to upstream RSeQC on a held-out BAM. **Not passing:** four of the eight
+  coverage domains in §11.1 are uncovered (degraded-RNA series, held-out
+  spike-ins, single-cell, depth/dup extremes), chromosome naming is not covered
+  at all because rn6 shares hg38's `chr1` convention, and aligner dependence is
+  unexamined since one aligner produced every BAM. See `docs/T4_FINDINGS.md`.
 - **T5 perf:** `benchmarks/protocol.md` + paired, correctness-qualified
   measurements with uncertainty (§12); no speedup claim before T3–T4 pass.
 - **T6 distribution:** standalone audit (no Python/R/`htseq-count`/
@@ -187,7 +192,9 @@ Newly added, in priority order:
    packaging classifier), and this project cannot choose its own release
    license until that is decided. This blocks packaging.
 8. **T4**: create `datasets/manifest.yaml`, declare the dev/held-out split
-   before any tuning, and add biological endpoint checks.
+   before any tuning, and add biological endpoint checks. **PARTIAL** — split
+   and endpoints done and pre-registered; four §11.1 domains outstanding, so
+   T4 is not passable yet. Findings in `docs/T4_FINDINGS.md`.
 
 ### 5.1 Why the branch-case gap is now the top item
 
