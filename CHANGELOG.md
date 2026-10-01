@@ -17,11 +17,13 @@ of a feature or a closed divergence, not every commit.
   archive, aligned by a pinned third-party aligner (STAR 2.7.11b) rather than by this
   project's own tooling -- a BAM from our own generator would encode our own assumptions
   about transcripts, strand and junctions, so testing the port against upstream on it
-  would test the port against us. The existing 90-case differential matrix runs against
-  the real panel via `RSEQC_REAL_DATA`; **79 pass and 11 are skipped with a printed
-  reason** because the panel has no equivalent fixture. A development/held-out split at
-  study level is recorded in `datasets/manifest.yaml`, with the held-out strata left
-  explicitly unselected rather than filled with a plausible-looking accession.
+  would test the port against us. The 90-case differential matrix ran against the real
+  panel via `RSEQC_REAL_DATA`: **86 ran and passed, 4 were skipped** because the panel has
+  no equivalent fixture, with zero failures. A study-level development/held-out split is
+  recorded in `datasets/manifest.yaml`. The held-out runs have since been scored once
+  against the pre-registered scientific endpoints; outcomes are mixed and are reported
+  separately in `datasets/ENDPOINT_RESULTS.md`. Differential agreement does not establish
+  scientific validity.
 - A measured performance benchmark suite: a preregistered protocol
   (`benchmarks/protocol.md`), a workload generator over **real** hg38 sequence and real
   RefSeq BED12 annotation (`benchmarks/generate_workload_real.py`), a harness with
@@ -167,12 +169,11 @@ Notable categories (see the divergences file for the full, individually-verified
 
 ### Known limitations
 
-See the README's own "Limitations" section for the current, up-to-date list — it is **not**
-duplicated here to avoid the two going out of sync. As of this entry: no real biological/held-out
-dataset validation or fuzzing has been performed; packaging covers Linux x86_64 distribution archives only (CI now
-builds/tests on macOS and Windows too, and a Docker image build exists, but neither has been
-verified to actually work yet — no Python-wheel publication); performance benchmarking **has**
-been done, but only on shared, non-isolated hardware, so it is internal engineering evidence
-and not a publishable speedup claim (`benchmarks/RESULTS.generated.md` §7); this project's own
-release license is pending resolution of `compatibility/
-divergences.yaml`'s DIV-0003 (upstream's own license metadata is internally inconsistent).
+See the README's "Limitations" section for the current list. Since this entry was drafted,
+the real-data differential matrix completed with 86 of 86 runnable cases passing and four
+skipped; the held-out endpoint report records mixed scientific outcomes and does not support
+an unqualified scientific claim. Fuzzing has not been performed. The release archive covers
+Linux x86_64 only. DIV-0003 has been resolved and the project's GPL-3.0-or-later license is
+bundled in the root `LICENSE`. Performance results remain internal engineering evidence from
+shared, non-isolated hardware, not publishable speedup claims
+(`benchmarks/RESULTS.generated.md` §7).

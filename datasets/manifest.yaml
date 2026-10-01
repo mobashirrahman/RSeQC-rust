@@ -7,9 +7,13 @@
 # guide a fix, record that exposure and use fresh independent confirmation
 # for claims requiring untouched validation".
 #
-# STATUS: reference fetched, STAR index building, dev-split FASTQ downloading.
-# No BAM has been produced yet, so NO scientific claim is made anywhere in
-# this repository. Nothing below has been used to tune any algorithm.
+# STATUS (2026-10-01): development and held-out panels are aligned. The latest
+# T4.1 real-data matrix run executed 86 cases and passed all 86; four of 90
+# cases were skipped for missing real-data inputs. T4.2 held-out endpoints
+# were scored once; see datasets/ENDPOINT_RESULTS.md. Those scores are
+# scientific checks of upstream outputs, separate from port compatibility.
+# The held-out runs are now exposed and must not guide tuning; any follow-up
+# claim needs fresh independent confirmation.
 
 schema_version: 1
 created: 2026-09-30
@@ -149,13 +153,11 @@ splits:
         instrument: Illumina HiSeq 2500
         library: cDNA, paired-end
         run: ERR10015758
-        status: selected_fetched_pending_alignment
+        status: aligned_and_endpoints_scored
         exposure: >
-            NOT YET INSPECTED. No RSeQC command has been run against this run,
-            and none will be until the development-side work is final and
-            datasets/ENDPOINTS.md has been signed off. Aligning is not
-            inspecting: it produces a BAM without revealing anything about
-            whether the port agrees with upstream.
+            Inspected once during T4.2 endpoint validation on 2026-10-01.
+            This held-out sample is consumed for confirmation; any follow-up
+            change motivated by its result needs fresh independent data.
       - id: cross_chemistry
         description: >
             A non-Illumina platform. This is the stratum most likely to find
@@ -172,8 +174,11 @@ splits:
         instrument: BGISEQ-500 (DNBSEQ)
         library: cDNA, paired-end
         run: ERR10229623
-        status: selected_fetched_pending_alignment
-        exposure: NOT YET INSPECTED, as above.
+        status: aligned_and_endpoints_scored
+        exposure: >
+            Inspected once during T4.2 endpoint validation on 2026-10-01.
+            This held-out sample is consumed for confirmation; any follow-up
+            change motivated by its result needs fresh independent data.
       - id: cross_organism
         description: >
             A second organism, for testing that nothing assumes a particular
@@ -215,9 +220,12 @@ splits:
                 a GTF (for STAR's junction database) and a BED12 (for the
                 RSeQC commands) deterministically.
             records: 19160 transcripts / 179173 exons across all contigs
-        status: reference_fetched_annotated_index_pending
-        status: selected_fetched_pending_alignment
-        exposure: NOT YET INSPECTED, as above.
+        reference_status: fetched_annotated_and_indexed
+        status: aligned_and_endpoints_scored
+        exposure: >
+            Inspected once during T4.2 endpoint validation on 2026-10-01.
+            This held-out sample is consumed for confirmation; any follow-up
+            change motivated by its result needs fresh independent data.
 
 # ----------------------------------------------------------------------
 # Not yet satisfied

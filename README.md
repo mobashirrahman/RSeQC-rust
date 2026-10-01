@@ -9,10 +9,12 @@ workflow.
 
 All 33 upstream commands are implemented, build cleanly (`cargo build --workspace`), and pass
 `cargo test --workspace` / `cargo clippy --workspace --all-targets -- -D warnings`. Compatibility
-is verified with a differential harness (`verification/run_diff.py`) that runs the real upstream
-Python CLI and this port's compiled binary against the same fixture and diffs their actual
-output — not just unit tests against this port's own expectations. The harness currently has 63
-cases covering all 33 commands.
+is verified with a 90-case differential harness (`verification/run_diff.py`) that runs the real
+upstream Python CLI and this port's compiled binary against the same fixture and diffs their actual
+output — not just unit tests against this port's own expectations. The latest recorded run against
+the real-read panel executed 86 cases and passed all 86; four cases were skipped because the panel
+does not contain their required inputs. This is compatibility evidence for those cases, not proof
+of scientific validity; see [Limitations](#limitations).
 
 **This is not yet a finished, published release.** See [Limitations](#limitations) below for what
 still needs work before that's a fair claim, and `testing.md` / `docs/PORTING_PLAN.md` for the
@@ -135,9 +137,14 @@ this table, is the authoritative compatibility record.
   genuinely requires external reference resolution will fail to decode rather than silently
   producing wrong data; this port does not fetch references over the network the way `htslib` can,
   by design (see DIV-0002/0004).
-- **Real biological / held-out dataset validation has not been performed.** Verification so far
-  is fixture-based differential testing against the real upstream CLI, not large real-world
-  datasets. See `testing.md` sections 10-11.
+- **Scientific validation remains incomplete.** The real-read differential run executed 86 of
+  90 cases and all 86 passed against upstream; four were skipped because the panel lacks their
+  required inputs. The separate held-out scientific endpoint report records 3 passes, 3 failures,
+  3 inconclusive outcomes, and 9 not-evaluated outcomes across its endpoint/stratum rows.
+  Those endpoints assess scientific claims about upstream outputs; they do not test port-versus-
+  upstream compatibility. The held-out samples have been inspected and are consumed for
+  confirmation purposes. See [the endpoint results](datasets/ENDPOINT_RESULTS.md) and
+  `testing.md` sections 10-11.
 - **Performance has been benchmarked, but not to publication standard.** A preregistered
   run over 29 commands (10 paired repetitions each, structural equivalence gate, cost-driver
   sweeps) is in `benchmarks/RESULTS.generated.md`. It was measured on shared, non-isolated
@@ -154,8 +161,11 @@ this table, is the authoritative compatibility record.
   upstream on **all 29** measured commands, from 1.4x lighter (`bam2wig`) to 15.7x
   (`sc_seqQual`).
 - **No fuzzing has been done.**
-- **Packaging covers one platform.** `.github/workflows/release.yml` builds a single Linux
-  x86_64 archive; no macOS/Windows builds, container images, or Python wheel yet.
+- **Release packaging covers one platform.** `.github/workflows/release.yml` publishes a Linux
+  x86_64 archive. CI also builds and tests on macOS and Windows and builds the Docker image, but
+  there are no macOS/Windows release archives or Python wheel.
+- **The Python API compatibility layer is not implemented yet.** The `rseqc-python` crate is
+  currently a stub; importing upstream's `qcmodule` API is not supported.
 - **Licensing is settled and bundled.** The root `LICENSE` carries the canonical GPLv3 text and
   this project is released as **GPL-3.0-or-later** (DIV-0003 resolved 2026-10-01). Upstream's own
   license metadata is internally inconsistent — its README says GPL-3.0-or-later while a packaging
