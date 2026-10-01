@@ -327,6 +327,45 @@ for, and it remains genuinely open. `validate_endpoints.py` additionally
 refuses to score any run against a reference curve derived from that same run,
 which would return r = 1.0 by construction.
 
+**A6 — E5 reclassified INCONCLUSIVE when the annotation is too sparse to
+annotate the index (2026-10-01).** Found by running E5 on the rat stratum and
+getting 7 annotated junctions out of 44,176 (0.02%), which is not a
+plausible biological result for a rat library aligned to rat sequence with rat
+annotation. Diagnosed rather than accepted:
+
+* It was **my bug first**. `datasets/refgene_to_gtf.py` converted refGene
+  exons to BED12 with size `end - start` instead of `end - start + 1`.
+  refGene is 1-based inclusive, so every exon came out one base short, every
+  exon end one base early, and junction matching collapsed. Fixing it moved the
+  annotated fraction from 0.02% to 2.57% — a 162x improvement that confirmed
+  the off-by-one was real. The converter is now cross-checked against the
+  project's own `make_bed12.py` GTF path, which agrees base for base, and all
+  19,160 rat transcripts are asserted to have exon blocks that reconstruct
+  their span exactly. The GTF fed to STAR was never affected, so no re-index
+  or re-alignment was needed.
+
+* The remaining 2.57% is **not a port defect and not a rat biology finding**.
+  It is annotation density. The rat index annotates **32%** of its own indexed
+  sequence (chr1 32%, chr2 27%, chr10 43%), because UCSC refGene for rat is a
+  thin transcript set. The human index, for contrast, annotates **503%** of
+  its indexed bases, because GENCODE v47 places many overlapping transcripts
+  per locus. STAR's splice-aware alignment invents introns across the
+  unannotated remainder — the rat BAM genuinely contains CIGARs like
+  `55M498576N46M` — and the port reports them as novel, correctly.
+
+  E5 is therefore **not evaluable** where the annotation covers less than half
+  the indexed sequence, because there the annotated/non-annotated ratio is
+  dominated by coverage rather than by splicing fidelity. The 0.5 bar is an
+  a priori rule, not a fitted one, and it does not affect the human strata,
+  which pass at 503% density and 0.706 annotated fraction. The rat stratum
+  keeps the verdict INCONCLUSIVE with the coverage figures attached.
+
+* A hypothesis I had to discard: giant introns are not rat-specific. The human
+  held-out BAM has 2,352,546 spliced reads with a >20 kb intron against the
+  rat's 1,378,374, and the human run scores 0.706 while the rat scores 0.026.
+  So intron size was a red herring, and the density comparison is what
+  actually explains the difference.
+
 **A3 — one substantive limit stated more plainly.** E1's strand expectation
 is taken from archive metadata. For `cross_lab` that metadata must actually
 be checked before the endpoint is evaluated rather than assumed, because

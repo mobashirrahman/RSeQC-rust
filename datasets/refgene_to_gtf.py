@@ -18,9 +18,17 @@ STAR's `--sjdbGTFfile` requires a GTF, and every RSeQC annotation-consuming
 command requires BED12.
 
 Coordinate handling is the part worth being careful about: refGene is 1-based
-inclusive, BED12 is 0-based half-open, and GTF is 1-based inclusive. The
-conversion is `start0 = txStart - 1` for BED12 and `start1 = exonStart` for
-GTF, with no other adjustment.
+inclusive, BED12 is 0-based half-open, and GTF is 1-based inclusive.
+
+  BED12 transcript start = txStart - 1
+  BED12 exon size        = exonEnd - exonStart + 1     <- the +1 matters
+  BED12 exon start (rel) = exonStart - txStart
+  GTF exon start/end     = exonStart / exonEnd, unchanged
+
+The exon size is the one that bites: dropping the +1 shortens every exon by one
+base, shifts every exon end one base early, and makes junction annotation
+report essentially nothing as annotated. Verified on NM_001099460: correct
+first-exon size 207, the buggy form gave 206.
 """
 from __future__ import annotations
 
@@ -79,7 +87,13 @@ def main() -> int:
                 # GTF is 1-based inclusive, so s and e pass through unchanged.
                 gf.write(f'{t["chrom"]}\tsource\texon\t{s}\t{e}\t.\t{t["strand"]}\t.\t{attr}\n')
                 n_gtf += 1
-            sizes = ",".join(str(e - s) for s, e in zip(t["exon_starts"], t["exon_ends"])) + ","
+            # refGene exon starts/ends are 1-based INCLUSIVE, so a BED12
+            # exon size is (end - start + 1). Using (end - start) makes every
+            # exon one base short, which places each exon END one base early and
+            # destroys junction matching. That bug was caught by endpoint E5 on
+            # the rat stratum, which saw 7 annotated of 44,176 total junctions
+            # (0.02%) where a rat library should be majority annotated.
+            sizes = ",".join(str(e - s + 1) for s, e in zip(t["exon_starts"], t["exon_ends"])) + ","
             starts = ",".join(str(s - t["tx_start"]) for s in t["exon_starts"]) + ","
             bf.write(
                 f'{t["chrom"]}\t{start0}\t{t["tx_end"]}\t{t["name"]}\t0\t{t["strand"]}\t'

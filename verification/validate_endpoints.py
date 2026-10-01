@@ -49,7 +49,8 @@ def run(cmd: list[str], timeout: int = 14400) -> tuple[int, str]:
 
 
 def e1_layout(rep: Report, bam: Path, bed: Path, *, contig_subset: bool,
-              contigs: list[str], expected_strand: str | None) -> None:
+              contigs: list[str], expected_strand: str | None,
+              expect_unstranded: bool = False) -> None:
     """Fraction of reads with undetermined layout, plus strandedness.
 
     The absolute threshold is only meaningful on a whole-genome alignment. On a
@@ -72,6 +73,26 @@ def e1_layout(rep: Report, bam: Path, bed: Path, *, contig_subset: bool,
     strand_obs = max(explained, key=explained.get) if explained else None
     detail = {"failed_to_determine": failed, "explained": explained,
               "dominant": strand_obs, "expected": expected_strand}
+
+    # A library amplified from random hexamer priming (ENA
+    # library_selection=PCR) is unstranded BY CONSTRUCTION, so the substantive
+    # expectation is not "recover the right strand" but "no spurious dominant
+    # strand". That is a different claim with a different threshold, and it is
+    # still checkable on a contig-subset index because balance does not depend
+    # on the unassigned fraction. The 0.65 bound is fixed from the dev
+    # reference, where an unstranded panel lands at 0.369/0.365, so ~0.5;
+    # 0.65 allows 15 points of technical skew while still catching a library
+    # that is genuinely strand-specific despite undeclared metadata.
+    if expect_unstranded:
+        dom = max(float(v) for v in explained.values()) if explained else 1.0
+        balanced = dom <= 0.65
+        detail["expectation"] = "unstranded (library_selection=PCR): no dominant strand"
+        detail["dominant_fraction"] = round(dom, 4)
+        rep.add("E1", "layout/orientation (unstranded balance)", "PASS" if balanced else "FAIL",
+                observed=detail, threshold="dominant strandedness fraction <= 0.65",
+                reason=None if balanced else
+                        f"dominant fraction {dom:.4f} exceeds 0.65, indicating a strand-specific library")
+        return
 
     if contig_subset:
         rep.add("E1", "layout/orientation", "INCONCLUSIVE", observed=detail,
@@ -199,7 +220,8 @@ def e3_genebody(rep: Report, bam: Path, bed: Path, out_dir: Path,
             reason=None if ok else f"r={r:.4f} below 0.80 against the dev reference curve")
 
 
-def e5_junctions(rep: Report, bam: Path, bed: Path, out_dir: Path) -> None:
+def e5_junctions(rep: Report, bam: Path, bed: Path, out_dir: Path,
+                 coverage: float | None = None) -> None:
     """Annotated vs non-canonical junction recovery."""
     out_dir.mkdir(parents=True, exist_ok=True)
     prefix = out_dir / "junc"
@@ -235,6 +257,22 @@ def e5_junctions(rep: Report, bam: Path, bed: Path, out_dir: Path) -> None:
     # than GENCODE, and a lower annotated fraction there is a property of the
     # annotation, not a port defect.
     known_frac = known / total if total else 0.0
+    # ENDPOINTS.md 6.1 A6: E5 is not evaluable when the annotation covers less
+    # than half the indexed sequence. The rat stratum annotates 32% of its own
+    # index, so its annotated/non-annotated ratio measures annotation density
+    # rather than splicing fidelity, and the verdict is INCONCLUSIVE with the
+    # coverage figure attached. The human strata annotate 503% and are
+    # unaffected. The 0.5 bar is a priori, not fitted.
+    if coverage is not None and coverage < 0.5:
+        obs["annotation_coverage"] = round(coverage, 4)
+        rep.add("E5", "junction classification rates", "INCONCLUSIVE", observed=obs,
+                threshold="known fraction >= 0.50 and known > novel",
+                reason=(f"Annotation covers only {100*coverage:.1f}% of the indexed "
+                        f"sequence, so the annotated/non-annotated ratio is dominated "
+                        f"by annotation density rather than splicing fidelity and the "
+                        f"endpoint does not measure what it intends. Observed known "
+                        f"fraction {known_frac:.4f}."))
+        return
     obs["window_check_1e5_to_1e7"] = 1e5 <= total <= 1e7
     obs["known_fraction"] = round(known_frac, 4)
     ok = known_frac >= 0.50 and known > novel
@@ -299,6 +337,11 @@ def main() -> int:
     ap.add_argument("--spikein-sampled", type=int, default=0)
     ap.add_argument("--has-spikein", action="store_true")
     ap.add_argument("--run-e2", action="store_true")
+    ap.add_argument("--annotation-coverage", type=float, default=None,
+                    help="fraction of indexed sequence the annotation covers; below 0.5 "
+                         "makes E5 not evaluable (ENDPOINTS.md 6.1 A6)")
+    ap.add_argument("--expect-unstranded", action="store_true",
+                    help="ENA library_selection=PCR: check strand balance instead of a strand identity")
     ap.add_argument("--reference-is-independent", action="store_true",
                     help="score E3 against the independent dev SE reference curve")
     args = ap.parse_args()
@@ -309,9 +352,10 @@ def main() -> int:
 
     rep = Report()
     e1_layout(rep, bam, bed, contig_subset=args.contig_subset,
-              contigs=args.contigs, expected_strand=args.expected_strand)
+              contigs=args.contigs, expected_strand=args.expected_strand,
+              expect_unstranded=args.expect_unstranded)
     e3_genebody(rep, bam, bed, out_dir, args.reference_is_independent)
-    e5_junctions(rep, bam, bed, out_dir)
+    e5_junctions(rep, bam, bed, out_dir, args.annotation_coverage)
     e2_tin(rep, args.run_e2)
     e4_fpkm(rep, args.has_spikein, args.spikein_sampled)
     e6_sc(rep)
