@@ -263,12 +263,25 @@ this table, is the authoritative compatibility record.
   | `geneBody_coverage` | 12.36× | 11.83–12.81 | **fail — not claimed** |
   | `tin` | 7.79× | 7.78–7.92 | **fail — not claimed** |
 
-  What this does **not** license is stated rather than implied: the alignment carries
-  reads on **3 of 58 annotated contigs**, so it is a diagnostic panel, not the
-  whole-genome pilot the protocol asks for; it is **one session on one machine**, which
-  the protocol says a bootstrap interval cannot make generalisable; and 5 blocks per row
-  is short of the 10 the protocol starts from. These are indicative figures for a scoped
-  beta, not publication figures. The harness itself also earned three corrections during
+  What this does **not** license is stated rather than implied: it is **one session on
+  one machine**, which the protocol says a bootstrap interval cannot make generalisable;
+  it is **one dataset**; and 5 blocks per row is short of the 10 the protocol starts
+  from. These are indicative figures for a scoped beta, not publication figures. (Those
+  rows are on the three-contig panel, which is retained because it is the same data the
+  re-collected rows and the memory work used, so the two sets are comparable.)
+
+- **There is a whole-genome rat alignment now, and it showed the panel above was 20% of
+  the library.** A 58-contig rn6 index (150,217 annotated junctions) aligned the same
+  17,168,681 input reads to **13,849,121 uniquely mapped (80.67%)** with 11,388,194
+  splices, against **3,487,314 (20.31%)** and 2,255,750 on the three-contig panel — most
+  rat reads fall outside `chr1`/`chr2`/`chr10`. The whole-genome BAM holds **32,626,178
+  measured records = 8,584,340 read pairs**, recorded as the two separate quantities the
+  protocol requires rather than as either alone. On it, `junction_annotation` is
+  **byte-identical** between upstream and the port on all three data artifacts —
+  `junction.xls` 5.9 MB, `junction.bed` 12.1 MB, `junction.Interact.bed` 29.0 MB — across
+  **152,476 transcript rows**, and both arms report `total = 11388194`, exactly STAR's
+  own spliced-junction count. See
+  [`datasets/heldout/endpoint_results/SRR1177982_wholegenome/`](datasets/heldout/endpoint_results/SRR1177982_wholegenome/). The harness itself also earned three corrections during
   this study — three commands were gated on declarations that did not describe them, and
   a relative `--output-dir` silently invalidated the first attempt entirely.
 - **Two commands' real-data equivalence is unproven, and the release says so.**

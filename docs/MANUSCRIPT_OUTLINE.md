@@ -102,10 +102,23 @@ command is excluded from every speedup claim.
   (`crates/formats/tests/semantic_truth.rs`), 15 scientific-semantics cases
   (`crates/commands/tests/scientific_semantics.rs`), 9 refGene converter cases, and a
   60/60-vs-0/60 coordinate-frame confirmation against the rat genome sequence.
-- Real-data concordance on corrected, index-bound inputs: available for one command on
-  one stratum — `junction_annotation` on the rat panel, byte-identical between
-  upstream and port (`datasets/heldout/endpoint_results/SRR1177982_same_input/`).
-  It is not a whole-stratum validation, and the sample is exposed.
+- Real-data concordance on corrected, index-bound inputs: **available for one command on
+  a whole-genome rat alignment** — `junction_annotation` byte-identical between upstream
+  and port on all three data artifacts (`junction.xls` 5.9 MB, `junction.bed` 12.1 MB,
+  `junction.Interact.bed` 29.0 MB) across 152,474→152,476 transcript rows, with both
+  arms reporting `total = 11388194`, exactly STAR's own spliced-junction count
+  (`datasets/heldout/endpoint_results/SRR1177982_wholegenome/`).
+  It is not a whole-stratum validation, and the sample is **exposed**: it was inspected
+  across several preparation states while the depth-cap defect was found on it.
+
+  The substrate itself is a finding worth stating rather than burying. The earlier
+  three-contig rat panel retained only **20.31%** of uniquely mapped reads, because most
+  rat reads fall outside `chr1`/`chr2`/`chr10`; the whole-genome alignment of the same
+  library retains **80.67%**. So endpoints computed on a contig subset are not a smaller
+  sample of the same thing — they are a sample selected by where reads happened to land,
+  and "8.2M records" was the part that mapped rather than a record count for the library.
+  A paper reporting a per-transcript or per-junction statistic must say which substrate
+  produced it, and a contig subset is a bias, not a sample.
 - Primary end-to-end/runtime and memory results: **available for 18 command rows on
   real data** ([`benchmarks/results-rat-real-8M/results.json`](../benchmarks/results-rat-real-8M/results.json)),
   5 matched blocks each, 16 of 18 gates PASS. The two failures are `geneBody_coverage`
