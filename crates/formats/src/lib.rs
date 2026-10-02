@@ -114,8 +114,13 @@ pub fn write_bai_index(path: &Path) -> io::Result<()> {
 /// external reference is configured, which is exactly the case an
 /// empty repository can decode). A CRAM file that genuinely requires
 /// EXTERNAL reference resolution (encoded against a reference NOT
-/// embedded and not supplied here) will surface as a decode error
-/// instead of silently producing wrong sequence data. None of the 12
+/// embedded and not supplied here) is REJECTED with an `io::Error`
+/// naming the file and the cause, rather than decoded against a
+/// guess or -- as it originally was -- crashing on a panic inside
+/// the decoder. Both branches are covered by tests against
+/// htslib-written fixtures: `cram_no_reference.cram` (embedded, must
+/// decode) and `cram_external_reference.cram` (must error cleanly).
+/// None of the 12
 /// upstream commands that advertise `.cram` input expose a
 /// `--reference`-style flag of their own either (checked via grep
 /// across their argparse setups) -- they rely on pysam/htslib's own
@@ -167,9 +172,17 @@ pub enum AlignmentRecords {
         done: bool,
     },
     /// Batched encode/decode conversion for SAM text.
+    ///
+    /// The header is boxed. Without it this variant is far larger than the others --
+    /// `SamBuffered` inline is roughly 500 bytes against `CramBuffered`'s 24 -- so
+    /// every match on the enum copies that padding, including on the BAM path where
+    /// this variant is never constructed. Clippy's `large_enum_variant` (a required
+    /// `-D warnings` gate) is right about the cost; boxing costs one allocation on
+    /// the SAM path, which already round-trips records through a fresh buffer per
+    /// chunk, and nothing on the hot BAM path.
     SamBuffered {
         reader: sam::io::Reader<BufReader<File>>,
-        header: sam::Header,
+        header: Box<sam::Header>,
         scratch: sam::alignment::RecordBuf,
         pending: std::collections::VecDeque<io::Result<noodles_bam::Record>>,
         done: bool,
@@ -311,7 +324,7 @@ pub fn open_alignments(path: &Path) -> io::Result<(sam::Header, AlignmentRecords
             let header = text_reader.read_header()?;
             let records = AlignmentRecords::SamBuffered {
                 reader: text_reader,
-                header: header.clone(),
+                header: Box::new(header.clone()),
                 scratch: sam::alignment::RecordBuf::default(),
                 pending: std::collections::VecDeque::new(),
                 done: false,
@@ -323,10 +336,65 @@ pub fn open_alignments(path: &Path) -> io::Result<(sam::Header, AlignmentRecords
             let header = cram_reader.read_header()?;
             // Whole-file, because `noodles_cram`'s `records(&header)` is single-use; see
             // the `AlignmentRecords` doc comment for the measured detail.
-            let bufs: Vec<sam::alignment::RecordBuf> = cram_reader
-                .records(&header)
-                .map(|result| result.map(fix_unmapped_missing_mapping_quality))
-                .collect::<io::Result<_>>()?;
+            //
+            // The decode runs inside `catch_unwind` because a CRAM that needs an
+            // external reference PANICS in the dependency rather than returning an
+            // error: `noodles_cram`'s slice reader does
+            // `repository.get(name).transpose()?.expect("invalid slice reference
+            // sequence name")`, and the repository here is empty by design (see the
+            // doc comment above), so the `expect` always fires for such a file.
+            // Uncaught, that reaches the user as a Rust panic with a backtrace hint
+            // and exit 101, which names neither the input nor the reason -- the
+            // opposite of the "surfaces as a decode error" the doc comment above
+            // used to promise. The promise is now kept.
+            //
+            // It is converted here into an `io::Error` naming the file and the actual
+            // cause. The default panic hook is silenced for the duration, because it
+            // fires on the way out of the unwinding panic and would otherwise print a
+            // backtrace hint for an error the user is about to be told about
+            // properly. Any *other* panic from the decoder is re-raised with the hook
+            // restored, so a genuine bug keeps its original location and backtrace
+            // rather than being laundered into "missing reference".
+            //
+            // The hook is process-global, so this is only sound because the decode is
+            // the only thing running on this thread here. That is true of every current
+            // call site (each command opens its input before doing anything else), and
+            // it is called out because it would stop being true the moment a command
+            // grew an internal worker thread.
+            let previous_hook = std::panic::take_hook();
+            std::panic::set_hook(Box::new(|_| {}));
+            let decode = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                cram_reader
+                    .records(&header)
+                    .map(|result| result.map(fix_unmapped_missing_mapping_quality))
+                    .collect::<io::Result<Vec<sam::alignment::RecordBuf>>>()
+            }));
+            std::panic::set_hook(previous_hook);
+            let bufs: Vec<sam::alignment::RecordBuf> = match decode {
+                Ok(Ok(bufs)) => bufs,
+                Ok(Err(e)) => return Err(e),
+                Err(payload) => {
+                    let detail = panic_message(&payload);
+                    if !detail.contains("invalid slice reference sequence name") {
+                        // Not the known case: re-raise so the bug stays visible with
+                        // its original panic location.
+                        std::panic::resume_unwind(payload);
+                    }
+                    return Err(io::Error::new(
+                        io::ErrorKind::InvalidData,
+                        format!(
+                            "{}: this CRAM was encoded against an external reference \
+                             that is not embedded in the file, and this build resolves \
+                             no external reference ({}). Re-encode it with the \
+                             reference embedded, e.g. pysam \
+                             AlignmentFile(path, 'wc', header=header) with no \
+                             reference_filename, which makes htslib embed it.",
+                            path.display(),
+                            detail
+                        ),
+                    ));
+                }
+            };
             let records = AlignmentRecords::CramBuffered {
                 pending: encode_decode(&header, bufs.into_iter()).into_iter(),
             };
@@ -367,6 +435,24 @@ pub fn open_alignments(path: &Path) -> io::Result<(sam::Header, AlignmentRecords
 /// cutoff). Reproduces htslib's own read-time default here so this
 /// port's CRAM support matches what upstream ACTUALLY does, not just
 /// what the CRAM container's raw bytes technically encode.
+/// The message carried by a caught panic payload, whatever shape it has.
+///
+/// `catch_unwind` yields `Box<dyn Any + Send>`: a `&str` or `String` from a plain
+/// `panic!`, but from a library that wraps its own panics it can be a different type
+/// entirely, in which case there is no string to read. Returning a placeholder keeps
+/// the caller's match on the known message honest -- an unreadable payload will not
+/// match "invalid slice reference sequence name" and will therefore be re-raised
+/// rather than misreported.
+fn panic_message(payload: &Box<dyn std::any::Any + Send>) -> String {
+    if let Some(s) = payload.downcast_ref::<&str>() {
+        (*s).to_string()
+    } else if let Some(s) = payload.downcast_ref::<String>() {
+        s.clone()
+    } else {
+        "<non-string panic payload>".to_string()
+    }
+}
+
 fn fix_unmapped_missing_mapping_quality(mut record: sam::alignment::RecordBuf) -> sam::alignment::RecordBuf {
     use sam::alignment::record::{Flags, MappingQuality};
     if record.flags().contains(Flags::UNMAPPED) && record.mapping_quality().is_none() {
@@ -477,6 +563,64 @@ mod tests {
         assert_eq!(record.mapping_quality().map(|q| q.get()), Some(40));
         assert_eq!(record.alignment_start().unwrap().unwrap().get(), 11);
         assert_eq!(record.sequence().iter().collect::<Vec<_>>(), b"ACGT".to_vec());
+    }
+
+    /// A CRAM encoded against an external reference is the shape real CRAMs usually
+    /// have (`samtools view -C -T ref.fa` records the reference URI and M5 and does
+    /// not embed the bases). This build resolves no external reference by design, so
+    /// the required behaviour is a clean error naming the file and the reason.
+    ///
+    /// It was a panic. `noodles_cram` 0.99's slice reader does
+    /// `repository.get(name).transpose()?.expect("invalid slice reference sequence
+    /// name")`, the repository is empty, so the `expect` always fired and the user saw
+    /// `panicked at .../noodles-cram-0.99.0/src/io/reader/container/slice.rs:355`
+    /// with exit 101 -- naming neither the input file nor the fact that a reference
+    /// was the problem. The fixture is written by htslib itself, so this is the
+    /// dependency's real behaviour rather than a simulation of it.
+    #[test]
+    fn open_alignments_reports_a_clear_error_for_an_external_reference_cram() {
+        let path = Path::new(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/tests/fixtures/cram_external_reference.cram"
+        ));
+        // Matched rather than `expect_err`, because `AlignmentRecords` is not `Debug`
+        // and `Result::expect_err` requires it. `unwrap_err` has the same bound; an
+        // explicit match states the expectation without needing it.
+        let err = match open_alignments(path) {
+            Err(e) => e,
+            Ok(_) => panic!(
+                "a CRAM needing an external reference must be an error, not a decode"
+            ),
+        };
+        let message = err.to_string();
+        assert!(
+            message.contains("external reference"),
+            "the error must name the cause, got: {message}"
+        );
+        assert!(
+            message.contains("cram_external_reference.cram"),
+            "the error must name the file, got: {message}"
+        );
+        assert_eq!(err.kind(), io::ErrorKind::InvalidData,
+                   "an unresolvable reference is bad input, not an I/O failure");
+    }
+
+    /// The embedded-reference fixture must still decode. Asserted in the same file as
+    /// the error case because the fix for one is a `catch_unwind` around the decode
+    /// the other depends on, and a test that only covers the new branch would pass
+    /// with the common path broken.
+    #[test]
+    fn open_alignments_still_decodes_the_embedded_reference_cram() {
+        let path = Path::new(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/tests/fixtures/cram_no_reference.cram"
+        ));
+        let (_header, records) = open_alignments(path).expect(
+            "an embedded-reference CRAM must still decode after the catch_unwind"
+        );
+        let records: Vec<_> = records.collect();
+        assert_eq!(records.len(), 1);
+        assert!(records[0].is_ok(), "the single record must decode cleanly");
     }
 
     #[test]

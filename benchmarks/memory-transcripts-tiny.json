@@ -1,0 +1,438 @@
+{
+  "source_facts": {
+    "cram_decode_is_whole_file": "`AlignmentRecords::CramBuffered` collects the entire file before processing: `noodles-cram` 0.99 exposes record iteration only as `records(&header)`, which is single-use, so re-entering a drained reader yields a spurious decode error instead of EOF. This bounds CRAM input by available memory rather than by alignment size. It is a code fact read from crates/formats/src/lib.rs, not an inference from timing: the CRAM fixture is 10 records and could not demonstrate it.",
+    "duplication_retains_unique_entries": "read_duplication keeps one entry per unique sequence/position in a hash container, so its memory is proportional to DISTINCT reads. The measured slope below is the evidence for how that behaves on a real alignment.",
+    "wig_retains_covered_positions": "bam2wig materialises a per-position value map over covered bases, so its memory is proportional to covered positions and cannot be streamed down. The measured slope below quantifies it on this fixture."
+  },
+  "transcript_drivers": {
+    "genebody_coverage": {
+      "command": "geneBody_coverage",
+      "retains": "a percentile list per transcript",
+      "interpretation": "Per-transcript state, so the cost should follow the transcript count and be nearly flat in alignment size. A rising slope in records here would mean the command reads the alignment more than once, or retains per-read state the sliding window was meant to avoid.",
+      "alignment": "/scratch/mdra00001/RSeQC-rust/datasets/aligned/tiny/tiny.bam",
+      "alignment_records": 621783,
+      "points": [
+        {
+          "transcripts_requested_fraction": 0.0625,
+          "transcripts": 365,
+          "repeats": 3,
+          "peak_rss_mb_across_repeats": [
+            55.6,
+            56.0,
+            55.6
+          ],
+          "repeat_spread_mb": 0.4,
+          "peak_rss_mb": 55.984375,
+          "exit_code": 0,
+          "wall_s": 1.01
+        },
+        {
+          "transcripts_requested_fraction": 0.125,
+          "transcripts": 730,
+          "repeats": 3,
+          "peak_rss_mb_across_repeats": [
+            55.8,
+            55.7,
+            55.8
+          ],
+          "repeat_spread_mb": 0.2,
+          "peak_rss_mb": 55.84765625,
+          "exit_code": 0,
+          "wall_s": 1.25
+        },
+        {
+          "transcripts_requested_fraction": 0.25,
+          "transcripts": 1460,
+          "repeats": 3,
+          "peak_rss_mb_across_repeats": [
+            55.9,
+            55.7,
+            55.7
+          ],
+          "repeat_spread_mb": 0.2,
+          "peak_rss_mb": 55.875,
+          "exit_code": 0,
+          "wall_s": 1.74
+        },
+        {
+          "transcripts_requested_fraction": 0.5,
+          "transcripts": 2920,
+          "repeats": 3,
+          "peak_rss_mb_across_repeats": [
+            55.8,
+            55.9,
+            55.7
+          ],
+          "repeat_spread_mb": 0.2,
+          "peak_rss_mb": 55.8984375,
+          "exit_code": 0,
+          "wall_s": 2.42
+        },
+        {
+          "transcripts_requested_fraction": 1.0,
+          "transcripts": 5840,
+          "repeats": 3,
+          "peak_rss_mb_across_repeats": [
+            56.0,
+            55.8,
+            55.7
+          ],
+          "repeat_spread_mb": 0.4,
+          "peak_rss_mb": 56.03515625,
+          "exit_code": 0,
+          "wall_s": 4.66
+        }
+      ],
+      "transcript_span_factor": 16.0,
+      "all_runs_succeeded": true,
+      "repeat_noise_mb": 0.4,
+      "slope_status": "WITHHELD: the transcript counts span 16.00x but peak RSS moves only 0.2 MB, against a repeat-to-repeat spread of 0.4 MB measured by running each point 3 times. The signal is 0.5x the noise where 3.0x is required, so a per-transcript cost fitted to it would express the denominator's range rather than a measured cost. This command's per-transcript state is smaller than this measurement can resolve on this alignment.",
+      "slope_vs_transcripts_raw": {
+        "mb_per_unit": 2.1318e-05,
+        "bytes_per_record": 22.353,
+        "bytes_per_unit": 22.353,
+        "denominator": "transcripts",
+        "records_range": [
+          365,
+          5840
+        ],
+        "rss_range_mb": [
+          55.8,
+          56.0
+        ],
+        "rss_movement_mb": 0.2,
+        "repeat_noise_mb": 0.4,
+        "signal_to_noise": 0.5
+      }
+    },
+    "tin": {
+      "command": "tin",
+      "retains": "an exon block index per transcript",
+      "interpretation": "Per-transcript state. The read-side window was already fixed to be streaming (see CHANGELOG), so this isolates the annotation cost that remains regardless of how many reads arrive.",
+      "alignment": "/scratch/mdra00001/RSeQC-rust/datasets/aligned/tiny/tiny.bam",
+      "alignment_records": 621783,
+      "points": [
+        {
+          "transcripts_requested_fraction": 0.0625,
+          "transcripts": 365,
+          "repeats": 3,
+          "peak_rss_mb_across_repeats": [
+            27.6,
+            28.1,
+            27.8
+          ],
+          "repeat_spread_mb": 0.5,
+          "peak_rss_mb": 28.1484375,
+          "exit_code": 0,
+          "wall_s": 0.77
+        },
+        {
+          "transcripts_requested_fraction": 0.125,
+          "transcripts": 730,
+          "repeats": 3,
+          "peak_rss_mb_across_repeats": [
+            27.7,
+            27.6,
+            27.9
+          ],
+          "repeat_spread_mb": 0.3,
+          "peak_rss_mb": 27.8515625,
+          "exit_code": 0,
+          "wall_s": 0.96
+        },
+        {
+          "transcripts_requested_fraction": 0.25,
+          "transcripts": 1460,
+          "repeats": 3,
+          "peak_rss_mb_across_repeats": [
+            33.3,
+            33.4,
+            33.3
+          ],
+          "repeat_spread_mb": 0.2,
+          "peak_rss_mb": 33.42578125,
+          "exit_code": 0,
+          "wall_s": 1.37
+        },
+        {
+          "transcripts_requested_fraction": 0.5,
+          "transcripts": 2920,
+          "repeats": 3,
+          "peak_rss_mb_across_repeats": [
+            34.5,
+            34.7,
+            34.4
+          ],
+          "repeat_spread_mb": 0.3,
+          "peak_rss_mb": 34.65234375,
+          "exit_code": 0,
+          "wall_s": 1.81
+        },
+        {
+          "transcripts_requested_fraction": 1.0,
+          "transcripts": 5840,
+          "repeats": 3,
+          "peak_rss_mb_across_repeats": [
+            36.9,
+            36.7,
+            36.6
+          ],
+          "repeat_spread_mb": 0.2,
+          "peak_rss_mb": 36.85546875,
+          "exit_code": 0,
+          "wall_s": 3.53
+        }
+      ],
+      "transcript_span_factor": 16.0,
+      "all_runs_succeeded": true,
+      "repeat_noise_mb": 0.5,
+      "slope_vs_transcripts": {
+        "mb_per_unit": 0.001595829,
+        "bytes_per_record": 1673.348,
+        "bytes_per_unit": 1673.348,
+        "denominator": "transcripts",
+        "records_range": [
+          365,
+          5840
+        ],
+        "rss_range_mb": [
+          27.9,
+          36.9
+        ],
+        "rss_movement_mb": 9.0,
+        "repeat_noise_mb": 0.5,
+        "signal_to_noise": 18.0
+      }
+    },
+    "junction_annotation": {
+      "command": "junction_annotation",
+      "retains": "the reference model's intron start/end sets per contig",
+      "interpretation": "Cost follows the reference annotation's intron count, not the alignment. The record-side loop streams, so this measures the model side alone.",
+      "alignment": "/scratch/mdra00001/RSeQC-rust/datasets/aligned/tiny/tiny.bam",
+      "alignment_records": 621783,
+      "points": [
+        {
+          "transcripts_requested_fraction": 0.0625,
+          "transcripts": 365,
+          "repeats": 3,
+          "peak_rss_mb_across_repeats": [
+            73.8,
+            73.8,
+            73.5
+          ],
+          "repeat_spread_mb": 0.3,
+          "peak_rss_mb": 73.84375,
+          "exit_code": 0,
+          "wall_s": 0.59
+        },
+        {
+          "transcripts_requested_fraction": 0.125,
+          "transcripts": 730,
+          "repeats": 3,
+          "peak_rss_mb_across_repeats": [
+            73.7,
+            73.9,
+            73.7
+          ],
+          "repeat_spread_mb": 0.3,
+          "peak_rss_mb": 73.91796875,
+          "exit_code": 0,
+          "wall_s": 0.6
+        },
+        {
+          "transcripts_requested_fraction": 0.25,
+          "transcripts": 1460,
+          "repeats": 3,
+          "peak_rss_mb_across_repeats": [
+            74.0,
+            74.0,
+            74.0
+          ],
+          "repeat_spread_mb": 0.1,
+          "peak_rss_mb": 74.0390625,
+          "exit_code": 0,
+          "wall_s": 0.61
+        },
+        {
+          "transcripts_requested_fraction": 0.5,
+          "transcripts": 2920,
+          "repeats": 3,
+          "peak_rss_mb_across_repeats": [
+            74.1,
+            74.6,
+            74.2
+          ],
+          "repeat_spread_mb": 0.6,
+          "peak_rss_mb": 74.63671875,
+          "exit_code": 0,
+          "wall_s": 0.61
+        },
+        {
+          "transcripts_requested_fraction": 1.0,
+          "transcripts": 5840,
+          "repeats": 3,
+          "peak_rss_mb_across_repeats": [
+            74.9,
+            74.7,
+            74.3
+          ],
+          "repeat_spread_mb": 0.5,
+          "peak_rss_mb": 74.87890625,
+          "exit_code": 0,
+          "wall_s": 0.62
+        }
+      ],
+      "transcript_span_factor": 16.0,
+      "all_runs_succeeded": true,
+      "repeat_noise_mb": 0.6,
+      "slope_status": "WITHHELD: the transcript counts span 16.00x but peak RSS moves only 1.1 MB, against a repeat-to-repeat spread of 0.6 MB measured by running each point 3 times. The signal is 1.8x the noise where 3.0x is required, so a per-transcript cost fitted to it would express the denominator's range rather than a measured cost. This command's per-transcript state is smaller than this measurement can resolve on this alignment.",
+      "slope_vs_transcripts_raw": {
+        "mb_per_unit": 0.000199412,
+        "bytes_per_record": 209.099,
+        "bytes_per_unit": 209.099,
+        "denominator": "transcripts",
+        "records_range": [
+          365,
+          5840
+        ],
+        "rss_range_mb": [
+          73.8,
+          74.9
+        ],
+        "rss_movement_mb": 1.1,
+        "repeat_noise_mb": 0.6,
+        "signal_to_noise": 1.8
+      }
+    }
+  },
+  "input": {
+    "bam": "/scratch/mdra00001/RSeQC-rust/datasets/aligned/tiny/tiny.bam",
+    "bed": "/scratch/mdra00001/RSeQC-rust/datasets/aligned/tiny/model.bed12",
+    "bam_sha256": "11c0a08544d6a44e693bbc62dada14b61100e8764f0e451081bb7d5df5fa3473",
+    "bed_sha256": "0a06cdb55b675c1f34c82304c14d61e21fa06ca5e5905c65b622832b322e9b21",
+    "total_records": 621783,
+    "total_covered_bases": 3518066
+  },
+  "drivers": {
+    "duplication": {
+      "command": "read_duplication",
+      "retains": "unique sequences and their positions",
+      "interpretation": "Duplicate detection keeps one entry per unique sequence/position, so RSS should track the number of DISTINCT reads rather than the alignment size. A slope near one would mean every read is retained.",
+      "points": [
+        {
+          "label": "chr17:0-20,814,360 (25%)",
+          "records": 507983,
+          "covered_bases": 2843240,
+          "repeats": 3,
+          "peak_rss_mb_across_repeats": [
+            70.3,
+            70.4,
+            70.0
+          ],
+          "repeat_spread_mb": 0.4,
+          "peak_rss_mb": 70.3828125,
+          "exit_code": 0,
+          "wall_s": 0.97
+        },
+        {
+          "label": "chr17:0-41,628,720 (50%)",
+          "records": 621783,
+          "covered_bases": 3518066,
+          "repeats": 3,
+          "peak_rss_mb_across_repeats": [
+            85.0,
+            84.8,
+            85.1
+          ],
+          "repeat_spread_mb": 0.3,
+          "peak_rss_mb": 85.109375,
+          "exit_code": 0,
+          "wall_s": 1.18
+        }
+      ],
+      "input_span_factor": 1.224,
+      "all_runs_succeeded": true,
+      "slope_status": "NOT REPORTED: inputs span only 1.22x (507,983..621,783 records), below the 2.0x minimum. A slope over a range this narrow cannot distinguish a linear cost from a step or a saturating one, so no bytes/record figure is published for it."
+    },
+    "streams": {
+      "command": "bam_stat",
+      "retains": "nothing beyond the current record",
+      "interpretation": "Control case. A streaming command's peak RSS should be flat against alignment size. A rising slope here would mean the streaming claim is false, whatever the code comments say.",
+      "points": [
+        {
+          "label": "chr17:0-20,814,360 (25%)",
+          "records": 507983,
+          "covered_bases": 2843240,
+          "repeats": 3,
+          "peak_rss_mb_across_repeats": [
+            2.9,
+            2.9,
+            2.9
+          ],
+          "repeat_spread_mb": 0.1,
+          "peak_rss_mb": 2.93359375,
+          "exit_code": 0,
+          "wall_s": 0.21
+        },
+        {
+          "label": "chr17:0-41,628,720 (50%)",
+          "records": 621783,
+          "covered_bases": 3518066,
+          "repeats": 3,
+          "peak_rss_mb_across_repeats": [
+            2.8,
+            3.1,
+            2.9
+          ],
+          "repeat_spread_mb": 0.2,
+          "peak_rss_mb": 3.0546875,
+          "exit_code": 0,
+          "wall_s": 0.27
+        }
+      ],
+      "input_span_factor": 1.224,
+      "all_runs_succeeded": true,
+      "slope_status": "NOT REPORTED: inputs span only 1.22x (507,983..621,783 records), below the 2.0x minimum. A slope over a range this narrow cannot distinguish a linear cost from a step or a saturating one, so no bytes/record figure is published for it."
+    },
+    "wig": {
+      "command": "bam2wig",
+      "retains": "covered positions",
+      "interpretation": "WIG generation keeps a per-position value for every covered base, so RSS is proportional to covered positions. This is why bam2wig cannot process a whole-genome alignment at ordinary coverage within a modest memory budget, and it is the driver that bounds the declared envelope.",
+      "points": [
+        {
+          "label": "chr17:0-20,814,360 (25%)",
+          "records": 507983,
+          "covered_bases": 2843240,
+          "repeats": 3,
+          "peak_rss_mb_across_repeats": [
+            121.4,
+            121.6,
+            121.2
+          ],
+          "repeat_spread_mb": 0.4,
+          "peak_rss_mb": 121.625,
+          "exit_code": 0,
+          "wall_s": 3.03
+        },
+        {
+          "label": "chr17:0-41,628,720 (50%)",
+          "records": 621783,
+          "covered_bases": 3518066,
+          "repeats": 3,
+          "peak_rss_mb_across_repeats": [
+            150.8,
+            150.7,
+            150.9
+          ],
+          "repeat_spread_mb": 0.1,
+          "peak_rss_mb": 150.85546875,
+          "exit_code": 0,
+          "wall_s": 3.74
+        }
+      ],
+      "input_span_factor": 1.224,
+      "all_runs_succeeded": true,
+      "slope_status": "NOT REPORTED: inputs span only 1.22x (507,983..621,783 records), below the 2.0x minimum. A slope over a range this narrow cannot distinguish a linear cost from a step or a saturating one, so no bytes/record figure is published for it."
+    }
+  }
+}

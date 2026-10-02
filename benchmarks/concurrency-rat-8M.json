@@ -1,0 +1,500 @@
+{
+  "alignment": "/scratch/mdra00001/RSeQC-rust/datasets/heldout/aligned/SRR1177982/SRR1177982.bam",
+  "method": {
+    "aggregate": "peak (MemTotal - MemAvailable) sampled at 0.05s while the batch runs, minus a baseline sampled after the processes are spawned",
+    "per_job": "/usr/bin/time -v Maximum resident set size, which is Linux's RUSAGE_CHILDREN.ru_maxrss: the largest SINGLE child's RSS, not an aggregate",
+    "drift_tolerance_mb": 256.0
+  },
+  "cpu_count": 16,
+  "results": [
+    {
+      "command": "bam2wig",
+      "concurrency": 1,
+      "status": "OK",
+      "settle_s": 1.0,
+      "jobs_settled_at_baseline": 1,
+      "jobs_finished_before_baseline": 0,
+      "baseline_mb": 9172.0,
+      "peak_aggregate_mb": 1894.5,
+      "peak_system_mb_observed": 11066.5,
+      "samples": 1005,
+      "sample_interval_s": 0.05,
+      "post_run_delta_mb": 243.6,
+      "memory_retained_after_batch": false,
+      "post_run_within_tolerance": true,
+      "largest_single_job_rss_mb": 1685.4,
+      "sum_of_single_job_rss_mb": 1685.4,
+      "instrument_noise_floor_mb": 326.7,
+      "shortfall_vs_largest_single_mb": 0.0,
+      "aggregate_at_least_largest_single_job": true,
+      "batch_wall_s": 50.46,
+      "jobs_per_second": 0.02,
+      "exit_codes": [
+        0
+      ],
+      "all_succeeded": true,
+      "all_jobs_wrote_output": true,
+      "per_job_peak_rss_mb": [
+        1685.4
+      ],
+      "per_job_wall_s": [
+        51.44
+      ],
+      "outputs_per_job": {
+        "0": [
+          "w.wig"
+        ]
+      }
+    },
+    {
+      "command": "bam2wig",
+      "concurrency": 2,
+      "status": "OK",
+      "settle_s": 1.0,
+      "jobs_settled_at_baseline": 2,
+      "jobs_finished_before_baseline": 0,
+      "baseline_mb": 9202.9,
+      "peak_aggregate_mb": 3111.0,
+      "peak_system_mb_observed": 12313.9,
+      "samples": 1015,
+      "sample_interval_s": 0.05,
+      "post_run_delta_mb": -207.8,
+      "memory_retained_after_batch": false,
+      "post_run_within_tolerance": true,
+      "largest_single_job_rss_mb": 1685.6,
+      "sum_of_single_job_rss_mb": 3371.2,
+      "instrument_noise_floor_mb": 64.5,
+      "shortfall_vs_largest_single_mb": 0.0,
+      "aggregate_at_least_largest_single_job": true,
+      "batch_wall_s": 50.96,
+      "jobs_per_second": 0.039,
+      "exit_codes": [
+        0,
+        0
+      ],
+      "all_succeeded": true,
+      "all_jobs_wrote_output": true,
+      "per_job_peak_rss_mb": [
+        1685.6,
+        1685.5
+      ],
+      "per_job_wall_s": [
+        51.91,
+        51.92
+      ],
+      "outputs_per_job": {
+        "0": [
+          "w.wig"
+        ],
+        "1": [
+          "w.wig"
+        ]
+      }
+    },
+    {
+      "command": "bam2wig",
+      "concurrency": 4,
+      "status": "OK",
+      "settle_s": 1.0,
+      "jobs_settled_at_baseline": 4,
+      "jobs_finished_before_baseline": 0,
+      "baseline_mb": 9160.9,
+      "peak_aggregate_mb": 6773.8,
+      "peak_system_mb_observed": 15934.7,
+      "samples": 1025,
+      "sample_interval_s": 0.05,
+      "post_run_delta_mb": 1163.8,
+      "memory_retained_after_batch": true,
+      "post_run_within_tolerance": false,
+      "largest_single_job_rss_mb": 1685.8,
+      "sum_of_single_job_rss_mb": 6742.0,
+      "instrument_noise_floor_mb": 407.8,
+      "shortfall_vs_largest_single_mb": 0.0,
+      "aggregate_at_least_largest_single_job": true,
+      "batch_wall_s": 51.47,
+      "jobs_per_second": 0.078,
+      "exit_codes": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "all_succeeded": true,
+      "all_jobs_wrote_output": true,
+      "per_job_peak_rss_mb": [
+        1685.5,
+        1685.5,
+        1685.8,
+        1685.2
+      ],
+      "per_job_wall_s": [
+        51.37,
+        51.47,
+        52.38,
+        52.43
+      ],
+      "outputs_per_job": {
+        "0": [
+          "w.wig"
+        ],
+        "1": [
+          "w.wig"
+        ],
+        "2": [
+          "w.wig"
+        ],
+        "3": [
+          "w.wig"
+        ]
+      }
+    },
+    {
+      "command": "bam2wig",
+      "concurrency": 8,
+      "status": "OK",
+      "settle_s": 1.0,
+      "jobs_settled_at_baseline": 8,
+      "jobs_finished_before_baseline": 0,
+      "baseline_mb": 10290.9,
+      "peak_aggregate_mb": 11985.3,
+      "peak_system_mb_observed": 22276.2,
+      "samples": 1290,
+      "sample_interval_s": 0.05,
+      "post_run_delta_mb": 205.5,
+      "memory_retained_after_batch": false,
+      "post_run_within_tolerance": true,
+      "largest_single_job_rss_mb": 1686.2,
+      "sum_of_single_job_rss_mb": 13486.9,
+      "instrument_noise_floor_mb": 1069.3,
+      "shortfall_vs_largest_single_mb": 0.0,
+      "aggregate_at_least_largest_single_job": true,
+      "batch_wall_s": 64.79,
+      "jobs_per_second": 0.123,
+      "exit_codes": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "all_succeeded": true,
+      "all_jobs_wrote_output": true,
+      "per_job_peak_rss_mb": [
+        1685.8,
+        1686.1,
+        1685.5,
+        1686.2,
+        1685.7,
+        1685.9,
+        1685.6,
+        1686.0
+      ],
+      "per_job_wall_s": [
+        57.35,
+        57.43,
+        56.7,
+        54.9,
+        58.63,
+        58.01,
+        65.74,
+        55.22
+      ],
+      "outputs_per_job": {
+        "0": [
+          "w.wig"
+        ],
+        "1": [
+          "w.wig"
+        ],
+        "2": [
+          "w.wig"
+        ],
+        "3": [
+          "w.wig"
+        ],
+        "4": [
+          "w.wig"
+        ],
+        "5": [
+          "w.wig"
+        ],
+        "6": [
+          "w.wig"
+        ],
+        "7": [
+          "w.wig"
+        ]
+      }
+    },
+    {
+      "command": "read_duplication",
+      "concurrency": 1,
+      "status": "OK",
+      "settle_s": 1.0,
+      "jobs_settled_at_baseline": 1,
+      "jobs_finished_before_baseline": 0,
+      "baseline_mb": 9313.8,
+      "peak_aggregate_mb": 777.8,
+      "peak_system_mb_observed": 10091.5,
+      "samples": 295,
+      "sample_interval_s": 0.05,
+      "post_run_delta_mb": -99.2,
+      "memory_retained_after_batch": false,
+      "post_run_within_tolerance": true,
+      "largest_single_job_rss_mb": 1060.4,
+      "sum_of_single_job_rss_mb": 1060.4,
+      "instrument_noise_floor_mb": 323.6,
+      "shortfall_vs_largest_single_mb": 282.6,
+      "aggregate_at_least_largest_single_job": true,
+      "batch_wall_s": 14.81,
+      "jobs_per_second": 0.068,
+      "exit_codes": [
+        0
+      ],
+      "all_succeeded": true,
+      "all_jobs_wrote_output": true,
+      "per_job_peak_rss_mb": [
+        1060.4
+      ],
+      "per_job_wall_s": [
+        15.77
+      ],
+      "outputs_per_job": {
+        "0": [
+          "out.DupRate_plot.pdf",
+          "out.DupRate_plot.r",
+          "out.pos.DupRate.xls",
+          "out.seq.DupRate.xls"
+        ]
+      }
+    },
+    {
+      "command": "read_duplication",
+      "concurrency": 2,
+      "status": "OK",
+      "settle_s": 1.0,
+      "jobs_settled_at_baseline": 2,
+      "jobs_finished_before_baseline": 0,
+      "baseline_mb": 9031.1,
+      "peak_aggregate_mb": 2471.2,
+      "peak_system_mb_observed": 11502.3,
+      "samples": 303,
+      "sample_interval_s": 0.05,
+      "post_run_delta_mb": 709.6,
+      "memory_retained_after_batch": true,
+      "post_run_within_tolerance": false,
+      "largest_single_job_rss_mb": 1060.4,
+      "sum_of_single_job_rss_mb": 2120.7,
+      "instrument_noise_floor_mb": 182.8,
+      "shortfall_vs_largest_single_mb": 0.0,
+      "aggregate_at_least_largest_single_job": true,
+      "batch_wall_s": 15.22,
+      "jobs_per_second": 0.131,
+      "exit_codes": [
+        0,
+        0
+      ],
+      "all_succeeded": true,
+      "all_jobs_wrote_output": true,
+      "per_job_peak_rss_mb": [
+        1060.3,
+        1060.4
+      ],
+      "per_job_wall_s": [
+        16.11,
+        16.2
+      ],
+      "outputs_per_job": {
+        "0": [
+          "out.DupRate_plot.pdf",
+          "out.DupRate_plot.r",
+          "out.pos.DupRate.xls",
+          "out.seq.DupRate.xls"
+        ],
+        "1": [
+          "out.DupRate_plot.pdf",
+          "out.DupRate_plot.r",
+          "out.pos.DupRate.xls",
+          "out.seq.DupRate.xls"
+        ]
+      }
+    },
+    {
+      "command": "read_duplication",
+      "concurrency": 4,
+      "status": "OK",
+      "settle_s": 1.0,
+      "jobs_settled_at_baseline": 4,
+      "jobs_finished_before_baseline": 0,
+      "baseline_mb": 10018.9,
+      "peak_aggregate_mb": 4424.5,
+      "peak_system_mb_observed": 14443.5,
+      "samples": 322,
+      "sample_interval_s": 0.05,
+      "post_run_delta_mb": -488.8,
+      "memory_retained_after_batch": false,
+      "post_run_within_tolerance": false,
+      "largest_single_job_rss_mb": 1060.5,
+      "sum_of_single_job_rss_mb": 4241.5,
+      "instrument_noise_floor_mb": 575.4,
+      "shortfall_vs_largest_single_mb": 0.0,
+      "aggregate_at_least_largest_single_job": true,
+      "batch_wall_s": 16.17,
+      "jobs_per_second": 0.247,
+      "exit_codes": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "all_succeeded": true,
+      "all_jobs_wrote_output": true,
+      "per_job_peak_rss_mb": [
+        1060.5,
+        1060.2,
+        1060.5,
+        1060.2
+      ],
+      "per_job_wall_s": [
+        17.16,
+        17.04,
+        17.15,
+        17.06
+      ],
+      "outputs_per_job": {
+        "0": [
+          "out.DupRate_plot.pdf",
+          "out.DupRate_plot.r",
+          "out.pos.DupRate.xls",
+          "out.seq.DupRate.xls"
+        ],
+        "1": [
+          "out.DupRate_plot.pdf",
+          "out.DupRate_plot.r",
+          "out.pos.DupRate.xls",
+          "out.seq.DupRate.xls"
+        ],
+        "2": [
+          "out.DupRate_plot.pdf",
+          "out.DupRate_plot.r",
+          "out.pos.DupRate.xls",
+          "out.seq.DupRate.xls"
+        ],
+        "3": [
+          "out.DupRate_plot.pdf",
+          "out.DupRate_plot.r",
+          "out.pos.DupRate.xls",
+          "out.seq.DupRate.xls"
+        ]
+      }
+    },
+    {
+      "command": "read_duplication",
+      "concurrency": 8,
+      "status": "OK",
+      "settle_s": 1.0,
+      "jobs_settled_at_baseline": 8,
+      "jobs_finished_before_baseline": 0,
+      "baseline_mb": 9483.6,
+      "peak_aggregate_mb": 7921.8,
+      "peak_system_mb_observed": 17405.4,
+      "samples": 381,
+      "sample_interval_s": 0.05,
+      "post_run_delta_mb": 571.2,
+      "memory_retained_after_batch": true,
+      "post_run_within_tolerance": false,
+      "largest_single_job_rss_mb": 1061.0,
+      "sum_of_single_job_rss_mb": 8486.7,
+      "instrument_noise_floor_mb": 608.0,
+      "shortfall_vs_largest_single_mb": 0.0,
+      "aggregate_at_least_largest_single_job": true,
+      "batch_wall_s": 19.16,
+      "jobs_per_second": 0.418,
+      "exit_codes": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "all_succeeded": true,
+      "all_jobs_wrote_output": true,
+      "per_job_peak_rss_mb": [
+        1061.0,
+        1060.8,
+        1060.9,
+        1061.0,
+        1060.8,
+        1060.7,
+        1060.7,
+        1060.8
+      ],
+      "per_job_wall_s": [
+        19.26,
+        19.04,
+        20.15,
+        18.94,
+        18.97,
+        18.4,
+        18.95,
+        18.84
+      ],
+      "outputs_per_job": {
+        "0": [
+          "out.DupRate_plot.pdf",
+          "out.DupRate_plot.r",
+          "out.pos.DupRate.xls",
+          "out.seq.DupRate.xls"
+        ],
+        "1": [
+          "out.DupRate_plot.pdf",
+          "out.DupRate_plot.r",
+          "out.pos.DupRate.xls",
+          "out.seq.DupRate.xls"
+        ],
+        "2": [
+          "out.DupRate_plot.pdf",
+          "out.DupRate_plot.r",
+          "out.pos.DupRate.xls",
+          "out.seq.DupRate.xls"
+        ],
+        "3": [
+          "out.DupRate_plot.pdf",
+          "out.DupRate_plot.r",
+          "out.pos.DupRate.xls",
+          "out.seq.DupRate.xls"
+        ],
+        "4": [
+          "out.DupRate_plot.pdf",
+          "out.DupRate_plot.r",
+          "out.pos.DupRate.xls",
+          "out.seq.DupRate.xls"
+        ],
+        "5": [
+          "out.DupRate_plot.pdf",
+          "out.DupRate_plot.r",
+          "out.pos.DupRate.xls",
+          "out.seq.DupRate.xls"
+        ],
+        "6": [
+          "out.DupRate_plot.pdf",
+          "out.DupRate_plot.r",
+          "out.pos.DupRate.xls",
+          "out.seq.DupRate.xls"
+        ],
+        "7": [
+          "out.DupRate_plot.pdf",
+          "out.DupRate_plot.r",
+          "out.pos.DupRate.xls",
+          "out.seq.DupRate.xls"
+        ]
+      }
+    }
+  ]
+}

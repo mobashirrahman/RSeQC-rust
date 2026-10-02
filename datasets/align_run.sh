@@ -17,7 +17,18 @@ set -euo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REF_DIR="${REF_DIR:-$HERE/reference}"
-IDX_DIR="${IDX_DIR:-$HERE/star_index}"
+IDX_ROOT="${IDX_ROOT:-$HERE/star_index}"
+# Same per-assembly directory naming as datasets/build_star_index.sh, so a build and
+# an alignment agree on which index is meant without either having to be told. The
+# human and rat panels differ in genome, annotation, sjdbOverhang and contig set, and
+# a mismatched overhang degrades splice-junction detection silently -- which is
+# exactly what endpoint E5 measures.
+GENOME="${GENOME:-$REF_DIR/hg38.fa.gz}"
+GTF="${GTF:-$REF_DIR/gencode.v47.annotation.gtf.gz}"
+CONTIGS="${CONTIGS:-chr1 chr17 chrM}"
+SJDB_OVERHANG="${SJDB_OVERHANG:-149}"
+INDEX_KEY="$(basename "$GENOME" .gz)-$(basename "$GTF" .gz)-o$SJDB_OVERHANG-$(echo "$CONTIGS" | tr ' ' '_')"
+IDX_DIR="${IDX_DIR:-$IDX_ROOT/$INDEX_KEY}"
 RAW_DIR="${RAW_DIR:-$HERE/raw}"
 OUT_ROOT="${OUT_ROOT:-$HERE/aligned}"
 MAMBA_ROOT_PREFIX="${MAMBA_ROOT_PREFIX:-/scratch/mdra00001/tmp/mamba}"
@@ -31,7 +42,34 @@ RUN="$1"
 OUT="$OUT_ROOT/$RUN"
 mkdir -p "$OUT"
 
-[[ -f "$IDX_DIR/SA" ]] || { echo "error: no STAR index in $IDX_DIR (run datasets/build_star_index.sh)" >&2; exit 1; }
+# A STAR index is only valid for the genome, annotation, overhang and contig set it
+# was built from, and its parts are overwritten in place. So the check is not just
+# that SA exists but that the index directory carries a stamp naming THIS
+# annotation's digest: otherwise an index left over from a different build would be
+# used silently and the alignment would record a provenance nobody can check.
+if [[ ! -f "$IDX_DIR/SA" ]]; then
+  echo "error: no STAR index in $IDX_DIR" >&2
+  echo "       build it with datasets/build_star_index.sh using:" >&2
+  echo "         GENOME=$GENOME GTF=$GTF CONTIGS='$CONTIGS' SJDB_OVERHANG=$SJDB_OVERHANG" >&2
+  echo "       or point IDX_DIR at the right one under $IDX_ROOT:" >&2
+  ls -1 "$IDX_ROOT" 2>/dev/null | sed 's/^/         /' >&2 || true
+  exit 1
+fi
+STAMP_FILE="$(ls "$IDX_DIR"/.built-* 2>/dev/null | head -1 || true)"
+if [[ -z "$STAMP_FILE" ]]; then
+  echo "error: $IDX_DIR has no .built-* stamp; cannot verify which annotation this" >&2
+  echo "       index was built from. Refusing to align against an unrecorded index." >&2
+  exit 1
+fi
+WANT_GTF_SHA="$(sha256sum "$IDX_DIR/annotation.gtf" | awk '{print $1}')"
+HAVE_GTF_SHA="$(grep -o 'gtf_sha256=[0-9a-f]*' "$STAMP_FILE" | head -1 | cut -d= -f2)"
+if [[ -n "$HAVE_GTF_SHA" ]] && [[ "$WANT_GTF_SHA" != "$HAVE_GTF_SHA" ]]; then
+  echo "error: $IDX_DIR/annotation.gtf does not match the digest its stamp records." >&2
+  echo "       stamp: gtf_sha256=$HAVE_GTF_SHA" >&2
+  echo "       file : $WANT_GTF_SHA" >&2
+  echo "       The index on disk is not the one the stamp describes. Rebuild it." >&2
+  exit 1
+fi
 
 # ENA names the two mates <run>_1.fastq.gz / _2.fastq.gz. Missing either is a
 # hard error rather than a silent single-end alignment, which would quietly
@@ -78,7 +116,12 @@ $SAMBAM quickcheck -v "$OUT/${RUN}.bam"
   echo "  \"read2\": \"$(basename "$R2")\","
   echo "  \"read1_md5\": \"$(md5sum "$R1" | awk '{print $1}')\","
   echo "  \"read2_md5\": \"$(md5sum "$R2" | awk '{print $1}')\","
-  echo "  \"index_stamp\": \"$(tr '\n' ' ' < "$IDX_DIR/.built-"* 2>/dev/null | tr -s ' ')\","
+  # The whole stamp, including gtf_sha256, not just its parameters. This is what makes
+  # 'was this BAM aligned against that index?' answerable later: the earlier stamp
+  # recorded genome/contigs/overhang but no annotation digest, so a re-alignment
+  # against a rebuilt index was undetectable from the alignment's own record.
+  echo "  \"index_stamp\": \"$(tr '\n' ' ' < "$STAMP_FILE" | tr -s ' ')\","
+  echo "  \"index_dir\": \"$IDX_DIR\","
   echo "  \"input_read_pairs\": $($SAMBAM view -c -f 1 "$OUT/${RUN}.bam" 2>/dev/null || echo null)"
   echo "}"
 } > "$OUT/${RUN}.align.json"

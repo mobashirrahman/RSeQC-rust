@@ -1,0 +1,26 @@
+# Sample panel for the QC workflow.
+#
+# `samples` maps a sample name to an existing, indexed, coordinate-sorted
+# alignment. This workflow does NOT align reads: it consumes alignments that
+# something upstream produced, which is deliberate -- see the header of the
+# Snakefile for why the demonstrated scope is QC and not a whole pipeline.
+#
+# The BAM must have a .bai sidecar alongside it. `bam_stat`, `infer_experiment` and
+# `read_distribution` all need random access; the commands refuse a missing index
+# rather than reading it all, and so should your pipeline.
+
+samples:
+  rat_example: /scratch/mdra00001/RSeQC-rust/datasets/heldout/aligned/SRR1177982/SRR1177982.bam
+
+# BED12 gene model, required by infer_experiment and read_distribution. Both are
+# annotation-dependent, so this is a first-class input rather than a per-sample
+# detail: a panel that mixed annotations would produce reports that disagree for
+# reasons nothing in the output would reveal.
+refgene: /scratch/mdra00001/RSeQC-rust/datasets/heldout/reference/rn6.bed12
+
+outdir: results
+
+# Minimum mapping quality for a uniquely-mapped read in bam_stat. This is the
+# command's own default, repeated here so a change to that default is a visible
+# edit in the workflow rather than a silent change in every report.
+mapq: 30

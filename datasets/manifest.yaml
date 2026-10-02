@@ -9,9 +9,19 @@
 #
 # STATUS (2026-10-01): development and held-out panels are aligned. The latest
 # T4.1 real-data matrix run executed 86 cases and passed all 86; four of 90
-# cases were skipped for missing real-data inputs. T4.2 held-out endpoints
-# were scored once; see datasets/ENDPOINT_RESULTS.md. Those scores are
-# scientific checks of upstream outputs, separate from port compatibility.
+# cases were skipped for missing real-data inputs. The invocation retains
+# fixed synthetic/regression fixtures alongside real-panel substitutions.
+# T4.2 held-out endpoints
+# were evaluated; the rat E5 result was re-scored after a converter correction.
+# See datasets/ENDPOINT_RESULTS.md. The T4.2 validator scores output from the
+# Rust binaries in target/release; it does not run upstream on held-out inputs.
+# T4.1 differential results cover the development panel and do not establish
+# port/upstream parity on the held-out samples.
+# Independent technical review found unsupported E1 interpretation, missing
+# feature stratification, and missing held-out E3/E5 port/upstream comparisons;
+# no scientific endpoint claim is accepted as complete yet.
+# A subsequent coordinate audit found the rat converter still incorrect;
+# rat annotation-based results require corrected preparation and alignment.
 # The held-out runs are now exposed and must not guide tuning; any follow-up
 # claim needs fresh independent confirmation.
 
@@ -155,9 +165,9 @@ splits:
         run: ERR10015758
         status: aligned_and_endpoints_scored
         exposure: >
-            Inspected once during T4.2 endpoint validation on 2026-10-01.
-            This held-out sample is consumed for confirmation; any follow-up
-            change motivated by its result needs fresh independent data.
+            Scored during T4.2 endpoint validation on 2026-10-01. This
+            held-out sample is consumed for confirmation; any follow-up change
+            motivated by its result needs fresh independent data.
       - id: cross_chemistry
         description: >
             A non-Illumina platform. This is the stratum most likely to find
@@ -176,9 +186,9 @@ splits:
         run: ERR10229623
         status: aligned_and_endpoints_scored
         exposure: >
-            Inspected once during T4.2 endpoint validation on 2026-10-01.
-            This held-out sample is consumed for confirmation; any follow-up
-            change motivated by its result needs fresh independent data.
+            Scored during T4.2 endpoint validation on 2026-10-01. This
+            held-out sample is consumed for confirmation; any follow-up change
+            motivated by its result needs fresh independent data.
       - id: cross_organism
         description: >
             A second organism, for testing that nothing assumes a particular
@@ -204,13 +214,33 @@ splits:
         library: cDNA, paired-end
         run: SRR1177982
         reference:
-          assembly: rn6 / mRatBN7.2
+          # UCSC identifies rn6 as Rnor_6.0. It is NOT mRatBN7.2: UCSC serves
+          # mRatBN7.2 as rn7, a different assembly. Naming the two at once would
+          # make every coordinate in this stratum suspect, which is the class of
+          # defect the coordinate audit found here. Sources: UCSC's release log and
+          # the rn7 announcement.
+          assembly: rn6 / Rnor_6.0
+          assembly_note: >
+            rn6 = Rnor_6.0. mRatBN7.2 = rn7, a different assembly. Recorded
+            explicitly because the value before this correction read "rn6 /
+            mRatBN7.2", naming two assemblies at once.
           url: https://hgdownload.soe.ucsc.edu/goldenPath/rn6/bigZips/rn6.fa.gz
           sha256: 4a564948ecf93e64ebb1e347cf66731c5b3393eb7f8ff06d0ff2dad5165ca021
           annotation:
             source: UCSC database/refGene.txt.gz (a TABLE, not a GTF)
             sha256: c171f0251a6f09c3650e26805495ede4b489527319527d8a882c83ca894de8b0
             conversion: datasets/refgene_to_gtf.py
+            coordinate_frame: >
+                UCSC refGene is half-open 0-based: txStart and exonStarts are 0-based
+                offsets, txEnd and exonEnds are exclusive. The converter uses that
+                frame directly, unchanged. Confirmed against the genome sequence
+                rather than against documentation by
+                datasets/verify_refgene_frame.py: 60 of 60 transcripts whose CDS
+                refGene marks complete begin with ATG at the transcript's 5' end and
+                end with a stop codon at its 3' end under this reading, and 0 of 60
+                under a 1-based reading. datasets/test_refgene_to_gtf.py pins the
+                arithmetic against hand-derived cases, including the audit's probe
+                row, minus strand, and the zero-coordinate boundary.
             why_a_table: >
                 GENCODE's rat annotation was unreachable from this network
                 (release_47 and release_46 paths both 404) and UCSC's rn6
@@ -220,12 +250,61 @@ splits:
                 a GTF (for STAR's junction database) and a BED12 (for the
                 RSeQC commands) deterministically.
             records: 19160 transcripts / 179173 exons across all contigs
+            outputs:
+              # Digests of the CORRECTED outputs, so a reader can tell which
+              # generation of the annotation they hold. The superseded outputs
+              # differ in every transcript's chromStart and exon sizes, and differ
+              # by one base on every GTF exon start, so a digest mismatch here is
+              # the signal that a stale file has crept back in.
+              rn6_gtf_sha256: e8446eafe1b544e8c2efd2c025d2aaec9732d1c146b437fabb9ef488e899d567
+              rn6_bed12_sha256: 82ab7f425ae5155ddb37912af46152121cfff168d04e2c5c2523b6e1ca5f2eea
+              rn6_indexed_bed12_sha256: d591e6c629189537929ec049cb6fb2ab204dc09c01cc478aa66532fa21cb3fb0
+              indexed_contigs: "chr1, chr2, chr10 (the contigs the STAR index covers)"
+              indexed_records: 5359 transcripts / 48232 exons
+            index_annotation_sha256: >
+              c4c9fa13f595010bba94106c1237c176367a6569a885797199ab33b26dac0867 --
+              the GTF the STAR junction database was built from, matching
+              gtf_sha256 in datasets/heldout/star_index/.built-*.
         reference_status: fetched_annotated_and_indexed
-        status: aligned_and_endpoints_scored
+        status: realigned_against_corrected_index_and_endpoints_revalidated
+        star_index_digest: >
+            datasets/heldout/star_index/.built-11-16000000000-100-chr1_chr2_chr10
+            records gtf_sha256 and subset_gtf_sha256, so the junction database is
+            traceable to the annotation it was built from. The stamp is consulted
+            only after the annotation has been unpacked and subsetted, because the
+            earlier build silently reused a stale contig subset and reported
+            success.
+        alignment_binding: >
+            The BAM is bound to the index it was produced from.
+            datasets/aligned/SRR1177982/SRR1177982.align.json records the index
+            stamp including gtf_sha256, and verification/check_rat_reference.py
+            asserts that digest equals the one in
+            datasets/heldout/star_index/.built-11-16000000000-100-chr1_chr2_chr10
+            and that the BAM is not older than that stamp. This check exists
+            because a BAM aligned at 11:30 survived an index rebuild at 21:23 and
+            every annotation digest still matched: the annotation was correct and
+            only the alignment was stale, so re-running the endpoint reproduced the
+            earlier 0.585 while the recorded table said 0.617.
+        same_input_comparison: >
+            Both implementations were run on the identical corrected inputs, which
+            the 2026-10-01 readiness audit required before any rat figure could be
+            quoted. junction_annotation.py and target/release/junction_annotation
+            on the same BAM, BED12 and options produced byte-identical
+            junction.xls, stdout and stderr
+            (datasets/heldout/endpoint_results/SRR1177982_same_input/). A third
+            invocation, via verification/validate_endpoints.py, reproduced the same
+            junction table digest
+            (datasets/heldout/endpoint_results/SRR1177982_corrected/).
         exposure: >
-            Inspected once during T4.2 endpoint validation on 2026-10-01.
-            This held-out sample is consumed for confirmation; any follow-up
-            change motivated by its result needs fresh independent data.
+            Inspected five times: the initial T4.2 E5 run, the re-score after an
+            annotation-converter change that was itself wrong, the correction of the
+            coordinate frame, the re-alignment against a rebuilt index, and the
+            same-input confirmation that found the alignment had not in fact been
+            redone. The annotated junction fraction moved 0.026 -> 0.585 -> 0.617
+            across those states. This stratum is EXPOSED and its numbers are
+            diagnostic: they record what a corrected preparation produces, and they
+            cannot confirm a conclusion first drawn from the superseded states.
+            Anything this stratum prompts needs a fresh independent sample.
 
 # ----------------------------------------------------------------------
 # Not yet satisfied

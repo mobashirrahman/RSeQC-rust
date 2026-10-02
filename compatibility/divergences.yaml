@@ -809,3 +809,121 @@ divergences:
       consumer depends on upstream's non-zero exit here, revisit and add
       an explicit empty-input failure mode.
     status: accepted
+
+  - id: DIV-0024
+    command_or_api: geneBody_coverage.py
+    description: >
+      OPEN, found 2026-10-02 by the benchmark gate on real data, not by the
+      differential suite. On the 8.2M-record rat alignment (SRR1177982, re-aligned
+      against the corrected annotation) the two implementations' 100-bin gene-body
+      coverage curve diverges: 76 of 100 bins differ, by up to 839 reads in a single
+      bin, and in BOTH directions. Bisected to a single 904-base minus-strand
+      transcript (chr1:256806475-256813678, NM_013162, 6 exons), committed as
+      verification/fixtures/genebody_divergence_minimal.bed12 and regenerable with
+      verification/fixtures/check_gene_body_divergence.sh. Aggregated over the full
+      5,359-transcript model, one bin differs by 32,697 reads.
+
+      ROOT CAUSE, isolated by construction rather than by inference. A 100-base
+      transcript was built in which each 10-base range exercises exactly one pileup
+      knob (plain reads; sub-threshold base quality; duplicate flag; an overlapping
+      proper pair with identical bases in the overlap; an overlapping proper pair with
+      mismatched bases; a paired-but-not-proper orphan; a 20M20D20M deletion; secondary
+      and supplementary flags; a plain tail). BED12 base i maps to output bin i, so a
+      disagreement localises to one mechanism. ALL NINE KNOBS AGREE EXACTLY.
+
+      The cap was then isolated with the same method: 8,000 / 8,001 / 12,000 uniform
+      reads (both arms report exactly 8000, so the cap's VALUE is not the defect),
+      then 3 versus 9,000 copies of a single 20M20D20M read. With 3 the arms are
+      byte-identical. With 9,000 -- once the cap binds -- they diverge at 50 of 100
+      bins. Upstream reports 8000, then 8001..8010, then 11..20, then 8020; the port
+      reports a flat 8000, then a flat 0, then 8000. The port is LOW at every
+      differing bin, by 1..20 reads: it loses the clean reads that upstream counts,
+      because the is_del pileups ahead of them consume the port's per-position budget
+      while upstream's buffer budget does not run out.
+
+      So the difference is in pysam/htslib max_depth semantics, which the port
+      reimplements at crates/commands/src/tin.rs:274-296 as a per-position budget over
+      the VISITED set. Upstream's budget is over the pileup buffer, so the port's
+      version both (a) lets is_del pileups consume budget that upstream's does not,
+      which is why it can report 0 at a position that clean reads demonstrably cover,
+      and (b) re-derives membership from scratch at every position, where upstream's
+      once-overflow eviction changes which reads remain visible for the rest of their
+      span. Which of htslib's two effects dominates is not yet pinned down; what is
+      pinned down is that the mechanism is the cap, and that every other filter,
+      including the overlap rewriting the port implements as tweak_overlap_quality,
+      is equivalent.
+
+      A correction to an earlier draft of this entry: it described upstream as
+      building a bx Intersecter over CIGAR M/N blocks with no base-quality filter.
+      That is false for this oracle. Upstream calls pysam.AlignmentFile.pileup()
+      with only `truncate=True`, so pysam's own defaults apply -- verified against
+      the pinned pysam 0.24.1 docstrings: flag_filter =
+      BAM_FUNMAP|BAM_FSECONDARY|BAM_FQCFAIL|BAM_FDUP, min_base_quality=13,
+      ignore_overlaps=True, ignore_orphans=True, max_depth=8000. Those are the same
+      defaults DIV-0011 records, and the port implements all of them.
+    classification: candidate-bug
+    decision: >
+      Recorded as an OPEN divergence and DISCLOSED, deliberately not classified as an
+      accepted compatibility difference: the port does not currently reproduce
+      upstream's gene-body coverage curve on real data. Consequences applied in the
+      same change. First, geneBody_coverage is excluded from any published speedup
+      claim, because the benchmark gate refuses to pass it -- which it does, on real
+      data. Second, the archive manifest's known_limitations states it. Third,
+      verification/fixtures/check_gene_body_divergence.sh re-checks that the defect
+      is STILL present on every CI run and inverts its own exit status so it goes
+      green when the divergence is fixed, at which point this entry and that CI step
+      must change together. Fourth, the differential suite needs a deep-coverage
+      deletion fixture, because its existing geneBody_coverage fixture is too shallow
+      to expose any of this; run_diff.py passes 90/90 while this is wrong, so its
+      greenness says nothing about this command on real data.
+    status: open
+  - id: DIV-0025
+    command_or_api: all commands with an --out-prefix
+    description: >
+      ACCEPTED serialization difference, bounded and deliberate. Upstream raises a
+      missing output directory from argparse's `parser.error()`, which prints
+      argparse's own two-line usage summary above the message:
+
+          usage: read_NVC.py [-h] -i INPUT_FILE -o OUTPUT_PREFIX [-x] [-q INT]
+                             [--skip-plot] [--rscript PATH] [--version]
+          read_NVC.py: error: output directory does not exist: /absent/dir
+
+      The port prints only the message, because its argument parser is clap and clap
+      renders its own usage text. The operative `prog: error: <message>` line and the
+      exit status (2) match upstream exactly; only the usage block above them
+      differs. Verified by the differential cases
+      read_NVC_missing_output_dir, read_GC_missing_output_dir,
+      geneBody_coverage_missing_output_dir and junction_annotation_missing_output_dir,
+      which compare the final error line and both exit codes.
+    classification: permitted-serialization-difference
+    decision: >
+      Do not hand-replicate argparse's usage string per command. argparse formats
+      usage from its own option table with its own wrapping rules; reproducing 33 of
+      those strings by hand is a way to introduce 33 chances to be subtly wrong, and
+      the usage block has no consumer. The message and the exit status are the parts
+      a script can branch on, and those are compared. Any future change that alters
+      the message text or the exit status for this condition fails the four
+      differential cases above.
+    status: accepted
+
+  - id: DIV-0026
+    command_or_api: bam2wig.py, bam2fq.py
+    description: >
+      ACCEPTED upstream inconsistency, deliberately replicated. 24 of the 26 upstream
+      scripts that take an output prefix refuse a missing parent directory in
+      `validate_args`, before reading any input, with exit 2. `bam2wig.py` and
+      `bam2fq.py` are the two that do not: they proceed to the work and fail on the
+      first output open, with exit 1 and `[Errno 2] No such file or directory:
+      '.../out.wig'`. A port that added the check to these two would disagree with
+      upstream on an input upstream accepts, and every comparison would then
+      diverge on a case that is not a defect in the port. The message text also
+      differs by construction here -- Python's OSError repr against Rust's
+      io::Error Display -- so only the exit status is compared, by the differential
+      case bam2wig_missing_output_dir_is_upstream_inconsistent.
+    classification: permitted-serialization-difference
+    decision: >
+      The check is absent from these two binaries on purpose, with an in-source note
+      at the point of omission so a later reader does not "fix" it. The port is
+      allowed to be better than its source only where the difference cannot change
+      an accepted invocation's outcome; here it would.
+    status: accepted

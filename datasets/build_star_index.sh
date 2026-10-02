@@ -16,7 +16,40 @@ set -euo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REF_DIR="${REF_DIR:-$HERE/reference}"
-IDX_DIR="${IDX_DIR:-$HERE/star_index}"
+
+# Overridable so the same script builds the rat index for the cross-organism
+# held-out stratum rather than duplicating it. The contig scope, RAM limit and
+# SA-index size are overridden too: rn6 needs its own contig choice, and a rat index
+# over a chromosome set chosen for hg38 would either be empty or full-genome (which
+# is what OOMs). These are declared first because the index directory name is
+# derived from them below.
+GENOME="${GENOME:-$REF_DIR/hg38.fa.gz}"
+GTF="${GTF:-$REF_DIR/gencode.v47.annotation.gtf.gz}"
+
+# Per-assembly index directory. A STAR index is only valid for the genome +
+# annotation + sjdbOverhang + contig set it was built from, and every one of those
+# differs between the human dev/held-out panel and the rat cross-organism stratum.
+#
+# The previous default was a single shared $HERE/star_index for both, which made
+# "build the rat index" mean "overwrite the human index". That is not a
+# hypothetical: it happened here while re-deriving the rat junction database, and
+# the damage is silent -- STAR overwrites Genome, SA, SA_0..SA_15 and the exon
+# tables in place, so the human index is left as a `Genome`/`SA` pair whose
+# per-chunk files and junction tables now describe rat. `align_run.sh` only
+# checks that $IDX_DIR/SA exists, so the next human alignment would run against a
+# corrupt index and produce plausible-looking output.
+#
+# The directory is named after the genome and annotation, not the assembly name
+# alone, because the two rat runs already differed by sjdbOverhang alone: an index
+# built with the human default overhang degrades splice-junction detection silently,
+# which is exactly what endpoint E5 measures.
+INDEX_KEY="$(basename "${GENOME:-hg38.fa.gz}" .gz)-$(basename "${GTF:-gencode.v47.annotation.gtf.gz}" .gz)"
+# Contig set and overhang join the key because they change the index contents
+# without changing either input file.
+CONTIGS="${CONTIGS:-chr1 chr17 chrM}"
+SJDB_OVERHANG="${SJDB_OVERHANG:-149}"
+INDEX_KEY="$INDEX_KEY-o$SJDB_OVERHANG-$(echo "$CONTIGS" | tr ' ' '_')"
+IDX_DIR="${IDX_DIR:-$HERE/star_index/$INDEX_KEY}"
 MAMBA_ROOT_PREFIX="${MAMBA_ROOT_PREFIX:-/scratch/mdra00001/tmp/mamba}"
 ENV_NAME="${ENV_NAME:-t4star}"
 
@@ -37,7 +70,8 @@ ENV_NAME="${ENV_NAME:-t4star}"
 # datasets/manifest.yaml, and it bounds the claim: this panel validates the
 # port against upstream on real reads, it does not validate whole-genome
 # behaviour.
-CONTIGS="${CONTIGS:-chr1 chr17 chrM}"
+# CONTIGS and SJDB_OVERHANG were defaulted above, before the index directory name
+# was derived from them.
 
 # sjdbOverhang MUST be (read length - 1) of the reads this index will be used
 # for. It is a required override rather than a derived default because the
@@ -51,15 +85,6 @@ CONTIGS="${CONTIGS:-chr1 chr17 chrM}"
 # "Read length" column reports the SUMMED mate length, so a 2x101 library
 # displays 202 and a 2x150 library displays 300. The overhang must come from
 # the FASTQ, and it is (single mate length - 1), not (displayed length - 1).
-SJDB_OVERHANG="${SJDB_OVERHANG:-149}"
-
-# Overridable so the same script builds the rat index for the
-# cross-organism held-out stratum rather than duplicating it. The contig
-# scope, RAM limit and SA-index size are overridden too: rn6 needs its own
-# contig choice, and a rat index over a chromosome set chosen for hg38 would
-# either be empty or full-genome (which is what OOMs).
-GENOME="${GENOME:-$REF_DIR/hg38.fa.gz}"
-GTF="${GTF:-$REF_DIR/gencode.v47.annotation.gtf.gz}"
 # STAR's own ceiling, in MB, on how much RAM genomeGenerate may plan for. The
 # default is 31000, which on a 31 GB machine is a promise the kernel cannot
 # keep: the first build here was OOM-killed at "inserting junctions into the
@@ -99,13 +124,14 @@ for f in "$GENOME" "$GTF"; do
   [[ -f "$f" ]] || { echo "error: missing $f (run datasets/fetch_reference.sh first)" >&2; exit 1; }
 done
 
-STAMP="$IDX_DIR/.built-${SA_INDEX_NBASES}-${LIMIT_RAM_BYTES}-${SJDB_OVERHANG}-${CONTIGS// /_}"
-if [[ -f "$STAMP" ]]; then
-  echo "ok       STAR index already built ($(cat "$STAMP"))"
-  exit 0
-fi
-
 mkdir -p "$IDX_DIR"
+
+# The stamp names its INPUTS as well as its parameters, and is consulted only
+# after the unpack and subset steps below have established that genome.fa and
+# annotation.gtf match their sources. Checking it earlier would compare a digest
+# of a stale file and accept a stale index.
+STAMP="$IDX_DIR/.built-${SA_INDEX_NBASES}-${LIMIT_RAM_BYTES}-${SJDB_OVERHANG}-${CONTIGS// /_}"
+
 MM="${MICROMAMBA:-/scratch/mdra00001/tmp/bin/micromamba}"
 # Export the root prefix here rather than relying on the caller: micromamba
 # resolves envs relative to it, and a prefix that is unset-but-defaulted by
@@ -114,10 +140,7 @@ MM="${MICROMAMBA:-/scratch/mdra00001/tmp/bin/micromamba}"
 export MAMBA_ROOT_PREFIX
 STAR="$MM run -n $ENV_NAME STAR"
 
-echo "building  STAR index (contigs='$CONTIGS' genomeSAindexNbases=$SA_INDEX_NBASES"
-echo "          limitGenomeGenerateRAM=$LIMIT_RAM_BYTES bytes sjdbOverhang=$SJDB_OVERHANG)"
-echo "          the genomeSAindexNbases STAR actually used is read back from Log.out"
-echo "          into the stamp, so the stamp records what happened not what was asked"
+echo "preparing STAR index inputs (contigs='$CONTIGS')"
 # STAR cannot read a gzipped genome OR a gzipped GTF: --sjdbGTFfile silently
 # yields an empty junction database from a .gz (its own error text is the clue:
 # "Make sure the GTF file is unzipped"). Decompressed once and reused.
@@ -148,13 +171,39 @@ fi
 # possible: the whole-genome GENCODE junction database is what does not fit
 # in 31 GB.
 SUBSET_GTF="$IDX_DIR/annotation.subset.gtf"
-if [[ ! -f "$IDX_DIR/genome.subset.fa" || ! -f "$SUBSET_GTF" ]]; then
-  # Only unpack when the annotation is actually gzipped. The rat annotation is
-  # produced by datasets/refgene_to_gtf.py as plain text, and an unconditional
-  # gunzip fails on it -- which is how this got found.
-  if [[ ! -s "$IDX_DIR/annotation.gtf" ]]; then
-    unpack "$GTF" "$IDX_DIR/annotation.gtf"
-  fi
+
+# Only unpack when the annotation is actually gzipped. The rat annotation is
+# produced by datasets/refgene_to_gtf.py as plain text, and an unconditional
+# gunzip fails on it -- which is how this got found.
+if [[ ! -s "$IDX_DIR/annotation.gtf" ]] || [[ "$GTF" -nt "$IDX_DIR/annotation.gtf" ]]; then
+  unpack "$GTF" "$IDX_DIR/annotation.gtf"
+fi
+
+# Regenerate the subset when it is missing or was built from different inputs.
+#
+# The previous guard was `if [[ ! -f genome.subset.fa || ! -f SUBSET_GTF ]]`,
+# i.e. absence only, which silently reused a STALE subset whenever the annotation
+# changed. That is precisely what happened when the rat refGene conversion was
+# corrected: the corrected annotation.gtf was written, the subset was left
+# untouched, and STAR rebuilt a junction database from the old coordinates while
+# reporting success.
+#
+# A digest of the inputs is recorded rather than comparing mtimes, because a
+# regenerated file can legitimately have an older timestamp than its derived
+# artefact -- copying preserves neither, and rsync and tar do not agree. The
+# stamp below makes "what was this built from" answerable after the fact.
+SUBSET_STAMP="$IDX_DIR/.subset-from"
+want_subset() {
+  local genome_src="${1:-}" gtf_src="${2:-}"
+  [[ -s "$SUBSET_GTF" ]] || return 1
+  [[ -s "$SUBSET_STAMP" ]] || return 1
+  grep -qxF "genome=$genome_src" "$SUBSET_STAMP" || return 1
+  grep -qxF "gtf=$gtf_src" "$SUBSET_STAMP" || return 1
+  return 0
+}
+GENOME_SRC="$(readlink -f "$IDX_DIR/genome.fa" 2>/dev/null || echo "$IDX_DIR/genome.fa")"
+GTF_SRC="$(readlink -f "$IDX_DIR/annotation.gtf" 2>/dev/null || echo "$IDX_DIR/annotation.gtf")"
+if ! want_subset "$GENOME_SRC" "$GTF_SRC" || [[ ! -s "$IDX_DIR/genome.subset.fa" ]]; then
   echo "subset    contigs: $CONTIGS"
   python3 - "$IDX_DIR/genome.fa" "$IDX_DIR/genome.subset.fa" $CONTIGS <<'PYEOF'
 import sys
@@ -178,9 +227,37 @@ PYEOF
   # database. Also drops non-transcript feature rows that STAR does not use.
   awk -v OFS='	' -v c="$CONTIGS" 'BEGIN{n=split(c,a," ");for(i=1;i<=n;i++)keep[a[i]]=1}
        /^#/ {print; next}
-       keep[$1] && $3=="exon" {print}' "$IDX_DIR/annotation.gtf" > "$SUBSET_GTF"
+       keep[$1] && $3=="exon" {print}' "$IDX_DIR/annotation.gtf" > "$SUBSET_GTF.tmp"
+  [[ -s "$SUBSET_GTF.tmp" ]] || { echo "error: contig subsetting produced an empty GTF" >&2; exit 1; }
+  mv "$SUBSET_GTF.tmp" "$SUBSET_GTF"
+  printf 'genome=%s\ngtf=%s\ncontigs=%s\n' "$GENOME_SRC" "$GTF_SRC" "$CONTIGS" > "$SUBSET_STAMP"
   echo "subset    $(wc -l < "$SUBSET_GTF") exon records retained"
 fi
+
+# Consulted only now, once genome.fa and annotation.gtf are known to match their
+# sources and the subset is known to derive from them. Checking this earlier would
+# compare a digest of a stale file and accept a stale index.
+GTF_DIGEST="$(sha256sum "$IDX_DIR/annotation.gtf" | awk '{print $1}')"
+GENOME_DIGEST="$(sha256sum "$IDX_DIR/genome.fa" | awk '{print $1}')"
+SUBSET_DIGEST="$(sha256sum "$SUBSET_GTF" | awk '{print $1}')"
+if [[ -f "$STAMP" ]] \
+   && grep -qxF "gtf_sha256=$GTF_DIGEST" "$STAMP" \
+   && grep -qxF "genome_sha256=$GENOME_DIGEST" "$STAMP" \
+   && grep -qxF "subset_gtf_sha256=$SUBSET_DIGEST" "$STAMP"; then
+  echo "ok       STAR index already built ($(cat "$STAMP"))"
+  exit 0
+fi
+if [[ -f "$STAMP" ]]; then
+  echo "rebuild  index inputs changed since the last build:" >&2
+  echo "          recorded gtf_sha256=$(grep -o 'gtf_sha256=[0-9a-f]*' "$STAMP" | head -1 | cut -d= -f2)" >&2
+  echo "          current  gtf_sha256=$GTF_DIGEST" >&2
+  echo "          the previous junction database was built from the older annotation" >&2
+fi
+
+echo "building  STAR index (contigs='$CONTIGS' genomeSAindexNbases=$SA_INDEX_NBASES"
+echo "          limitGenomeGenerateRAM=$LIMIT_RAM_BYTES bytes sjdbOverhang=$SJDB_OVERHANG)"
+echo "          the genomeSAindexNbases STAR actually used is read back from Log.out"
+echo "          into the stamp, so the stamp records what happened not what was asked"
 
 $STAR --runMode genomeGenerate \
   --genomeDir "$IDX_DIR" \
@@ -197,7 +274,8 @@ $STAR --runMode genomeGenerate \
 # requested.
 CHOSEN="$(grep -oE '^genomeSAindexNbases +[0-9]+' "$IDX_DIR/Log.out" | tail -1 | awk '{print $2}' || true)"
 CHOSEN="${CHOSEN:-unknown}"
-printf 'genome=%s\ngtf=%s\ncontigs=%s\nsjdbOverhang=%s\nlimitGenomeGenerateRAM_bytes=%s\ngenomeSAindexNbases_requested=%s\ngenomeSAindexNbases_used=%s\n' \
-  "$(basename "$GENOME")" "$(basename "$GTF")" "$CONTIGS" "$SJDB_OVERHANG" "$LIMIT_RAM_BYTES" "$SA_INDEX_NBASES" "$CHOSEN" > "$STAMP"
+printf 'genome=%s\ngtf=%s\ncontigs=%s\nsjdbOverhang=%s\nlimitGenomeGenerateRAM_bytes=%s\ngenomeSAindexNbases_requested=%s\ngenomeSAindexNbases_used=%s\ngtf_sha256=%s\ngenome_sha256=%s\nsubset_gtf_sha256=%s\n' \
+  "$(basename "$GENOME")" "$(basename "$GTF")" "$CONTIGS" "$SJDB_OVERHANG" "$LIMIT_RAM_BYTES" "$SA_INDEX_NBASES" "$CHOSEN" \
+  "$GTF_DIGEST" "$GENOME_DIGEST" "$SUBSET_DIGEST" > "$STAMP"
 
 echo "ok       index built: $IDX_DIR"

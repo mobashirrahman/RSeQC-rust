@@ -1,0 +1,130 @@
+{% set name = "rseqc-rust" %}
+{% set version = "0.1.0" %}
+
+package:
+  name: {{ name|lower }}
+  version: {{ version }}
+
+# ---------------------------------------------------------------------------
+# SOURCE
+#
+# The repository URL is UNRESOLVED and is the reason this recipe cannot be
+# submitted yet. `scripts/check_release_metadata.py` treats the same placeholder
+# in Cargo.toml and CITATION.cff as a release blocker; a recipe pointing at
+# `github.com/TBD/...` would resolve to somebody else's page the moment it was
+# indexed, so it is left visibly unset rather than guessed.
+#
+# When the permanent URL is decided, replace the source block below with:
+#
+#   source:
+#     url: https://github.com/<org>/<repo>/archive/v{{ version }}.tar.gz
+#     sha256: <digest of that exact tarball>
+#
+# and delete this paragraph. `sha256` is not optional in Bioconda, and neither is
+# a digest taken from the build rather than from the release tarball: an
+# archive of a moving branch is not a versioned source.
+# ---------------------------------------------------------------------------
+source:
+  url: https://github.com/TBD/rseqc-rust/archive/v{{ version }}.tar.gz
+  sha256: TBD
+
+build:
+  number: 0
+  # Rust, per Bioconda's own guidance: build with a LOCKED dependency set and
+  # bundle the licences of everything that ships in the binary. `cargo build
+  # --locked` fails if Cargo.lock would need to change, so the recipe cannot
+  # silently pick up a different transitive dependency between the beta and the
+  # recipe. The notices step is not optional either: the archive already ships
+  # THIRD_PARTY_NOTICES.txt, and a recipe that dropped it would be packaging
+  # fewer licences than the upstream artefact does.
+  script:
+    - cargo build --workspace --release --locked
+    - mkdir -p ${PREFIX}/bin
+    - cp -r target/release/. ${PREFIX}/bin/
+    - cp LICENSE README.md CHANGELOG.md CITATION.cff THIRD_PARTY_NOTICES.txt ${PREFIX}/share/${name}/
+    # The archive builder is the single place that knows which executables are
+    # shipped and what their per-command capability records are. Reusing it means
+    # the recipe cannot ship a different set than the release archive, which is
+    # the difference between a recipe and a second packaging decision.
+    - test -x scripts/build-release-archive.sh
+    - test -f benchmarks/capability-matrix.json
+
+requirements:
+  build:
+    - rust
+    - pkg-config {{ compiler('c') }}
+  host:
+    # The reference environment the differential suite pins, reproduced here so a
+    # Bioconda build is comparable to a local one rather than merely plausible.
+    - python {{ environ.get('RSEQC_ORACLE_PYTHON_VERSION', '3.12') }}
+    - pysam
+    - numpy
+  run:
+    - python >=3.9
+    - pysam
+
+test:
+  requires:
+    - snakemake
+  imports:
+    - pysam
+  commands:
+    # Every shipped binary must at least report its version. `--version` is the
+    # cheapest command that proves the executable loads, links and finds its
+    # arguments parser; a recipe that builds but cannot start is a recipe that
+    # wastes a user's download.
+    - bam_stat --version
+    - infer_experiment --version
+    - read_distribution --version
+    - read_NVC --version
+    - read_quality --version
+    - read_duplication --version
+    - geneBody_coverage --version
+    - junction_annotation --version
+    - bam2wig --version
+    # A real workload, not only --help: a binary that answers --version and then
+    # cannot read an alignment is exactly the failure this project already found
+    # in one benchmark harness (a relative output path made every command fail
+    # while --help kept working).
+    - bam_stat -i {{ environ.get('RSEQC_TEST_BAM', 'tests/data/tiny.bam') }}
+    # The documented contract for a missing output directory: refuse before doing
+    # the work, name the directory, exit 2. Matched against upstream by the
+    # differential suite; asserted here so a refactor cannot quietly turn a fast
+    # refusal into an end-of-run error.
+    - read_NVC -i {{ environ.get('RSEQC_TEST_BAM', 'tests/data/tiny.bam') }} -o /nonexistent-dir/out --skip-plot
+
+about:
+  home: https://github.com/TBD/rseqc-rust
+  license: GPL-3.0-or-later
+  license_family: GPL
+  license_file: LICENSE
+  summary: 'Fast, single-binary RNA-seq quality control, a port of RSeQC'
+  description: |
+    rseqc-rust is a Rust port of the RSeQC RNA-seq quality control suite. It
+    ships 33 commands as standalone binaries with no runtime dependency on
+    Python; the original R heat maps are still emitted as R scripts and run with
+    Rscript unless --skip-plot is passed.
+
+    Scope of this build is deliberately bounded. It is a Linux x86_64 release
+    with a declared glibc floor; it does not implement the Python API (which
+    upstream users may rely on), it is not a whole-package behavioural
+    replacement, and one command -- geneBody_coverage -- is known not to
+    reproduce upstream's coverage curve on real data and is shipped with that
+    limitation stated in the archive manifest. See README.md and the project's
+    compatibility ledger before relying on it for a published result.
+
+  doc_url: https://github.com/TBD/rseqc-rust#readme
+  dev_url: https://github.com/TBD/rseqc-rust
+
+extra:
+  # What a user should know that `about` has no field for.
+  notes: |
+    Requires Rscript for the plotting stage of read_NVC, read_quality and the
+    profile commands. --skip-plot produces the data without it.
+
+    geneBody_coverage is shipped but not qualified: it does not currently
+    reproduce upstream's gene-body coverage curve on real data
+    (compatibility/divergences.yaml DIV-0024, open). Do not use it for a
+    published biological conclusion.
+  recipe-maintainers:
+    - TBD

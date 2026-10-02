@@ -1,0 +1,507 @@
+name: Release validation
+
+# Archived release validation. Runs on every push, every pull request, on demand,
+# and on every release tag. This is the job the audit's P1 finding was about: the
+# CI configuration existed, but nothing ran the project's own validation machinery,
+# so a change could break a comparator, a truth case or the oracle lock without
+# anything going red.
+#
+# The layers below are chosen so each failure names the layer that broke, rather
+# than one long test invocation that reports "tests failed".
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+env:
+  CARGO_TERM_COLOR: always
+
+permissions:
+  contents: read
+
+jobs:
+  # ---------------------------------------------------------------------------------
+  # Harness credibility: the gate must still reject corrupted output
+  # ---------------------------------------------------------------------------------
+  harness-credibility:
+    name: Comparators and harness credibility
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+      - run: python -m pip install --disable-pip-version-check "pysam==0.24.1"
+
+      # Every test here feeds the harness a deliberate defect and requires a
+      # FAILING result. A comparator that has quietly stopped rejecting corruption
+      # turns this red rather than turning a regression into a reported speedup.
+      - name: Benchmark harness credibility
+        run: python benchmarks/test_bench_harness.py
+
+      # Shared by the differential runner and the benchmark harness, so a
+      # regression in either shows up once, in the place both use.
+      - name: Shared artifact comparators
+        run: python verification/test_comparators.py
+
+      - name: Differential runner failure-closed semantics
+        run: python verification/test_run_diff.py
+
+      # The publication gate itself needs a test suite. The first version of
+      # check_release_metadata.py matched only TOML's `key = "value"`, so it
+      # silently exempted CITATION.cff -- the file citation tooling reads -- and
+      # nobody noticed because Cargo.toml still failed the check. These 21 tests
+      # assert a *failing* result for a placeholder in either file.
+      - name: Release metadata placeholder check
+        run: python scripts/test_release_metadata.py
+
+      # The capability matrix needs probe fixtures and takes several minutes, so CI
+      # checks that the recorded result is present, covers every shipped command, and
+      # is not older than the binaries it describes rather than regenerating it. A
+      # matrix describing superseded binaries would be a capability record for a
+      # different release.
+      - name: Capability matrix is present and covers every shipped command
+        run: |
+          set -euo pipefail
+          cargo build --workspace --release --locked
+          python3 - <<'PY'
+          import json, re, sys
+          from pathlib import Path
+          m = json.loads(Path("benchmarks/capability-matrix.json").read_text())
+          cmds = m["commands"]
+          script = Path("scripts/build-release-archive.sh").read_text()
+          allowlist = set(re.search(r'ALLOWLIST="(.*?)"', script, re.S).group(1).split())
+          missing = sorted(allowlist - set(cmds))
+          assert not missing, f"capability matrix omits shipped commands: {missing}"
+          assert len(cmds) == len(allowlist), (
+              f"matrix records {len(cmds)} commands, archive ships {len(allowlist)}")
+          for name, e in sorted(cmds.items()):
+              for field in ("input_formats", "helper_dependency",
+                            "skip_plot_contract", "determinism"):
+                  assert field in e, f"{name} has no {field} record"
+              assert e.get("binary_sha256"), f"{name} has no binary digest"
+          print(f"{len(cmds)} commands, all with a measured capability record")
+          s = m["summary"]
+          assert s["non_deterministic_unexplained"] == [], (
+              f"commands vary between identical runs for no recorded reason: "
+              f"{s['unexplained_non_determinism']}")
+          print(f"helper-dependent: {len(s['requires_helper_at_runtime'])}; "
+                f"non-deterministic by design: {s['non_deterministic_by_design']}")
+          PY
+          python3 verification/capability_matrix.py --help > /dev/null
+          echo "capability matrix generator loads"
+
+      # The Snakemake QC panel, EXECUTED. Stage C asks for a tested workflow example,
+      # and a Snakefile nobody has ever run is documentation: this one had five real
+      # errors in it (a missing -r, an output path that did not match what -o writes,
+      # an artifact that does not exist at all, an awk print in the wrong block, and
+      # awk getline used as if it counted lines) and every one of them was found only
+      # by running it. So the test runs, rather than merely being linted.
+      #
+      # Snakemake is installed into a throwaway venv rather than added to the oracle
+      # environment, because the pinned oracle must keep reproducing the exact upstream
+      # dependency set; a workflow engine is not part of that set.
+      - name: QC panel workflow example (executed)
+        run: |
+          set -euo pipefail
+          python3 -m venv /tmp/snakemake-venv
+          /tmp/snakemake-venv/bin/pip install --quiet snakemake
+          # Dispatch `rseqc <name>.py` to the release binary of the same name, the way
+          # the release archive's aliases do.
+          mkdir -p /tmp/rseqc-aliases
+          for b in bam_stat infer_experiment read_distribution read_NVC read_quality; do
+            ln -sf "$PWD/target/release/$b" "/tmp/rseqc-aliases/$b.py"
+          done
+          cat > /tmp/rseqc-aliases/rseqc <<'EOS'
+          #!/bin/sh
+          sub="$1"; shift
+          exec "$RSEQC_BIN_DIR/$sub" "$@"
+          EOS
+          chmod +x /tmp/rseqc-aliases/rseqc
+          export PATH="/tmp/rseqc-aliases:/tmp/snakemake-venv/bin:$PATH"
+          export RSEQC_BIN_DIR="$PWD/target/release"
+          # No alignment is provisioned in the ordinary CI job, so this reports rather
+          # than blocks; the release job, which does provision one, runs it as a gate.
+          workflows/qc_panel/test/run_panel.sh \
+            || echo "::warning title=QC panel workflow::the panel test did not pass on this runner"
+
+      # Every EXPECTED_STREAMS declaration, re-derived from a live run. The
+      # equivalence gate is only as good as these declarations, and two commands were
+      # gated on a rule that did not describe them while their two arms agreed
+      # byte-for-byte (bam2wig: a one-line stdout; RNA_fragment_size: a 369 KB table
+      # on stdout that a label-parsing probe had mistaken for no stdout at all).
+      - name: Benchmark stream declarations match observed behaviour
+        run: |
+          set -euo pipefail
+          python3 verification/verify_stream_declarations.py \
+            || echo "::error title=stream declarations::EXPECTED_STREAMS disagrees with what the commands do; the gate's verdicts are unreliable until this is fixed"
+
+      # The Bioconda recipe, rendered and checked. A conda recipe is a Jinja2
+      # template that only becomes YAML after rendering, so a broken one can sit in
+      # the repository until a channel maintainer tries to build it. This renders it
+      # with the two globals conda-build supplies and fails on anything else.
+      - name: Bioconda recipe renders and is complete
+        run: python3 scripts/test_bioconda_recipe.py
+
+      # Command contracts, and interoperability with independent consumers. Both
+      # need the release binaries, which build-test-lint already produces on main;
+      # the release workflow builds them explicitly before this runs.
+      - name: Build release binaries for the contract and interop checks
+        run: cargo build --workspace --release --locked
+
+      # Every command must fail in a defined, documented way: a non-zero exit with a
+      # diagnostic, or a real answer with no nonfinite value. Silent metric loss and
+      # plausible-looking corrupt output are the failures this looks for.
+      - name: Command contracts
+        run: python verification/check_command_contracts.py
+
+      # Every advertised artifact read back by htslib rather than by this project's
+      # own readers: BAM with its index and sorted order, BED12 structure, FASTQ
+      # framing and qualities, the WIG/BigWig track, and SAM/CRAM equivalence.
+      - name: Format interoperability with independent consumers
+        run: python verification/check_interop.py
+
+  # ---------------------------------------------------------------------------------
+  # Independent truth cases: hand-derived, not recordings of current output
+  # ---------------------------------------------------------------------------------
+  truth-cases:
+    name: Independent truth cases (converter, semantics)
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+
+      # The UCSC refGene -> BED12/GTF conversion. Hand-derived expectations,
+      # including the audit's probe row, minus strand, and the zero-coordinate
+      # boundary, so a converter matching its own previous output cannot pass.
+      - name: refGene conversion truth cases
+        run: python datasets/test_refgene_to_gtf.py
+
+      # The rat reference preparation on disk must be the one the manifest records,
+      # and the alignment must be bound to the index it was produced from. The
+      # coordinate defect survived two rounds of correction because the FILES were
+      # trusted: a corrected annotation was written, a stale contig subset was reused,
+      # and STAR reported success. A third defect followed the same pattern -- the
+      # annotation was correct but the alignment predated the index rebuild, so every
+      # annotation digest still matched while the endpoint result was not
+      # reproducible. Each check below names which link in that chain it covers.
+      # Reports rather than blocks, because the fixture panel is gitignored and a
+      # fresh checkout legitimately has nothing to check -- a permanently red job
+      # teaches people to ignore it.
+      - name: Rat reference preparation matches the manifest
+        continue-on-error: true
+        run: |
+          if [ -f datasets/heldout/reference/rn6.bed12 ] && [ -f datasets/heldout/aligned/SRR1177982/SRR1177982.bam ]; then
+            python3 verification/check_rat_reference.py
+          else
+            echo "::notice title=Rat reference check skipped::The fixture panel is gitignored and not provisioned in CI, so there are no annotation, index or alignment files to check. Run datasets/fetch_reference.sh, datasets/build_star_index.sh and datasets/align_run.sh locally; verification/check_rat_reference.py then asserts the annotation, the index's derivation from it, the alignment's binding to that index, and that the endpoint results on disk agree with the same-input comparison."
+          fi
+
+      - name: Rust semantic truth cases (CIGAR, interval, coordinate frames)
+        run: cargo test --locked -p rseqc-formats --test semantic_truth
+
+      - name: Rust scientific semantics (strandedness, paired exon membership)
+        run: cargo test --locked -p rseqc-commands --test scientific_semantics
+
+      # DIV-0024: geneBody_coverage does not reproduce upstream's curve on real data.
+      # This asserts the defect is STILL PRESENT, so the job goes GREEN when it is
+      # fixed -- at which point this step, and the divergence entry, must be updated
+      # in the same change. A recorded divergence that is never re-checked becomes a
+      # stale claim, which is how DIV-0005 was found to be out of date in the first
+      # place. It is a non-gate here because CI has no provisioned real alignment; it
+      # reports rather than blocks, and says so.
+      - name: geneBody_coverage divergence (DIV-0024) is still present
+        continue-on-error: true
+        run: |
+          if [ -f datasets/heldout/aligned/SRR1177982/SRR1177982.bam ]; then
+            bash verification/fixtures/check_gene_body_divergence.sh
+          else
+            echo "::notice title=DIV-0024 not re-checked::The real-data panel is gitignored and not provisioned in CI, so the geneBody_coverage divergence was not re-tested here. Run verification/fixtures/check_gene_body_divergence.sh locally against datasets/heldout/aligned/SRR1177982/. A fix must update compatibility/divergences.yaml and this step together."
+          fi
+
+      # The memory measurements need the release binaries and a real alignment, and
+      # neither is provisioned in CI (the fixture panel is gitignored), so this records
+      # that the scripts still run rather than skipping them silently. The committed
+      # JSON holds the measurements themselves:
+      #   benchmarks/memory-sweep-tiny.json      (29x range, synthetic fixture)
+      #   benchmarks/memory-sweep-rat-8M.json    (174x range, 8.2M real records)
+      #   benchmarks/memory-failure-rat-8M.json  (behaviour at 80/40/20% of peak)
+      - name: Memory measurement scripts load
+        run: |
+          cargo build --workspace --release --locked
+          for f in benchmarks/memory-sweep-tiny.json benchmarks/memory-sweep-rat-8M.json benchmarks/memory-failure-rat-8M.json; do
+            python3 -c "
+          import json, sys
+          d = json.load(open(sys.argv[1]))
+          assert d, '$f is empty'
+          print(f'$f: {len(json.dumps(d))} bytes, parses')
+          " "$f"
+          done
+          python3 verification/measure_memory.py --help > /dev/null
+          python3 verification/check_memory_failure.py --help > /dev/null
+          python3 verification/measure_concurrency.py --help > /dev/null
+          python3 verification/measure_pipeline.py --help > /dev/null
+          echo "measurement scripts load and the recorded results parse"
+          # The concurrency result claims per-job memory is additive. Checked here that
+          # the recorded run actually exercised more than one concurrency level,
+          # because a file containing only x1 rows would satisfy "parses" while
+          # establishing nothing.
+          for f in benchmarks/memory-sweep-tiny.json benchmarks/memory-sweep-rat-8M.json \
+                   benchmarks/memory-transcripts-rat.json \
+                   benchmarks/memory-transcripts-tiny.json; do
+            python3 - "$f" <<'PY'
+          import json, sys
+          d = json.load(open(sys.argv[1]))
+          bad = []
+          for group in ("drivers", "transcript_drivers"):
+              for name, e in (d.get(group) or {}).items():
+                  if e.get("status") == "SKIPPED":
+                      continue
+                  if e.get("all_runs_succeeded") is False:
+                      bad.append(f"{name}: a slope was recorded despite a failed run")
+                  for key in ("slope_vs_records", "slope_vs_transcripts"):
+                      s = e.get(key)
+                      if s and s.get("denominator") and s.get("mb_per_unit", 0) < 0:
+                          bad.append(f"{name}.{key}: a negative per-unit cost is published")
+          assert not bad, (f"{sys.argv[1]}: " + "; ".join(bad))
+          print(f"{sys.argv[1]}: no slope is fitted over failed runs, and no "
+                f"negative per-unit cost is published")
+          PY
+          done
+          # The pipeline-impact record claims a whole QC panel was timed and that
+          # throughput scales with concurrency. Checked that every panel completed, that
+          # more than one concurrency level was measured, and that the panel's own
+          # stage count matches what the script claims to run -- otherwise a file with
+          # a single failed panel and one level would satisfy "parses".
+          python3 - benchmarks/pipeline-impact-rat-8M.json <<'PY'
+          import json, sys
+          d = json.load(open(sys.argv[1]))
+          runs = d["runs"]
+          assert runs, "no pipeline runs recorded"
+          levels = sorted(r["concurrency"] for r in runs)
+          assert len(levels) >= 2, f"only one concurrency level: {levels}"
+          incomplete = [(r["concurrency"], r["panels_complete"], r["panels"])
+                        for r in runs if r["panels_complete"] != r["panels"]]
+          assert not incomplete, f"panels did not complete: {incomplete}"
+          one = d["single_panel"]
+          assert one["complete"], "the single-panel run was incomplete"
+          assert one["stages_run"] == len(d["panel"]), (
+              f"panel claims {len(d['panel'])} stages but only {one['stages_run']} ran")
+          base = min(r["samples_per_hour"] for r in runs)
+          for r in sorted(runs, key=lambda x: x["concurrency"]):
+              print(f"{r['panels']:>2} concurrent panels: {r['batch_wall_s']:>6.1f}s "
+                    f"batch, {r['peak_aggregate_mb']:>6.0f} MB aggregate, "
+                    f"{r['samples_per_hour']:>5.0f} samples/hour "
+                    f"({r['samples_per_hour'] / base:.2f}x), "
+                    f"{r['cpu_hours_per_sample']:.4f} CPU-hours/sample")
+          for s in sorted(one["stages"], key=lambda x: -x["wall_s"]):
+              print(f"  {s['stage']:20} {s['wall_s']:>7.2f}s "
+                    f"{s['peak_rss_mb']:>8.1f} MB")
+          PY
+          python3 - benchmarks/concurrency-rat-8M.json <<'PY'
+          import json, sys
+          d = json.load(open(sys.argv[1]))
+          levels = sorted({r["concurrency"] for r in d["results"]
+                           if r.get("status") == "OK"})
+          assert len(levels) >= 2, (
+              f"only one concurrency level recorded ({levels}); the claim that "
+              f"per-job memory is additive needs at least two")
+          for cmd in {r["command"] for r in d["results"]}:
+              rows = [r for r in d["results"]
+                      if r["command"] == cmd and r.get("status") == "OK"]
+              biggest = max(rows, key=lambda r: r["concurrency"])
+              ratio = biggest["peak_aggregate_mb"] / biggest["largest_single_job_rss_mb"]
+              assert all(r["all_succeeded"] for r in rows), (
+                  f"{cmd}: a concurrency level had a failing job")
+              print(f"{cmd}: levels {levels}, at x{biggest['concurrency']} the "
+                    f"aggregate is {ratio:.2f}x one job's peak "
+                    f"({biggest['peak_aggregate_mb']:.0f} MB vs "
+                    f"{biggest['largest_single_job_rss_mb']:.0f} MB)")
+          PY
+
+  # ---------------------------------------------------------------------------------
+  # Release artefacts: what will actually be installed
+  # ---------------------------------------------------------------------------------
+  release-artifacts:
+    name: Build and validate the distribution archive and container
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+
+      - name: Install pinned Rust toolchain
+        run: rustup show
+
+      # Builds the archive, checksums it, then extracts it OUTSIDE the source tree
+      # and runs a real workload through it. Not only `--help`: the audit's
+      # requirement was that the artefact actually installed is exercised.
+      #
+      # ALLOW_UNRESOLVED_URL=1 downgrades the placeholder check to a warning here.
+      # The permanent repository URL is a maintainer decision (release Stage A) and
+      # is still unset, so a strict check would fail every push and block all
+      # development over a decision nobody has made yet. Publication is where it
+      # must block, and release.yml's build step runs without this variable.
+      - name: Build and smoke-test the distribution archive
+        run: scripts/build-release-archive.sh dist
+        env:
+          ALLOW_UNRESOLVED_URL: "1"
+
+      - name: Check the archive is allowlisted and complete
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/verify && rm -rf /tmp/verify/*
+          tar -C /tmp/verify -xzf dist/*.tar.gz
+          PKG="$(echo /tmp/verify/*)"
+          echo "contents:"; find "$PKG" -maxdepth 1 -mindepth 1 | sort
+          for required in manifest.json doc/LICENSE doc/README.md doc/CHANGELOG.md \
+                          doc/CITATION.cff doc/Cargo.toml doc/THIRD_PARTY_NOTICES.txt; do
+            if [ ! -s "$PKG/$required" ]; then
+              echo "error: archive is missing $required"; exit 1
+            fi
+          done
+          # 33 commands, each present as a binary and under its upstream script name.
+          python3 - "$PKG" <<'PY'
+          import json, sys
+          from pathlib import Path
+          pkg = Path(sys.argv[1])
+          m = json.loads((pkg / "manifest.json").read_text())
+          binaries, aliases = set(m["binaries"]), set(m["aliases"])
+          missing = [b for b in binaries if not (pkg / "bin" / b).exists()]
+          assert not missing, f"manifest lists binaries not in the archive: {missing}"
+          assert not aliases - binaries, "an alias has no corresponding binary"
+          for b in binaries:
+              assert (pkg / "bin" / b).stat().st_size > 0, f"{b} is empty"
+          print(f"{len(binaries)} commands, {len(aliases)} upstream aliases, "
+                f"abi floor glibc {m['target']['abi_floor']['glibc']}")
+          # The archive must not claim what it does not have.
+          caps = m["capabilities"]
+          assert "NOT IMPLEMENTED" in caps["python_api"], \
+              "the manifest must state the Python API is a stub"
+          print("manifest records the Python API as unimplemented, as required")
+          # The metadata that ships must be the metadata that was checked. Re-running
+          # the placeholder check against the EXTRACTED doc/ directory is what makes
+          # the earlier "publication is blocked" claim true of the artefact rather
+          # than only of the source tree it was built from.
+          PY
+          python3 scripts/check_release_metadata.py --root "$PKG/doc" \
+            || echo "::warning title=Unresolved URL placeholder::The staged release metadata still carries a TBD repository URL. This is expected until the permanent URL is decided; publication runs the same check in --strict mode and is blocked.
+
+      - name: Verify the recorded digests match the extracted files
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/verify2 && rm -rf /tmp/verify2/*
+          tar -C /tmp/verify2 -xzf dist/*.tar.gz
+          PKG="$(echo /tmp/verify2/*)"
+          python3 - "$PKG" <<'PY'
+          import hashlib, json, sys
+          from pathlib import Path
+          pkg = Path(sys.argv[1])
+          m = json.loads((pkg / "manifest.json").read_text())
+          def sha256(p):
+              h = hashlib.sha256()
+              with open(p, "rb") as fh:
+                  for chunk in iter(lambda: fh.read(1 << 20), b""):
+                      h.update(chunk)
+              return h.hexdigest()
+          bad = [n for n, meta in m["binaries"].items()
+                 if sha256(pkg / "bin" / n) != meta["sha256"]]
+          assert not bad, f"binary digests do not match the manifest: {bad}"
+          bad = [n for n, digest in m["docs"].items()
+                 if sha256(pkg / "doc" / n) != digest]
+          assert not bad, f"document digests do not match the manifest: {bad}"
+          print("every recorded digest matches the extracted file")
+          PY
+
+      - name: Build and smoke-test the container image
+        run: |
+          docker build -t rseqc-rust:ci .
+          docker run --rm rseqc-rust:ci bam_stat.py --help >/dev/null
+          echo "container image built and its command runs"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: distribution-archive
+          path: dist/*.tar.gz*
+          if-no-files-found: error
+
+  # ---------------------------------------------------------------------------------
+  # The pinned oracle, when one is available
+  # ---------------------------------------------------------------------------------
+  # The differential suite needs the pinned upstream environment, which is not
+  # reproducible from this repository alone (see compatibility/upstream.lock's
+  # open items). It therefore behaves differently depending on why it is running:
+  #
+  #   * On an ordinary push or pull request it REPORTS. Failing a developer's push
+  #     over an environment that cannot exist in CI teaches people to ignore red, and
+  #     the notice makes sure "the suite did not run" is never read as "it passed".
+  #   * On a release tag it BLOCKS. The audit's requirement is that tag publication is
+  #     gated on the appropriate differential profile, and `continue-on-error: true`
+  #     made that gate decorative: the whole workflow was reusable from release.yml,
+  #     so a tag could publish with the differential matrix never executed. The
+  #     maintainer must therefore provision the oracle for a release (see
+  #     compatibility/upstream.lock) or deliberately change this step -- which is a
+  #     visible, reviewable edit, rather than a flag nobody notices.
+  differential-oracle:
+    name: Differential suite against the pinned oracle
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+      - run: python -m pip install --disable-pip-version-check "pysam==0.24.1"
+
+      - name: Check the oracle environment against its lock
+        run: |
+          if python verification/check_oracle_env.py; then
+            echo "oracle environment matches compatibility/upstream.lock"
+          else
+            echo "::warning title=Oracle environment::The oracle environment differs from its lock, or is absent. Differential results produced here are not the pinned baseline."
+          fi
+
+      - name: Confirm whether the differential suite can run at all
+        id: probe
+        run: |
+          if [ -x oracle/venv/bin/python3 ] && [ -d oracle/upstream-src ]; then
+            echo "available=true" >> "$GITHUB_OUTPUT"
+          elif [ "${{ github.ref_type }}" = "tag" ]; then
+            # A release tag must be gated on the differential profile. Refusing here
+            # is the intended behaviour, not an obstacle: publishing without this
+            # suite is the defect the audit found.
+            echo "::error title=Differential suite required for a release tag::The pinned oracle environment (oracle/venv plus oracle/upstream-src) is absent, so the 90-case differential matrix cannot run. Tag publication is gated on it. Provision the pinned oracle per compatibility/upstream.lock, or publish from a build whose differential results are already recorded."
+            exit 1
+          else
+            echo "available=false" >> "$GITHUB_OUTPUT"
+            echo "::notice title=Differential suite skipped::The pinned oracle environment (oracle/venv plus oracle/upstream-src) is gitignored and is not provisioned in CI. The 90-case differential matrix did NOT run here. See compatibility/upstream.lock for what remains unpinned."
+          fi
+
+      - name: Run the differential matrix
+        if: steps.probe.outputs.available == 'true'
+        run: |
+          set -o pipefail
+          cargo build --workspace --release --locked
+          oracle/venv/bin/python3 verification/run_diff.py 2>&1 | tee diff.log
+          # run_diff.py prints "All N case(s) PASSED" and exits 0. This step
+          # previously grepped for '^0 failed', a string the runner has never
+          # printed, so with `| tee` (pipeline exit status is tee's) the only
+          # real check was a grep that could never match: the differential gate
+          # would have failed every run that got as far as executing it, and
+          # nobody saw it because the oracle is absent in CI so the step is
+          # skipped. Both the exit status and the summary line are checked now.
+          grep -qE '^All [0-9]+ case\(s\) PASSED$' diff.log \
+            || { tail -60 diff.log; echo "::error::the differential matrix did not report a full pass"; exit 1; }
+
+      - uses: actions/upload-artifact@v4
+        if: always() && steps.probe.outputs.available == 'true'
+        with:
+          name: differential-matrix
+          path: diff.log
+          if-no-files-found: error

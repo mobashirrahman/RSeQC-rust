@@ -1,0 +1,83 @@
+{
+  "bam": "/scratch/mdra00001/RSeQC-rust/datasets/heldout/aligned/SRR1177982/SRR1177982.bam",
+  "bam_sha256": "8009fbc27272d6ea8f4e2714e8afe9864108f3cd5e8a78dde668815d0f19d89d",
+  "commands": {
+    "bam2wig": {
+      "command": "bam2wig",
+      "limit_free_peak_mb": 1685.4,
+      "runs": [
+        {
+          "limit_mb": 1348.3,
+          "exit_code": 134,
+          "killed_by_signal": 6,
+          "stderr_tail": "Skip multi-hits: False\nProcessing chr1 ...\nProcessing chr10 ...\nProcessing chr2 ...\nmemory allocation of 159383552 bytes failed\nnote: run with `RUST_BACKTRACE=1` environment variable to display a backtrace",
+          "said_anything": true,
+          "output_files": {},
+          "left_partial_output": false,
+          "fraction_of_free_peak": 0.8
+        },
+        {
+          "limit_mb": 674.2,
+          "exit_code": 134,
+          "killed_by_signal": 6,
+          "stderr_tail": "Skip multi-hits: False\nProcessing chr1 ...\nProcessing chr10 ...\nProcessing chr2 ...\nmemory allocation of 192 bytes failed\nnote: run with `RUST_BACKTRACE=1` environment variable to display a backtrace",
+          "said_anything": true,
+          "output_files": {},
+          "left_partial_output": false,
+          "fraction_of_free_peak": 0.4
+        },
+        {
+          "limit_mb": 337.1,
+          "exit_code": 134,
+          "killed_by_signal": 6,
+          "stderr_tail": "Skip multi-hits: False\nProcessing chr1 ...\nProcessing chr10 ...\nProcessing chr2 ...\nmemory allocation of 192 bytes failed\nnote: run with `RUST_BACKTRACE=1` environment variable to display a backtrace",
+          "said_anything": true,
+          "output_files": {},
+          "left_partial_output": false,
+          "fraction_of_free_peak": 0.2
+        }
+      ],
+      "no_partial_output_at_any_limit": true,
+      "every_failure_was_reported": true
+    },
+    "read_duplication": {
+      "command": "read_duplication",
+      "limit_free_peak_mb": 1060.2,
+      "runs": [
+        {
+          "limit_mb": 848.2,
+          "exit_code": 134,
+          "killed_by_signal": 6,
+          "stderr_tail": "Load BAM file ...  memory allocation of 276824080 bytes failed\nnote: run with `RUST_BACKTRACE=1` environment variable to display a backtrace",
+          "said_anything": true,
+          "output_files": {},
+          "left_partial_output": false,
+          "fraction_of_free_peak": 0.8
+        },
+        {
+          "limit_mb": 424.1,
+          "exit_code": 134,
+          "killed_by_signal": 6,
+          "stderr_tail": "Load BAM file ...  memory allocation of 138412048 bytes failed\nnote: run with `RUST_BACKTRACE=1` environment variable to display a backtrace",
+          "said_anything": true,
+          "output_files": {},
+          "left_partial_output": false,
+          "fraction_of_free_peak": 0.4
+        },
+        {
+          "limit_mb": 212.0,
+          "exit_code": 134,
+          "killed_by_signal": 6,
+          "stderr_tail": "Load BAM file ...  memory allocation of 69206032 bytes failed\nnote: run with `RUST_BACKTRACE=1` environment variable to display a backtrace",
+          "said_anything": true,
+          "output_files": {},
+          "left_partial_output": false,
+          "fraction_of_free_peak": 0.2
+        }
+      ],
+      "no_partial_output_at_any_limit": true,
+      "every_failure_was_reported": true
+    }
+  },
+  "input_unchanged": true
+}

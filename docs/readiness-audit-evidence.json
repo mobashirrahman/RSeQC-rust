@@ -1,0 +1,190 @@
+{
+  "audit_date": "2026-10-01",
+  "source_revision": "b39ef0a0545b7e32f0249c5256e9bb0f8298bc41",
+  "method": "Source inspection and targeted execution; full build, test, differential and benchmark suites were not rerun.",
+  "scope": "This is a technical audit, not human domain-expert sign-off.",
+  "inventory": {
+    "differential_cases": 90,
+    "commands": 33,
+    "rust_test_attribute_count": 369,
+    "ordinary_shared_nonzero_exit_cases": [
+      "fpkm_uq_error_prefix",
+      "bam_stat_not_a_bam",
+      "tin_missing_bai_sidecar"
+    ],
+    "upstream_failure_overrides": [
+      "sc_seqlogo_basic",
+      "read_NVC_empty_bam_diverges_from_upstream"
+    ],
+    "bounded_fuzz_suites": 5,
+    "local_git_commits": 197,
+    "first_local_author_date": "2026-09-16T20:10:31+02:00",
+    "local_tags": []
+  },
+  "historical_real_panel_run": {
+    "log": "datasets/logs/t4_realdata_final3.log",
+    "executed": 86,
+    "skipped": 4,
+    "reported_failures": 0,
+    "qualification": "Includes fixed synthetic/regression inputs as well as substituted real-panel inputs."
+  },
+  "historical_benchmark": {
+    "file": "benchmarks/results-main.json",
+    "label": "g6b-clean",
+    "revision": "3a5b88c00184ce03b818e16acf72bdc5a6efe4df",
+    "git_dirty": false,
+    "isolated_hardware": false,
+    "rows": 29,
+    "repetitions_each_arm": 10,
+    "experiment_classes": [
+      "compute"
+    ],
+    "recorded_gate_passes": 29,
+    "equivalence_modes": {
+      "exact": 28,
+      "distributional-vs-self-control": 1
+    },
+    "failures_by_command": {
+      "sc_seqLogo": 10
+    },
+    "main_alignment_records": 800000,
+    "scaling_summary_rows": 31,
+    "scaling_commands": 6,
+    "max_requested_scaling_read_pairs": 800000,
+    "requested_vs_actual_transcript_point": {
+      "requested": 20000,
+      "actual": 9179
+    },
+    "qualification": "Comparator false-pass paths and lost pairing mean recorded gates and confidence intervals do not qualify publication claims."
+  },
+  "executed_comparator_probes": [
+    {
+      "name": "FASTQ trailing partial record",
+      "function": "benchmarks/bench.py:compare_fastq",
+      "input_change": "Append @truncated and AC after one complete record",
+      "expected_acceptance": false,
+      "observed_acceptance": true
+    },
+    {
+      "name": "Finite text replaced by NaN",
+      "function": "benchmarks/bench.py:compare_text",
+      "input_change": "1.0 versus nan",
+      "expected_acceptance": false,
+      "observed_acceptance": true
+    },
+    {
+      "name": "Absent required outputs",
+      "function": "benchmarks/bench.py:gate_outputs",
+      "input_change": "Compare two empty output trees",
+      "expected_acceptance": false,
+      "observed_acceptance": true
+    },
+    {
+      "name": "BAM quality mutation",
+      "function": "benchmarks/bench.py:compare_bam",
+      "input_change": "IIII versus !!!!",
+      "expected_acceptance": false,
+      "observed_acceptance": true
+    },
+    {
+      "name": "BAM duplicate flag mutation",
+      "function": "benchmarks/bench.py:compare_bam",
+      "input_change": "FLAG 0 versus 1024",
+      "expected_acceptance": false,
+      "observed_acceptance": true
+    },
+    {
+      "name": "BAM NM tag mutation",
+      "function": "benchmarks/bench.py:compare_bam",
+      "input_change": "NM 0 versus 99",
+      "expected_acceptance": false,
+      "observed_acceptance": true
+    }
+  ],
+  "mocked_timeout_probe": {
+    "function": "benchmarks/bench.py:run_arm",
+    "method": "subprocess.run raised a standard TimeoutExpired; os.getpgid and os.killpg were mocked so no processes were killed.",
+    "observed_calls": [
+      [
+        "getpgid",
+        0
+      ],
+      [
+        "killpg",
+        424242,
+        9
+      ]
+    ],
+    "observed_exit_code": -1,
+    "observed_timed_out": true,
+    "qualification": "getpgid(0) normally identifies the caller's process group, rather than the new group created for the benchmark child."
+  },
+  "schedule_probe": {
+    "seed": 20260929,
+    "repetitions": 10,
+    "python_rep_ids_in_append_order": [
+      5,
+      9,
+      7,
+      1,
+      0,
+      4,
+      8,
+      3,
+      2,
+      6
+    ],
+    "rust_rep_ids_in_append_order": [
+      9,
+      6,
+      5,
+      0,
+      3,
+      2,
+      1,
+      7,
+      4,
+      8
+    ],
+    "zipped_pairs_with_different_rep_ids": 10
+  },
+  "annotation_conversion_probe": {
+    "script": "datasets/refgene_to_gtf.py",
+    "coordinate_reference": "https://genome-blog.gi.ucsc.edu/blog/2016/12/12/the-ucsc-genome-browser-coordinate-counting-systems/",
+    "input": "0\tNM_TEST\tchr1\t+\t100\t400\t100\t400\t2\t100,300,\t200,400,",
+    "expected_bed12": "chr1\t100\t400\tNM_TEST\t0\t+\t100\t400\t255\t2\t100,100,\t0,200,",
+    "actual_bed12": "chr1\t99\t400\tNM_TEST\t0\t+\t99\t400\t255\t2\t101,101,\t0,200,",
+    "expected_gtf_exon_ranges": [
+      [
+        101,
+        200
+      ],
+      [
+        301,
+        400
+      ]
+    ],
+    "actual_gtf_exon_ranges": [
+      [
+        100,
+        200
+      ],
+      [
+        300,
+        400
+      ]
+    ],
+    "bed12_matches_spec": false,
+    "gtf_matches_spec": false,
+    "qualification": "Rat annotation preparation remains incorrect; affected results need correct reference preparation and alignment before interpretation."
+  },
+  "source_confirmed_gaps": [
+    "Archive script omits LICENSE, README and CITATION metadata",
+    "CI and release jobs do not invoke the differential/comparator suite",
+    "Oracle execution environment remains unpinned in compatibility/upstream.lock",
+    "CRAM reader collects whole-file records before conversion",
+    "Cargo and CFF repository URLs remain placeholders",
+    "No local release tags were present"
+  ]
+}
+

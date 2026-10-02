@@ -4,6 +4,13 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 
+[lib]
+# Library target for helpers shared by every binary below, so an upstream
+# validation rule is written once instead of in whichever binary happened to
+# reproduce it first.
+name = "rseqc_cli"
+path = "src/lib.rs"
+
 [[bin]]
 # Cargo bin names can't contain '.'; the packaging step (PORTING_PLAN Step 10)
 # creates a `bam_stat.py` symlink/copy of this binary for PATH invocation

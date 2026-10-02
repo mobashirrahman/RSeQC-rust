@@ -30,6 +30,9 @@ from pathlib import Path
 from typing import Callable
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
+# comparators.py lives beside this file; make it importable regardless of the caller's
+# working directory, since the benchmark harness is loaded by path from elsewhere.
+sys.path.insert(0, str(REPO_ROOT / "verification"))
 ORACLE_SCRIPTS = REPO_ROOT / "oracle" / "upstream-src" / "scripts"
 ORACLE_PYTHONPATH = str(REPO_ROOT / "oracle" / "upstream-src" / "src")
 ORACLE_PYTHON = REPO_ROOT / "oracle" / "venv" / "bin" / "python3"
@@ -57,6 +60,13 @@ class Case:
     # Relative file paths (relative to the run's own scratch directory)
     # to byte-compare between the two sides' output, e.g. ["out.NVC.xls"].
     compare_files: tuple[str, ...] = ()
+    # Files recorded as DIVERGENT rather than equal, each with the smallest
+    # largest-absolute-cell-difference the divergence is known to have.
+    # Asserting a divergence is stronger than tolerating one: the case passes only
+    # while the files still differ by at least the recorded amount, so a fix that
+    # makes them identical fails here and points at the ledger entry to retire, and
+    # a divergence that changes shape fails here too. `file: floor` entries.
+    divergent_files: tuple[tuple[str, float], ...] = ()
     # When True, each side's own scratch-directory absolute path is
     # stripped from compare_files' content AND from the compared stream
     # text before comparing -- needed for R scripts that embed their own
@@ -123,6 +133,23 @@ class Case:
     # are removed from the start of each line of the compared stream --
     # timestamps can never be byte-reproduced (DIV-0019/DIV-0022 context).
     strip_log_prefixes: bool = False
+    # Compared files that are permitted to be zero bytes ON BOTH SIDES.
+    #
+    # Two empty files are byte-identical, so a blanket "empty must fail" rule would
+    # reject cases where an empty artifact is the correct answer -- and the rule
+    # exists because the opposite failure is real: a command that writes nothing at
+    # all, in either arm, used to compare equal. So the default stays closed and a
+    # case must name the specific file and say why empty is right.
+    #
+    # Every current use is a command that legitimately has nothing to report, or
+    # takes an early-exit path before writing:
+    #   * mismatch_profile on an input with no mismatches -- upstream's own
+    #     `sys.exit()` inside mismatchProfile bypasses the R-script writer on both
+    #     sides, leaving a zero-byte file.
+    #   * junction_annotation on an alignment with no junctions -- there are no rows
+    #     to tabulate, and the stream comparison already asserts both arms reported
+    #     the same "no junctions" text.
+    allow_empty_files: tuple[str, ...] = ()
     # Wall-clock limit for each implementation.  A timeout is a failed run,
     # never an equivalent result. None means "use the default for the current
     # input class" -- 120s for the synthetic fixtures, much longer for the real
@@ -226,43 +253,53 @@ def stream_for(result: RunResult, which: str) -> str:
     return result.stdout + result.stderr
 
 
+# Numeric cell and table comparison are shared with the benchmark harness
+# (verification/comparators.py) rather than reimplemented here. Two private copies is
+# how the two harnesses drifted apart in the first place: the benchmark's copy
+# accepted changed BAM qualities, flags and tags and a truncated FASTQ record, and the
+# differential suite's own weaker copy meant nothing in this suite noticed.
+#
+# The rule both copies obey: NONFINITE IS NOT A VALUE. `NaN == NaN` is False, so a
+# comparator written with plain equality rejects it for free; a comparator written
+# with a tolerance or a "both look the same" shortcut accepts it. Two arms both
+# dividing by zero is a defect that reached the output, not agreement, so it fails
+# even when both sides produce the identical token.
+from comparators import compare_numeric_table, numeric_cell_equal
+
+
 def _numeric_equal(left: str, right: str) -> bool:
-    from decimal import Decimal, InvalidOperation
-
-    try:
-        lval = Decimal(left)
-        rval = Decimal(right)
-    except InvalidOperation:
-        return left == right
-    if lval.is_nan() or rval.is_nan():
-        return lval.is_nan() and rval.is_nan()
-    return lval == rval
+    """Whether one reported value agrees; nonfinite on either side never agrees."""
+    return numeric_cell_equal(left, right)
 
 
-def _numeric_table_equal(left: bytes, right: bytes) -> bool:
-    """Compare a whitespace-delimited text table with numeric cell semantics."""
-    left_rows = left.decode("utf-8", errors="replace").splitlines()
-    right_rows = right.decode("utf-8", errors="replace").splitlines()
-    if len(left_rows) != len(right_rows):
-        return False
-    from decimal import Decimal, InvalidOperation
+def _numeric_table_equal(left: bytes, right: bytes) -> tuple[bool, str]:
+    """Whether two whitespace-delimited numeric tables agree, with a reason."""
+    return compare_numeric_table(left, right)
 
-    for left_row, right_row in zip(left_rows, right_rows):
-        left_cells = left_row.split()
-        right_cells = right_row.split()
-        if len(left_cells) != len(right_cells):
-            return False
-        for left_cell, right_cell in zip(left_cells, right_cells):
+
+def _numeric_rows(data: bytes) -> list[list[float | None]] | None:
+    """Parse a whitespace-delimited table whose cells are mostly numbers.
+
+    A cell that does not parse becomes ``None`` rather than discarding its row:
+    these reports begin with a text cell (a sample name, a ``Percentile`` header), and
+    dropping the whole row instead is how a real numeric row silently stops being
+    compared. Placeholders keep columns aligned, and only a table with no numeric
+    cell anywhere is reported as unparseable.
+    """
+    rows = []
+    for raw in data.decode("utf-8", "replace").splitlines():
+        cells = raw.split()
+        if not cells:
+            continue
+        values: list[float | None] = []
+        for cell in cells:
             try:
-                Decimal(left_cell)
-                Decimal(right_cell)
-            except InvalidOperation:
-                if left_cell != right_cell:
-                    return False
-            else:
-                if not _numeric_equal(left_cell, right_cell):
-                    return False
-    return True
+                values.append(float(cell))
+            except ValueError:
+                values.append(None)
+        if any(v is not None for v in values):
+            rows.append(values)
+    return rows or None
 
 
 def compare_results(case: Case, py_result: RunResult, rust_result: RunResult, py_dir: Path, rust_dir: Path) -> bool:
@@ -311,6 +348,31 @@ def compare_results(case: Case, py_result: RunResult, rust_result: RunResult, py
                 ok = False
             else:
                 print(f"  stream comparison PASS (exact, {len(py_text)} characters)")
+        elif case.stream_format == "error_line":
+            # Compare only the final non-empty line -- the operative
+            # `prog: error: <message>` -- plus the exit status, which the caller
+            # checks separately. The usage block printed above it is deliberately
+            # excluded: upstream emits argparse's `usage: ...` summary and the port
+            # emits clap's, and hand-replicating 33 argparse usage strings is a way
+            # to introduce 33 chances to be subtly wrong (DIV-0025). What must match
+            # is WHICH condition was reported and that both sides refused.
+            def _last_error_line(text):
+                for line in reversed([ln for ln in text.splitlines() if ln.strip()]):
+                    return line.strip()
+                return ""
+            py_last = _last_error_line(py_text)
+            rs_last = _last_error_line(rust_text)
+            if not py_last or not rs_last:
+                print("  FAIL error_line comparison: an arm printed no error line "
+                      f"(python={py_last!r} rust={rs_last!r})")
+                ok = False
+            elif py_last != rs_last:
+                print("  FAIL error line differs")
+                print(f"  --- python: {py_last}")
+                print(f"  --- rust  : {rs_last}")
+                ok = False
+            else:
+                print(f"  error line PASS ({py_last!r})")
         elif case.stream_format == "labels":
             try:
                 py_counts = extract_labeled_counts(py_text)
@@ -347,6 +409,53 @@ def compare_results(case: Case, py_result: RunResult, rust_result: RunResult, py
             print(f"  FAIL unsupported stream format: {case.stream_format!r}")
             ok = False
 
+    for rel_path, floor in case.divergent_files:
+        py_file = py_dir / rel_path
+        rust_file = rust_dir / rel_path
+        if not py_file.is_file() or not rust_file.is_file():
+            print(f"  FAIL divergent file '{rel_path}': python_exists={py_file.is_file()} rust_exists={rust_file.is_file()}")
+            ok = False
+            continue
+        py_rows = _numeric_rows(py_file.read_bytes())
+        rust_rows = _numeric_rows(rust_file.read_bytes())
+        if py_rows is None or rust_rows is None:
+            print(f"  FAIL divergent file '{rel_path}': not parseable as numeric rows "
+                  f"(python={py_rows is not None} rust={rust_rows is not None})")
+            ok = False
+            continue
+        widest, where = 0.0, None
+        compared = 0
+        for r, (py_row, rust_row) in enumerate(zip(py_rows, rust_rows)):
+            for c, (pv, rv) in enumerate(zip(py_row, rust_row)):
+                if pv is None or rv is None:
+                    # A label cell, not a numeric cell: comparing it as text is what
+                    # compare_files is for, and there are none here.
+                    continue
+                compared += 1
+                delta = abs(pv - rv)
+                if delta > widest:
+                    widest, where = delta, (r, c)
+        if compared == 0:
+            print(f"  FAIL divergent file '{rel_path}': no numeric cell was "
+                  "compared, so the divergence cannot be pinned")
+            ok = False
+            continue
+        if widest == 0.0:
+            print(f"  FAIL divergent file '{rel_path}': the files are now IDENTICAL.")
+            print("       The recorded divergence no longer holds. Retire the ledger")
+            print("       entry, re-run the command contract tests, and remove this")
+            print("       case from divergent_files in the SAME change.")
+            ok = False
+        elif widest < floor:
+            print(f"  FAIL divergent file '{rel_path}': largest difference is {widest:g}, "
+                  f"below the recorded floor {floor:g}.")
+            print("       The divergence changed shape. Re-derive it and update the")
+            print("       ledger entry and this floor together.")
+            ok = False
+        else:
+            print(f"  divergent file '{rel_path}' PASS (largest difference {widest:g} "
+                  f"at row {where[0]} col {where[1]}, floor {floor:g})")
+
     for rel_path in case.compare_files:
         py_file = py_dir / rel_path
         rust_file = rust_dir / rel_path
@@ -364,13 +473,29 @@ def compare_results(case: Case, py_result: RunResult, rust_result: RunResult, py
         if case.normalize_paths:
             py_bytes = py_bytes.replace(str(py_dir).encode(), b"<SCRATCH_DIR>")
             rust_bytes = rust_bytes.replace(str(rust_dir).encode(), b"<SCRATCH_DIR>")
+        # Two zero-byte files are byte-identical, so without this a command that
+        # truncated its output identically in both arms would pass. A compared file
+        # must contain something unless the case declares empty correct for that
+        # specific file -- naming the file rather than the whole case, so the
+        # exemption cannot quietly extend to an artifact nobody examined.
+        if not py_bytes and rel_path not in case.allow_empty_files:
+            print(f"  FAIL file '{rel_path}': both sides are empty (0 bytes)")
+            print("       If an empty artifact is the correct result here, name the "
+                  "file in allow_empty_files with the reason.")
+            ok = False
+            continue
         numeric = rel_path in case.numeric_files
-        file_equal = _numeric_table_equal(py_bytes, rust_bytes) if numeric else py_bytes == rust_bytes
+        reason = ""
+        if numeric:
+            file_equal, reason = _numeric_table_equal(py_bytes, rust_bytes)
+        else:
+            file_equal = py_bytes == rust_bytes
         if file_equal:
             qualifier = "numeric cells" if numeric else f"byte-identical, {len(py_bytes)} bytes"
             print(f"  file '{rel_path}' PASS ({qualifier})")
         else:
-            print(f"  FAIL file '{rel_path}': byte content differs ({len(py_bytes)} vs {len(rust_bytes)} bytes)")
+            print(f"  FAIL file '{rel_path}': {reason or f'content differs ({len(py_bytes)} vs {len(rust_bytes)} bytes)'}")
+            print(f"       {len(py_bytes)} vs {len(rust_bytes)} bytes")
             print(f"  --- python {rel_path} ---")
             print(py_bytes.decode("utf-8", errors="replace"))
             print(f"  --- rust {rel_path} ---")
@@ -385,6 +510,8 @@ def compare_results(case: Case, py_result: RunResult, rust_result: RunResult, py
         if py_size and rust_size:
             print(f"  file '{rel_path}' PASS (exists on both sides, {py_size}/{rust_size} bytes)")
         else:
+            # `if py_size` treats a zero-byte file as absent, which is the intent:
+            # a truncated deliverable is not a deliverable.
             print(f"  FAIL file '{rel_path}': python_size={py_size!r} rust_size={rust_size!r}")
             ok = False
 
@@ -502,12 +629,37 @@ def ensure_malformed_bam_fixtures() -> None:
         )
 
 
+def _generator_cwd():
+    """A scratch working directory for fixture generators.
+
+    Upstream RSeQC writes `log.txt` into the process's current directory rather than
+    next to its output (`geneBody_coverage.py:57` passes `log_file=Path("log.txt")`).
+    Running the generators with `cwd=REPO_ROOT` therefore dropped a `log.txt` in the
+    repository root -- an untracked file that looks like a stray artefact and has to be
+    cleaned up by hand after every suite run. Confining generator output to a
+    temporary directory keeps the checkout clean without hiding the behaviour, which
+    is separately accounted for by NON_DELIVERABLE_UPSTREAM on the comparison side.
+    """
+    import atexit
+    import shutil
+    import tempfile
+
+    global _GENERATOR_CWD
+    if _GENERATOR_CWD is None or not Path(_GENERATOR_CWD).is_dir():
+        _GENERATOR_CWD = tempfile.mkdtemp(prefix="rseqc-fixtures-")
+        atexit.register(shutil.rmtree, _GENERATOR_CWD, True)
+    return _GENERATOR_CWD
+
+
+_GENERATOR_CWD = None
+
+
 def ensure_bam_stat_fixture() -> None:
     fixture = REPO_ROOT / "verification" / "fixtures" / "bam_stat_basic.bam"
     if fixture.is_file():
         return
     generator = REPO_ROOT / "verification" / "fixtures" / "make_bam_stat_fixture.py"
-    subprocess.run([str(ORACLE_PYTHON), str(generator), str(fixture)], cwd=REPO_ROOT, check=True)
+    subprocess.run([str(ORACLE_PYTHON), str(generator), str(fixture)], cwd=_generator_cwd(), check=True)
 
 
 def ensure_mismatch_profile_fixture() -> None:
@@ -516,7 +668,7 @@ def ensure_mismatch_profile_fixture() -> None:
     if all(path.is_file() for path in required):
         return
     generator = fixture_dir / "make_mismatch_profile_fixture.py"
-    subprocess.run([str(ORACLE_PYTHON), str(generator), str(fixture_dir / "mismatch_profile_basic.bam")], cwd=REPO_ROOT, check=True)
+    subprocess.run([str(ORACLE_PYTHON), str(generator), str(fixture_dir / "mismatch_profile_basic.bam")], cwd=_generator_cwd(), check=True)
 
 
 def ensure_deletion_profile_fixture() -> None:
@@ -525,7 +677,7 @@ def ensure_deletion_profile_fixture() -> None:
     if all(path.is_file() for path in required):
         return
     generator = fixture_dir / "make_deletion_profile_fixture.py"
-    subprocess.run([str(ORACLE_PYTHON), str(generator), str(fixture_dir / "deletion_profile_basic.bam")], cwd=REPO_ROOT, check=True)
+    subprocess.run([str(ORACLE_PYTHON), str(generator), str(fixture_dir / "deletion_profile_basic.bam")], cwd=_generator_cwd(), check=True)
 
 
 def ensure_bam_stat_sam_fixture() -> None:
@@ -537,7 +689,7 @@ def ensure_bam_stat_sam_fixture() -> None:
     if fixture.is_file():
         return
     generator = REPO_ROOT / "verification" / "fixtures" / "make_bam_stat_sam_fixture.py"
-    subprocess.run([str(ORACLE_PYTHON), str(generator), str(fixture)], cwd=REPO_ROOT, check=True)
+    subprocess.run([str(ORACLE_PYTHON), str(generator), str(fixture)], cwd=_generator_cwd(), check=True)
 
 
 def ensure_bam_stat_cram_fixture() -> None:
@@ -554,7 +706,7 @@ def ensure_bam_stat_cram_fixture() -> None:
     if fixture.is_file():
         return
     generator = REPO_ROOT / "verification" / "fixtures" / "make_bam_stat_cram_fixture.py"
-    subprocess.run([str(ORACLE_PYTHON), str(generator), str(fixture)], cwd=REPO_ROOT, check=True)
+    subprocess.run([str(ORACLE_PYTHON), str(generator), str(fixture)], cwd=_generator_cwd(), check=True)
 
 
 def ensure_regression_fixtures() -> None:
@@ -576,7 +728,7 @@ def ensure_regression_fixtures() -> None:
     if all(path.is_file() for path in required):
         return
     generator = fixture_dir / "make_regression_fixtures.py"
-    subprocess.run([str(ORACLE_PYTHON), str(generator), str(fixture_dir)], cwd=REPO_ROOT, check=True)
+    subprocess.run([str(ORACLE_PYTHON), str(generator), str(fixture_dir)], cwd=_generator_cwd(), check=True)
 
 
 def _bam_stat_args(_scratch_dir: Path) -> list[str]:
@@ -622,7 +774,7 @@ def ensure_sc_bamstat_fixture() -> None:
     if all(path.is_file() for path in required):
         return
     generator = fixture_dir / "make_sc_bamstat_fixture.py"
-    subprocess.run([str(ORACLE_PYTHON), str(generator), str(fixture_dir / "sc_bamstat_basic.bam")], cwd=REPO_ROOT, check=True)
+    subprocess.run([str(ORACLE_PYTHON), str(generator), str(fixture_dir / "sc_bamstat_basic.bam")], cwd=_generator_cwd(), check=True)
 
 
 def ensure_sc_editmatrix_fixture() -> None:
@@ -631,7 +783,7 @@ def ensure_sc_editmatrix_fixture() -> None:
     if fixture.is_file():
         return
     generator = fixture_dir / "make_sc_editmatrix_fixture.py"
-    subprocess.run([str(ORACLE_PYTHON), str(generator), str(fixture)], cwd=REPO_ROOT, check=True)
+    subprocess.run([str(ORACLE_PYTHON), str(generator), str(fixture)], cwd=_generator_cwd(), check=True)
 
 
 def ensure_sc_seqqual_fixture() -> None:
@@ -694,7 +846,7 @@ def ensure_rpkm_saturation_fixture() -> None:
     if all(path.is_file() for path in required):
         return
     generator = fixture_dir / "make_rpkm_saturation_fixture.py"
-    subprocess.run([str(ORACLE_PYTHON), str(generator), str(fixture_dir / "rpkm_saturation_basic.bam")], cwd=REPO_ROOT, check=True)
+    subprocess.run([str(ORACLE_PYTHON), str(generator), str(fixture_dir / "rpkm_saturation_basic.bam")], cwd=_generator_cwd(), check=True)
 
 
 def ensure_rpkm_saturation_sam_fixture() -> None:
@@ -707,7 +859,7 @@ def ensure_rpkm_saturation_sam_fixture() -> None:
     if fixture.is_file():
         return
     generator = REPO_ROOT / "verification" / "fixtures" / "make_rpkm_saturation_sam_fixture.py"
-    subprocess.run([str(ORACLE_PYTHON), str(generator), str(fixture)], cwd=REPO_ROOT, check=True)
+    subprocess.run([str(ORACLE_PYTHON), str(generator), str(fixture)], cwd=_generator_cwd(), check=True)
 
 
 def ensure_track_fixtures() -> None:
@@ -727,7 +879,7 @@ def ensure_track_fixtures() -> None:
     if all(path.is_file() for path in required):
         return
     generator = REPO_ROOT / "verification" / "fixtures" / "make_track_fixtures.py"
-    subprocess.run([str(ORACLE_PYTHON), str(generator), str(track_dir)], cwd=REPO_ROOT, check=True)
+    subprocess.run([str(ORACLE_PYTHON), str(generator), str(track_dir)], cwd=_generator_cwd(), check=True)
 
 
 def ensure_genebody_coverage_float_fixture() -> None:
@@ -744,7 +896,7 @@ def ensure_genebody_coverage_float_fixture() -> None:
         return
     fixture_dir.mkdir(parents=True, exist_ok=True)
     generator = REPO_ROOT / "benchmarks" / "generate_workload.py"
-    subprocess.run([str(ORACLE_PYTHON), str(generator), "--size", "300", "--output-dir", str(fixture_dir)], cwd=REPO_ROOT, check=True)
+    subprocess.run([str(ORACLE_PYTHON), str(generator), "--size", "300", "--output-dir", str(fixture_dir)], cwd=_generator_cwd(), check=True)
 
 
 def ensure_genebody_coverage_edge_fixture() -> None:
@@ -761,7 +913,7 @@ def ensure_genebody_coverage_edge_fixture() -> None:
         return
     fixture_dir.mkdir(parents=True, exist_ok=True)
     generator = REPO_ROOT / "verification" / "fixtures" / "make_genebody_coverage_edge_fixture.py"
-    subprocess.run([str(ORACLE_PYTHON), str(generator), str(fixture_dir)], cwd=REPO_ROOT, check=True)
+    subprocess.run([str(ORACLE_PYTHON), str(generator), str(fixture_dir)], cwd=_generator_cwd(), check=True)
 
 
 SYNTHETIC_DIR = REPO_ROOT / "verification" / "fixtures" / "synthetic"
@@ -1685,6 +1837,11 @@ CASES: list[Case] = [
         compare_stream="stdout",
         stream_format="exact",
         compare_files=("out.mismatch_profile.xls", "out.mismatch_profile.r"),
+        # Upstream's mismatchProfile calls sys.exit() on the no-mismatches path,
+        # before the R-script writer runs, so BOTH arms leave a zero-byte .r file.
+        # The stream comparison is the substantive check here: both arms printed
+        # the same "No mismatches found" text.
+        allow_empty_files=("out.mismatch_profile.r",),
     ),
     Case(
         name="mismatch_profile_with_mismatch",
@@ -1723,6 +1880,11 @@ CASES: list[Case] = [
         compare_stream="both",
         stream_format="exact",
         compare_files=("out.junction.xls", "out.junction_plot.r"),
+        # An alignment with no junctions has no rows to tabulate, and both
+        # arms exit before writing the R script, so both artifacts are
+        # legitimately zero bytes. The stream comparison is the substantive
+        # check: both arms printed the same zero-junction report.
+        allow_empty_files=("out.junction.xls", "out.junction_plot.r"),
     ),
     Case(
         name="junction_annotation_sam_text",
@@ -1742,6 +1904,11 @@ CASES: list[Case] = [
         compare_stream="both",
         stream_format="exact",
         compare_files=("out.junction.xls", "out.junction_plot.r"),
+        # An alignment with no junctions has no rows to tabulate, and both
+        # arms exit before writing the R script, so both artifacts are
+        # legitimately zero bytes. The stream comparison is the substantive
+        # check: both arms printed the same zero-junction report.
+        allow_empty_files=("out.junction.xls", "out.junction_plot.r"),
     ),
     Case(
         name="junction_annotation_with_junction",
@@ -2653,6 +2820,142 @@ CASES: list[Case] = [
         normalize_paths=True,
         strip_log_prefixes=True,
         expected_exit_code=1,
+    ),
+    Case(
+        name="read_NVC_missing_output_dir",
+        # Upstream's validate_args refuses an output prefix whose parent directory
+        # does not exist, before reading any input, via parser.error() -> exit 2.
+        # 19 of the port's binaries had no such check: they read the whole
+        # alignment, computed every metric, and only then failed on the first output
+        # open with `No such file or directory (os error 2)` and exit 1 -- an error
+        # naming neither the directory nor the flag, indistinguishable from a
+        # missing input, arrived at after all the work. That is the audit's "no
+        # silent metric loss" failure: the metrics are computed then discarded
+        # without ever being reported.
+        #
+        # Compared on the final error line and the exit status; the usage block
+        # above the message is argparse's on one side and clap's on the other
+        # (DIV-0025).
+        ensure_fixture=ensure_synthetic_fixtures,
+        py_script="read_NVC.py",
+        rust_bin="read_NVC",
+        py_args=lambda d: ["-i", _synthetic("pe.bam"), "-o", str(d / "absent_dir" / "out"),
+                           "--skip-plot"],
+        rust_args=lambda d: ["-i", _synthetic("pe.bam"), "-o", str(d / "absent_dir" / "out"),
+                             "--skip-plot"],
+        compare_stream="stderr",
+        stream_format="error_line",
+        normalize_paths=True,
+        py_expected_exit=2,
+        rust_expected_exit=2,
+    ),
+    Case(
+        name="read_GC_missing_output_dir",
+        # Same upstream validate_args rule, second command, so the contract is not
+        # recorded from a single sample.
+        ensure_fixture=ensure_synthetic_fixtures,
+        py_script="read_GC.py",
+        rust_bin="read_GC",
+        py_args=lambda d: ["-i", _synthetic("pe.bam"), "-o", str(d / "absent_dir" / "out"),
+                           "--skip-plot"],
+        rust_args=lambda d: ["-i", _synthetic("pe.bam"), "-o", str(d / "absent_dir" / "out"),
+                             "--skip-plot"],
+        compare_stream="stderr",
+        stream_format="error_line",
+        normalize_paths=True,
+        py_expected_exit=2,
+        rust_expected_exit=2,
+    ),
+    Case(
+        name="geneBody_coverage_missing_output_dir",
+        # Same rule, and this command additionally reads a gene model, so it is the
+        # case where doing the work first was most obviously wasteful.
+        ensure_fixture=ensure_synthetic_fixtures,
+        py_script="geneBody_coverage.py",
+        rust_bin="geneBody_coverage",
+        py_args=lambda d: ["-i", _synthetic("pe.bam"), "-r", _synthetic("model.bed12"),
+                           "-o", str(d / "absent_dir" / "out"), "--skip-plot"],
+        rust_args=lambda d: ["-i", _synthetic("pe.bam"), "-r", _synthetic("model.bed12"),
+                             "-o", str(d / "absent_dir" / "out"), "--skip-plot"],
+        compare_stream="stderr",
+        stream_format="error_line",
+        normalize_paths=True,
+        py_expected_exit=2,
+        rust_expected_exit=2,
+    ),
+    Case(
+        name="junction_annotation_missing_output_dir",
+        # Same rule for a command that writes two files from one prefix, so the
+        # refusal is proven to precede both writes.
+        ensure_fixture=ensure_synthetic_fixtures,
+        py_script="junction_annotation.py",
+        rust_bin="junction_annotation",
+        py_args=lambda d: ["-i", _synthetic("pe.bam"), "-r", _synthetic("model.bed12"),
+                           "-o", str(d / "absent_dir" / "out")],
+        rust_args=lambda d: ["-i", _synthetic("pe.bam"), "-r", _synthetic("model.bed12"),
+                             "-o", str(d / "absent_dir" / "out")],
+        compare_stream="stderr",
+        stream_format="error_line",
+        normalize_paths=True,
+        py_expected_exit=2,
+        rust_expected_exit=2,
+    ),
+    Case(
+        name="bam2wig_missing_output_dir_is_upstream_inconsistent",
+        # The counterpart, and the reason the check is NOT applied everywhere:
+        # bam2wig.py and bam2fq.py are the only two upstream scripts that take an
+        # output prefix and do not validate its parent. Upstream reaches the work and
+        # fails on the first output open with exit 1, so a port that "fixed" this
+        # would disagree with upstream on an input upstream accepts (DIV-0026). Only
+        # the exit status is compared: upstream's message is Python's OSError
+        # repr, `[Errno 2] No such file or directory: '.../out.wig'`, and the port's
+        # is Rust's io::Error Display, so the text differs by construction.
+        ensure_fixture=ensure_synthetic_fixtures,
+        py_script="bam2wig.py",
+        rust_bin="bam2wig",
+        py_args=lambda d: ["-i", _synthetic("pe.bam"), "-s", _synthetic("chrom.sizes"),
+                           "-o", str(d / "absent_dir" / "out")],
+        rust_args=lambda d: ["-i", _synthetic("pe.bam"), "-s", _synthetic("chrom.sizes"),
+                             "-o", str(d / "absent_dir" / "out")],
+        compare_stream="none",
+        py_expected_exit=1,
+        rust_expected_exit=1,
+    ),
+    Case(
+        name="genebody_coverage_depth_cap_divergence",
+        # DIV-0024. The main synthetic fixture has depth around 40, so it cannot
+        # reach pysam's default max_depth of 8000 and cannot test it: this suite
+        # passed 90/90 while geneBody_coverage disagreed with upstream on 76 of 100
+        # bins of a real 8.2M-record alignment. The benchmark harness's structural
+        # gate is what caught it.
+        #
+        # The port reimplements max_depth as a per-position budget over the VISITED
+        # set (crates/commands/src/tin.rs:274-296). Upstream's budget is over the
+        # pileup buffer. The difference is invisible until the cap binds AND a read
+        # is in a deletion, which is why this fixture is 8,100 copies of one
+        # 20M20D20M read: the cap binds, the reads become is_del through the middle,
+        # and the port reports 0 at positions the clean reads demonstrably cover.
+        #
+        # Asserted as a divergence WITH A FLOOR rather than tolerated: this case
+        # passes only while the two files still differ by at least the recorded
+        # amount. When the cap semantics are fixed the files become identical, this
+        # case fails, and it says which ledger entry to retire. A divergence that
+        # silently changes shape also fails here.
+        #
+        # Measured on this fixture: 50 of 100 bins differ, largest single-cell
+        # difference 20 reads at bin 39, and the port is LOW at every one of them
+        # (11..20 reads where clean reads demonstrably cover). The floor of 10 sits
+        # between "identical" and the observed value, so a fix trips the case and
+        # fixture jitter does not.
+        ensure_fixture=ensure_synthetic_fixtures,
+        py_script="geneBody_coverage.py",
+        rust_bin="geneBody_coverage",
+        py_args=lambda d: ["-i", _synthetic("depth_cap.bam"), "-r", _synthetic("depth_cap.bed12"),
+                           "-o", str(d / "out"), "--skip-plot"],
+        rust_args=lambda d: ["-i", _synthetic("depth_cap.bam"), "-r", _synthetic("depth_cap.bed12"),
+                             "-o", str(d / "out"), "--skip-plot"],
+        compare_stream="none",
+        divergent_files=(("out.geneBodyCoverage.txt", 10.0),),
     ),
     Case(
         name="genebody_coverage_synthetic_pileup",

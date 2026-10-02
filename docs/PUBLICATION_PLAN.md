@@ -1,5 +1,66 @@
 # Publication gates plan — full vs restricted-first release
 
+> **Current assessment (2026-10-01):** use the
+> [independent readiness audit and delivery plan](READINESS_AUDIT_2026-10-01.md)
+> for current blockers, testing, benchmarking, release scope and venue selection.
+>
+> **What has been closed since the audit, so a reader does not re-do it:**
+>
+> - The converter defect is fixed. UCSC refGene is half-open 0-based, confirmed
+>   against the genome sequence (60/60 transcripts begin with ATG at their CDS
+>   start under that reading, 0/60 under a 1-based one) and pinned by hand-derived
+>   truth cases. The rat annotation was regenerated, the STAR index rebuilt from
+>   it, and `SRR1177982` re-aligned. The annotated junction fraction moved
+>   0.026 -> 0.617. A second defect surfaced doing that: the index builder
+>   regenerated its contig subset only when the file was *absent*, so the corrected
+>   annotation was silently ignored and STAR reported success. It now records input
+>   digests.
+> - The benchmark-harness defects are fixed and tested: failure-closed comparators,
+>   per-command declared streams and artifacts, a gate that no longer passes two
+>   empty trees, a timeout handler that cannot signal the harness's own process
+>   group, adjacent matched-block scheduling, and per-run provenance.
+> - The differential suite is **90/90**, re-run with the failure-closed comparators.
+> - CI now runs this project's own validation machinery on every push, every pull
+>   request and every tag, and `release.yml` cannot publish without it.
+> - The oracle environment is pinned and drift-checked.
+> - The archive is allowlisted, bundles its licence and citation metadata, records
+>   per-file digests, and is smoke-tested outside the source tree on a real workload
+>   and on paths containing spaces.
+> - 153 unit tests, 120 command-contract checks and 41 interoperability checks now
+>   cover the validation machinery itself. Every comparator test asserts a
+>   *failing* result.
+> - The two harnesses' numeric table comparator is now one implementation
+>   (`verification/comparators.py`) rather than two private copies that could drift
+>   apart again, and the shared module's own tests assert that the differential
+>   runner really imports it.
+> - The rat 0.617 figure is **confirmed**: both implementations were run on the
+>   identical corrected, index-bound inputs and produced byte-identical junction
+>   tables, stdout and stderr. Confirming it required finding a third defect of the
+>   same family (the BAM had outlived the index it was aligned against, so every
+>   annotation digest matched while the endpoint result was not reproducible).
+>   `verification/check_rat_reference.py` now asserts the whole chain, 27 checks.
+> - The per-assembly STAR index directories, and the alignment's refusal to run
+>   against an index whose stamp disagrees with the annotation beside it.
+> - Cost per record measured over a 174x range on the real 8.2M-record rat
+>   alignment, and behaviour past the memory limit measured at 80/40/20% of each
+>   command's limit-free peak: no partial output, no input damage, and an internal
+>   allocator abort rather than an actionable message (recorded as a known gap).
+>
+> **What has not been closed:** the permanent repository URL and support channel
+> (maintainer decisions, and publication is blocked until they are made), the
+> licence-variant decision (DIV-0003), the Python API stub, whole-genome and
+> production-scale pilots at the audit's 10M/50M-pair targets, concurrent-invocation
+> memory, an actionable out-of-memory diagnostic, the benchmark study v2 run, and
+> human review of the manuscript. The original full standalone/Python target remains
+> a later milestone.
+>
+> The rat stratum is confirmed but **exposed**: inspected five times across three
+> preparation states, so its figure is diagnostic. A fresh independent rat sample is
+> required before it can carry a biological claim, and that needs data this project
+> has not selected yet.
+>
+> The dated snapshots below are historical.
+
 Prepared: 2026-09-17. Baseline: working tree at `6d088e5` (plus uncommitted
 `read_hexamer` fix under review).
 
@@ -11,17 +72,32 @@ Prepared: 2026-09-17. Baseline: working tree at `6d088e5` (plus uncommitted
 >    it from R1") is done: fixed in `3b95212`, differential case added in `38760bb`.
 > 2. **The 12 zero-coverage commands now have cases.** The matrix is **84 cases
 >    spanning all 33 commands** (was 24 cases / 21 commands). All 84 pass.
-> 3. **T5 is substantially done.** `benchmarks/protocol.md` is frozen and
->    preregistered; all 29 benchmarkable commands are measured at 10 paired
->    repetitions with a structural equivalence gate; gate G6a is met. What remains
->    is G6b — the committed results still trace to a commit with `git_dirty: true`,
->    so a final re-run against a clean tree is required before any performance
->    claim may cite them.
+> 3. **T5 is NOT met, and this entry is superseded (corrected 2026-10-01).**
+>    `benchmarks/protocol.md` was frozen and used, and 29 benchmarkable commands
+>    were measured at 10 paired repetitions with a structural equivalence gate.
+>    The readiness audit then found defects in the harness that produced those
+>    numbers: comparators that accepted corrupted BAM qualities, flags, tags and
+>    mate fields, a truncated FASTQ record, and a finite metric replaced by NaN;
+>    an output gate that passed two empty directories and never compared stdout at
+>    all; and a schedule whose "pairs" were not the pairs it claimed -- at its own
+>    recorded seed 20260929, all ten had different repetition IDs. Every recorded
+>    gate pass and every interval from that run is void as equivalence or precision
+>    evidence.
 >
-> Still open and unchanged: the LICENSE decision and DIV-0003, `crates/python` (still a
-> 2-line stub), and the R1 matrix's missing **negative / option / overwrite**
-> branches — 84 cases but only ~2 exercise a failure path, which is the gap that let
-> a real `tin` regression ship (see §5.1).
+>    The defects are repaired and covered by executable tests;
+>    `benchmarks/protocol-v2.md` specifies the replacement study, which has not
+>    been run at scale. **No performance claim may cite the version-1 numbers.**
+>    This supersedes both the original "G6a is met" and the "G6b needs a clean-tree
+>    re-run" framing: a clean-tree re-run of the same harness would still not
+>    produce publishable evidence.
+>
+> **Still open:** the LICENSE decision and DIV-0003, `crates/python` (still a
+> 2-line stub), and the R1 matrix's **negative / option / overwrite** branches. The
+> matrix is 90 cases but only three exercise a declared failure path, which is the
+> gap that let a real `tin` regression ship (see §5.1). The
+> `verification/check_command_contracts.py` layer now covers failure paths across
+> ten commands, but as a contract check rather than as per-command differential
+> cases with expected-upstream-failure declarations.
 
 This plan finishes the scoping decision required by the goal: either finish
 all work scoped to **full 33-command + standalone + API publication gates**,
@@ -172,21 +248,39 @@ Original list, annotated:
 
 1. ~~Decide `read_hexamer`~~ **DONE** (`3b95212`, `38760bb`).
 2. Extend the matrix with error/option/overwrite branches (§3 item 5).
-   **STILL OPEN and now the highest-value item** — see §5.1.
-3. Pin the R1 oracle profile. **PARTLY DONE**: `compatibility/upstream.lock`
-   pins the source commit and a source-tree hash; the executable environment
-   (pysam/htslib/R versions, container digest) is still unpinned.
+   **PARTLY DONE, 2026-10-01.** The 90-case matrix still contains only three cases
+   with a declared failure expectation. `verification/check_command_contracts.py`
+   now covers missing, empty, unreadable and malformed input, invalid flags,
+   missing sidecars, existing output, spaces in paths, killed and concurrent runs
+   across ten commands, and the comparators reject a NaN metric, a truncated FASTQ
+   record and corrupted BAM fields. **Still open:** per-command differential cases
+   with `expected-upstream-failure` declarations, so a failure path is compared
+   against what upstream actually does rather than only against the port's own
+   contract. See §5.1.
+3. Pin the R1 oracle profile. **DONE for the executable environment, PARTLY for
+   reproducibility** (2026-10-01): `compatibility/upstream.lock` now records the
+   interpreter, the full `pip freeze`, the importable versions and each external
+   helper's status, and `verification/check_oracle_env.py` exits non-zero on
+   drift. **Still open:** wheel digests (so the pin is version-exact, not
+   bit-exact), locale, timezone, and a scripted rebuild from a clean checkout.
 4. ~~Start T3 for the 12 missing commands~~ **DONE**: all 33 commands have
    differential cases. `crates/render` remains a partial implementation
    (seqlogo SVG/PNG only).
-5. ~~Freeze the benchmark protocol only after T3–T4 outputs qualify~~ **DONE**:
-   the protocol was frozen and used; T4 is still open, so the *performance
-   claims* remain internal engineering evidence rather than publishable.
+5. ~~Freeze the benchmark protocol only after T3–T4 outputs qualify~~
+   **SUPERSEDED** (2026-10-01): the protocol was frozen and used, and the harness
+   that used it was then found defective. `benchmarks/protocol-v2.md` is the
+   replacement protocol; its study has not been run. Freezing a protocol was not
+   the bottleneck — the harness behind it was.
 
 Newly added, in priority order:
 
-6. **Re-run the benchmark against a clean tree** to satisfy G6b. The committed
-   `results-main.json` records `git_dirty: true`, which gate G6b forbids.
+6. ~~Re-run the benchmark against a clean tree to satisfy G6b.~~
+   **REPLACED, 2026-10-01.** A clean-tree re-run of the version-1 harness would
+   still not produce publishable evidence: its gate could pass two empty output
+   directories and never compared stdout, and its intervals described unpaired
+   measurements. The replacement task is item 5.0's item 5 plus the study in
+   `benchmarks/protocol-v2.md`, and it needs isolated hardware, which this machine
+   is not.
 7. **Resolve DIV-0003 / ship a LICENSE file.** Upstream's own metadata is
    self-contradictory (GPL-3.0-or-later in README, GPLv3 in LICENSE, a GPLv2
    packaging classifier), and this project cannot choose its own release

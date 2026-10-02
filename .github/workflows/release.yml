@@ -1,16 +1,19 @@
 name: Release
 
-# Triggered by pushing a version tag (e.g. `v0.1.0`). Builds a checksummed
-# distribution archive via scripts/build-release-archive.sh and attaches
-# it to a GitHub Release. Part of PORTING_PLAN.md Step 10/11 ("Produce
-# versioned source archives, supported binary distributions...", "push a
-# reviewable release candidate, and publish the versioned release after
-# gates pass").
+# Triggered by pushing a version tag (e.g. `v0.1.0-beta.1`). Validates the
+# release candidate and, only if it passes, publishes a checksummed distribution
+# archive.
 #
-# Single-platform (Linux x86_64, the runner's host triple) only for now
-# -- see build-release-archive.sh's own header comment for what's not
-# covered yet (multi-platform builds, clean-room testing without
-# Python/R/wigToBigWig, a bundled LICENSE file pending DIV-0003).
+# The gate order matters. A tag push is a request to publish, and the audit's
+# finding about this file was that it could publish without anything having
+# checked the parts that were broken: no comparator tests, no truth cases, no
+# differential run, and no validation of the archive that actually ships. So
+# `needs` makes publication conditional on validation rather than merely
+# adjacent to it.
+#
+# Single-platform (Linux x86_64) only, which is the declared ABI floor in the
+# archive manifest. macOS/Windows/ARM artifacts ship only after installed-
+# artifact validation on each platform.
 
 on:
   push:
@@ -21,12 +24,21 @@ env:
   CARGO_TERM_COLOR: always
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
-  build-and-release:
-    name: Build archive and publish release
-    runs-on: ubuntu-latest
+  # A tag push cannot be a surprise publication: everything below must pass
+  # first, and `publish` does not start until they have.
+  validate:
+    name: Validate release candidate
+    # Reuses the same checks that run on every push, so a tag cannot publish
+    # something the ordinary CI would have rejected.
+    uses: ./.github/workflows/release-validation.yml
+
+  build:
+    name: Build and test the release archive
+    runs-on: ubuntu-22.04
+    needs: validate
     steps:
       - uses: actions/checkout@v7
 
@@ -39,8 +51,55 @@ jobs:
       - name: cargo clippy --workspace --all-targets --locked
         run: cargo clippy --workspace --all-targets --locked -- -D warnings
 
-      - name: Build distribution archive
+      # Builds the archive, then extracts it outside the source tree and runs a real
+      # workload through it: bam_stat, infer_experiment and bam2fq against the
+      # bundled example, with PATH restricted to the archive's own bin/.
+      #
+      # No ALLOW_UNRESOLVED_URL here, deliberately. The archive script's strict
+      # metadata check refuses to build while `Cargo.toml` and `CITATION.cff` still
+      # carry `TBD` URLs, so a tag cannot publish a release whose metadata resolves
+      # to nobody. Setting the permanent repository URL is the maintainer's step.
+      - name: Build and validate the distribution archive
         run: scripts/build-release-archive.sh dist
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-archive-candidate
+          path: dist/*.tar.gz*
+          if-no-files-found: error
+
+  publish:
+    name: Publish release
+    runs-on: ubuntu-22.04
+    needs: [validate, build]
+    # Only the tag's own commit is published, and only from the artefact this
+    # run produced. A release cannot be assembled from whatever happens to be in
+    # the runner's workspace.
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/download-artifact@v4
+        with:
+          name: release-archive-candidate
+          path: dist
+
+      - name: Record what is being published
+        run: |
+          {
+            echo "revision: $(git rev-parse HEAD)"
+            echo "dirty: $([ -z "$(git status --porcelain)" ] && echo false || echo true)"
+            echo "archive: $(ls dist/*.tar.gz)"
+            echo "sha256:"
+            cat dist/*.sha256
+          } | tee release-provenance.txt
+
+      - name: Refuse to publish from a dirty tree
+        run: |
+          if [ -n "$(git status --porcelain)" ]; then
+            echo "::error::Refusing to publish a release built from a dirty tree."
+            exit 1
+          fi
 
       - name: Publish GitHub Release
         uses: softprops/action-gh-release@v2
@@ -49,3 +108,4 @@ jobs:
             dist/*.tar.gz
             dist/*.tar.gz.sha256
           generate_release_notes: true
+          body_path: release-provenance.txt

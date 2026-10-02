@@ -76,6 +76,26 @@ fn run(args: &Args) -> std::io::Result<()> {
     if args.sample_size > 1000 {
         eprintln!("--sample-size is greater than 1000; reduce it if performance is poor");
     }
+    // Upstream validates the output directory BEFORE reading the alignment:
+    //   if not args.output_dir.exists(): parser.error("output directory does not exist: ...")
+    //   if not args.output_dir.is_dir():   parser.error("output path is not a directory: ...")
+    // and exits 2 through argparse. Without this check the whole alignment is
+    // scored first and the failure surfaces as a bare ENOENT when the first output
+    // file is created -- after minutes of work, with no message naming the directory
+    // that was wrong. Found by the command-contract checks in
+    // verification/check_command_contracts.py.
+    if !args.output_dir.exists() {
+        return Err(std::io::Error::other(format!(
+            "output directory does not exist: {}",
+            args.output_dir.display()
+        )));
+    }
+    if !args.output_dir.is_dir() {
+        return Err(std::io::Error::other(format!(
+            "output path is not a directory: {}",
+            args.output_dir.display()
+        )));
+    }
     eprintln!("Get BAM file(s) ...");
     let mut bam_files = get_bam_files(&args.input_files);
     bam_files.sort();

@@ -769,6 +769,58 @@ class Gen:
             bw.close()
 
 
+def make_depth_cap_fixture(out: Path) -> None:
+    """A pileup deep enough to bind pysam's default max_depth of 8000.
+
+    Written because geneBody_coverage's real-data divergence (DIV-0024) lives in
+    max_depth semantics, and the main synthetic fixture has depth around 40 -- far
+    below any cap, so the differential suite passed 90/90 while the command was wrong
+    on real data. A fixture that cannot reach the threshold cannot test the
+    threshold.
+
+    8,100 copies of one 20M20D20M read, so the cap binds at the 20M, the reads are
+    in a deletion (is_del) through the middle, and return matched at the second 20M.
+    A handful of clean single reads are included so a port that reports 0 at a
+    position that clean reads demonstrably cover cannot pass.
+    """
+    contig = "chrCap"
+    start, length = 20_000, 100
+    header = {"HD": {"VN": "1.6", "SO": "coordinate"},
+              "SQ": [{"SN": contig, "LN": 40_000}]}
+
+    def segment(pos, name, cigar, seq, qual="I" * 40):
+        a = pysam.AlignedSegment()
+        a.query_name = name
+        a.query_sequence = seq
+        a.query_qualities = pysam.qualitystring_to_array(qual)
+        a.flag = 0
+        a.reference_id = 0
+        a.reference_start = pos
+        a.cigarstring = cigar
+        a.mapping_quality = 60
+        a.next_reference_id = 0
+        a.next_reference_start = pos
+        a.template_length = 0
+        return a
+
+    records = []
+    for i in range(8_100):
+        records.append(segment(start + 10, f"cap{i}", "20M20D20M", "A" * 40))
+    for i in range(40):
+        records.append(segment(start + 20 + i, f"clean{i}", "20M", "C" * 20, "I" * 20))
+    records.sort(key=lambda r: r.reference_start)
+
+    bam = out / "depth_cap.bam"
+    with pysam.AlignmentFile(str(bam), "wb", header=header) as handle:
+        for record in records:
+            handle.write(record)
+    pysam.index(str(bam))
+    (out / "depth_cap.bed12").write_text(
+        f"{contig}\t{start}\t{start + length}\tCAP1\t0\t+\t{start}\t"
+        f"{start + length}\t0\t1\t{length},\t0,\n"
+    )
+
+
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("--seed", type=int, default=1)
@@ -793,6 +845,7 @@ def main() -> None:
     g.saturation_bams()
     g.write_fastx(pe)
     g.write_bigwigs()
+    make_depth_cap_fixture(out)
     # a BAM-list file for geneBody_coverage.py/tin.py
     (out / "bams.txt").write_text(f"{out / 'pe.bam'}\n{out / 'se.bam'}\n")
 

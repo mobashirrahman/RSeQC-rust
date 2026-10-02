@@ -39,6 +39,19 @@ The repository review established:
 - Rendering and Python binding crates contain only documentation. Several commands still invoke `Rscript`, `wigToBigWig`, or `htseq-count`. `sc_seqLogo` always fails after producing its count matrix.
 - The oracle lock identifies a source snapshot but does not lock the complete execution environment. The local diagnostic probes used pysam `0.24.1` and its reported samtools version `1.24`; these observations are not an environment lock.
 
+> **Status 2026-10-01: the executable environment is now pinned, with two limits
+> recorded rather than papered over.** `compatibility/upstream.lock` carries the
+> interpreter, the full `pip freeze`, the importable-version checks and the
+> external helper programs with their status; `verification/check_oracle_env.py`
+> compares the live environment against it and exits non-zero on drift, so a
+> differential result can no longer be silently attributed to an unpinned oracle.
+> **What is still not closed, per that file's own open items:** wheel digests are
+> not recorded, so the pin is version-exact rather than bit-exact; locale and
+> timezone are not recorded; and the fixture-panel environment (STAR 2.7.11b in a
+> micromamba prefix outside the repository) cannot be rebuilt from a fresh
+> checkout. The lock says so where a reader will see it, rather than leaving the
+> absence to be discovered.
+
 The original five passes are **smoke evidence**, not command-wide qualifications. The audit below found failures outside their input space without changing production code.
 
 ### 2.1 Confirmed loopholes and defects
@@ -100,6 +113,42 @@ PYTHONDONTWRITEBYTECODE=1 oracle/venv/bin/python3 verification/run_diff.py
 
 Run the commands separately so a formatting failure does not suppress other diagnostics. The last command requires the separately provisioned local oracle. These commands do not execute the future matrix, property tests, biological validation, or publication benchmarks described below. The historical audit table above records the runner's former AUD-01/02/03/10 weaknesses; the current working-tree runner has executable checks for those false-pass paths, but provenance binding and resource isolation still need to be completed for a publication release.
 
+#### Validation-machinery checks (added 2026-10-01)
+
+The 2026-10-01 readiness audit found that nothing in CI ran this project's own
+validation machinery, so a comparator or a truth case could break unnoticed. These
+run without the oracle, in seconds, and are mandatory in
+`.github/workflows/release-validation.yml`:
+
+```bash
+# The comparators must still reject corrupted output. Every test asserts a FAILING
+# result for a deliberate defect; if a comparator stops rejecting corruption, this
+# goes red rather than letting a regression become a reported speedup.
+oracle/venv/bin/python3 benchmarks/test_bench_harness.py     # 49 tests
+oracle/venv/bin/python3 verification/test_comparators.py     # 31 tests
+python3 verification/test_run_diff.py                        # 19 tests
+
+# Independent truth cases: hand-derived expectations, not recordings of output.
+python3 datasets/test_refgene_to_gtf.py                      #  9 tests
+cargo test --locked -p rseqc-formats  --test semantic_truth
+cargo test --locked -p rseqc-commands --test scientific_semantics
+
+# The oracle must match its lock before a differential result means anything.
+oracle/venv/bin/python3 verification/check_oracle_env.py
+
+# Interoperability, with independent consumers (htslib via pysam).
+oracle/venv/bin/python3 verification/check_interop.py
+```
+
+`datasets/verify_refgene_frame.py` additionally confirms the UCSC refGene
+coordinate frame against the genome sequence rather than against documentation; it
+needs network access and is run manually, not in CI.
+
+**What these do not establish.** Harness credibility is not scientific validity.
+A comparator that correctly rejects every corruption still says nothing about
+whether the biological expectations are right; that is the endpoint suite's job, and
+its own limits are recorded in [`ENDPOINT_RESULTS.md`](datasets/ENDPOINT_RESULTS.md).
+
 #### Working-tree first executable gate (2026-09-17)
 
 The first regression gate is now executable and reproducible from the repository:
@@ -139,6 +188,7 @@ Before expanding goldens:
 - Record a canonical file-content manifest and hashes. The existing hash of a host-generated tar stream is sensitive to archive ordering and metadata; specify an exact reproducible archive recipe or prefer sorted relative-path/content hashes. Store source archives with persistent access.
 - Cross-check the published release separately. A GitHub commit declaring version `5.0.5` is not evidence of PyPI `5.0.5` compatibility. Keep distinct oracle profiles if contents differ.
 - Lock Python, pysam **and bundled htslib/samtools**, bx-python, NumPy, pandas, pyBigWig/libBigWig, logomaker, matplotlib, R, R packages, fonts, `htseq-count`, and UCSC helpers as applicable. Capture build options, resolved executable paths, package hashes, OS/architecture, locale, timezone, and image digest.
+  - **Done (2026-10-01):** interpreter version, `pip freeze`, importable versions and external-program status are in [`compatibility/upstream.lock`](compatibility/upstream.lock) and verified by [`verification/check_oracle_env.py`](verification/check_oracle_env.py). **Still open:** wheel digests (so the pin is version-exact, not bit-exact), locale, timezone, and a scripted rebuild from a clean checkout. Each is listed in the lock's `open_items`.
 - Provide a scripted environment rebuild from a clean checkout and exercise all 33 commands with real inputs, including plotting/conversion. Import/help checks do not establish a functioning oracle.
 - Run a reference case repeatedly to establish deterministic fields and nondeterminism before creating a golden. Record random state and environment such as `PYTHONHASHSEED` where relevant.
 - Hash before and after execution to detect oracle/fixture mutation. Never patch the primary reference to make it pass. A necessary patch or seeded instrumentation creates a separately named profile with a diff and justification.
@@ -165,6 +215,25 @@ Each case must declare input hashes, oracle/candidate profiles, expected outcome
 - Cache only by source, binary, oracle environment, inputs, case definition, comparator, tolerance profile, and runner hashes. A stale cache cannot satisfy a changed requirement.
 
 Different arguments on the two sides are allowed only as an explicit capability-scoped case. For example, a reference `--skip-plot` versus a candidate with no plotting option tests selected data outputs, not invocation or complete output compatibility.
+
+#### What this contract now has, and what it still lacks (2026-10-01)
+
+The audit found the benchmark harness violating several clauses above, and those
+are now closed with executable tests:
+
+| Contract clause | Status |
+|---|---|
+| "A positive case requires ... all required artifacts/fields. Both programs failing is never a positive pass." | Closed. Declared artifacts per command, per-command stdout labels, and a shared non-zero exit is a failure. `benchmarks/test_bench_harness.py`. |
+| "Compare the complete output tree to an allowlist" | Closed for the benchmark harness: declared artifacts are required, one-sided files fail except documented ones. The differential runner's own output-tree allowlist is still partial. |
+| "Check file types, sizes, nonempty schemas where required. Do not accept a stale artifact." | Closed for emptiness (zero-byte files fail) and for staleness (every timed run's artifacts are validated, not only the last). |
+| "A timeout must terminate the whole process group." | Closed, and the defect was serious: the previous handler called `killpg(getpgid(0))`, and `subprocess.run`'s `TimeoutExpired` carries no PID, so `getpgid(0)` returned the *caller's* group. Executed against the old code, the timeout test killed the test runner itself with SIGKILL. |
+| "Record signal, timeout, OOM, dependency failure, and ordinary exit separately." | Partially closed. Timeout and exit are recorded per run. OOM and signal are not distinguished from an ordinary non-zero exit in the differential runner. |
+| "Build the candidate from the claimed revision with `--locked`. Capture ... binary hashes." | Closed for the benchmark harness (per-run SHA256 of every binary). The differential runner does not yet bind its results to a binary hash. |
+| "Use bounded CPU/memory/disk/wall time" | Wall time is bounded in the benchmark harness. CPU, memory and disk bounds are not. |
+| "Enforce strict result states: ... `infrastructure-error`" | Partially closed. `unsupported` and `expected-upstream-failure` are distinguished; `infrastructure-error` and `not-run` as distinct states are not. |
+
+The remaining gaps are listed rather than folded into the historical AUD table,
+because a closed finding and an unexamined clause must not look alike.
 
 ### 5.2 Case-manifest design
 
@@ -437,6 +506,13 @@ Performance claims start only after the exact workload passes the relevant scien
 - Match preprocessing and input files exactly, and record prebuilt indexes. Do not omit the port's in-memory indexing cost while including upstream setup. Report installation/build time separately from runtime.
 - Record CPU, core count, affinity, RAM, NUMA, storage/filesystem, OS/kernel, power/frequency policy, resource limits, compiler/target features, optimization flags, library versions, executable hashes, environment, and storage/cache state.
 - Measure wall time, total user/system CPU, peak concurrent memory for the **whole process tree**, I/O, output size, and throughput with a precise denominator. Summing child peak RSS is not peak concurrent memory. Account for temporary files and external R/counting/conversion processes.
+  - **Note on what GNU time reports (2026-10-01).** `/usr/bin/time -v`'s "Maximum
+    resident set size" is the largest *single* child's RSS — Linux documents
+    `RUSAGE_CHILDREN.ru_maxrss` that way — not the sum over a concurrently running
+    process tree. For a helper-heavy workflow the real simultaneous footprint is
+    larger, so the benchmark reports this figure labelled as what it is and takes a
+    separate aggregate process-tree measurement where the two differ materially. The
+    earlier benchmark treated it as aggregate.
 - Begin with one-thread parity, explicitly controlling implicit threading in dependencies and external helpers. Add scaling only for supported modes with identical correctness. Keep default-versus-default and tuned-versus-tuned results separate.
 - Use isolated hardware for publication numbers. Shared CI measurements detect gross regressions but cannot support a precise published speedup on their own.
 
@@ -444,7 +520,22 @@ Performance claims start only after the exact workload passes the relevant scien
 
 Use separate pilot runs to choose runtime/resource budgets and repetition counts. As an initial protocol, use at least 3 untimed/pilot observations where relevant and at least 10 measured paired repetitions for a primary deterministic comparison; increase the fixed sample size when pilot variation requires it. Freeze the schedule before collecting the final measurements. Expensive cases can use a different justified preregistered design; do not silently drop them.
 
-Randomize/interleave reference and candidate within comparable blocks. Measure warm-cache workloads separately from genuinely controlled cold-cache workloads, documenting how cache state was established. A new process is not a cold cache. Never flush shared machine caches casually.
+> **Pairing is adjacency, and this clause has been read the wrong way once already
+> (2026-10-01).** "Randomize/interleave reference and candidate within comparable
+> blocks" does not license shuffling individual arms and zipping two independently
+> ordered result lists afterwards. The version-1 harness did exactly that, and at its
+> own recorded seed 20260929 all ten "pairs" had different repetition IDs — so the
+> bootstrap resampled pairs that were never actually paired, and the interval
+> described unpaired measurements. Machine drift moves on the timescale of a single
+> run, so pairing must be established by running each repetition's two arms **back to
+> back**. Randomisation belongs *inside* the block, deciding only which arm goes
+> first; that keeps the original intent — no arm systematically occupying the warmer
+> slot — without destroying the pairing the interval depends on. Pair identity must be
+> carried by the schedule itself, never reconstructed by position in two lists.
+
+Measure warm-cache workloads separately from genuinely controlled cold-cache workloads, documenting how cache state was established. A new process is not a cold cache. Never flush shared machine caches casually.
+
+Declare a precision rule in advance: begin with ten valid matched pairs per command and add pairs in blocks of five while the interval's relative width exceeds a stated threshold, up to a stated maximum. Fixing the rule before the data are seen is what stops the stopping point from being chosen to flatter a result.
 
 For each command/workload, publish raw paired measurements, median times, spread, and a 95% confidence interval for a defined speedup estimator. One defensible estimator is the exponentiated mean of paired log time ratios, with resampling at the independent run/block level; if using a ratio of medians, name and implement that estimator consistently. State bootstrap/interval methodology and sample size. Do not pool unrelated workloads as independent replicates.
 
@@ -465,10 +556,40 @@ After optimization, rerun affected semantic consumers, adversarial cases, and th
 Test installed release artifacts outside the source tree, under a fresh user configuration and without the oracle environment on `PATH`/`PYTHONPATH`.
 
 - Run all claimed `.py` PATH aliases and native names, with correct case/hyphenation, from directories containing spaces. Record resolution to the intended executable; accidentally invoking an installed upstream script invalidates the test.
+  - **Done for the archive (2026-10-01).** `scripts/build-release-archive.sh` stages an
+    explicit **allowlist** of 33 binaries (the previous version staged every executable
+    it found at the top of `target/release`, which is how build scripts and unrelated
+    targets would have reached a published archive), installs the upstream aliases by
+    copy, bundles `LICENSE`, `README.md`, `CHANGELOG.md`, `CITATION.cff` and
+    generated third-party notices, writes a machine-readable manifest with per-file
+    SHA256 and a declared ABI floor, and then **extracts the archive outside the
+    source tree** and runs a real workload through it — `bam_stat`, `infer_experiment`
+    and `bam2fq` against the bundled example, with `PATH` restricted to the archive's
+    own `bin/`. The staging step refuses to publish a partial archive. CI verifies the
+    allowlist, the required files and every recorded digest.
+  - **Spaces in paths are now exercised** (2026-10-01): the archive is extracted
+    into a directory whose name contains a space, a command is invoked by its
+    upstream alias from there, and an output file whose path contains a space is
+    written and checked non-empty.
+  - **Not closed:** the extraction test still runs with the repository's Python and R
+    reachable. It restricts `PATH` to the archive's `bin/` plus coreutils, which
+    excludes `wigToBigWig` and `htseq-count` here, but `/usr/bin/python3` and
+    `/usr/bin/Rscript` exist on this host and remain reachable. A true clean room
+    needs an image without them; `check_interop.py` separately records which helper
+    programs are present or absent so a reader is never guessing.
 - For the standalone profile, exercise all required workloads in an image with Python, R, `htseq-count`, `wigToBigWig`, and other helper executables absent. Trace child processes and audit dynamic libraries/bundled components. Help-only checks and `ldd` alone do not establish standalone behavior.
 - Test every advertised OS/architecture/ABI, archive installation, executable permissions, aliases, and CPU baseline. Unsupported platforms are explicit. An artifact built for the host CPU cannot imply portability without testing.
 - For optional Python compatibility, cover all inventoried modules and public functions/classes: imports, signatures/defaults, returns/types, exceptions, state/mutation, iteration/laziness, file handles, side effects, and packaged helpers/assets. Test wheels in clean environments and supported Python versions. A `.py` executable alias does not make `python command.py` or `import qcmodule` work.
 - Validate release metadata, license/attribution files, third-party dependency notices, citation metadata, source archives, and reproducibility bundle. Record dataset redistribution decisions rather than bundling unreviewed source material.
+  - **Partially done (2026-10-01).** `scripts/check_release_metadata.py` fails a
+    strict build while `Cargo.toml` and `CITATION.cff` still carry `TBD` URLs, and
+    verifies that the archive manifest discloses the unimplemented Python API, the
+    open licence-variant decision, the ABI floor, and full (not truncated) digests for
+    every binary and bundled document. **Not closed:** the permanent repository URL and
+    support channel are maintainer decisions (release Stage A) and remain unset, so
+    no archive can be published yet; and the licence variant decision (DIV-0003) is
+    open, so `doc/LICENSE` is the repository's existing file rather than a settled
+    choice.
 
 Automate the following layers. Time allocations are engineering targets, not correctness exceptions:
 
@@ -480,6 +601,25 @@ Automate the following layers. Time allocations are engineering targets, not cor
 | Publication snapshot | Frozen protocol, clean rebuild by a reviewer, raw results and report regeneration, final claim-to-evidence audit | Unreproducible or unexplained results excluded from claims and explicitly reported |
 
 Do not make network availability of an upstream service a hidden source of skipped release tests. Cache verified immutable source/data artifacts under appropriate distribution terms. CI summaries must distinguish tests attempted from requirements satisfied.
+
+> **Status 2026-10-01.** The layering below now exists in
+> `.github/workflows/release-validation.yml`, and the release workflow calls it
+> before it may publish. Two points about how it distinguishes *attempted* from
+> *satisfied*:
+>
+> - The differential matrix needs the pinned oracle, which is gitignored and not
+>   provisioned in CI. That job **reports** rather than blocks, and says in its own
+>   output that the suite did not run. A green pipeline therefore does not mean the
+>   90-case matrix passed; it means everything that could run, ran. The claim
+>   "the differential suite passed" requires reading that job's output.
+> - Publication depends on the validation workflow via `needs`, so a tag push cannot
+>   skip it. The previous release workflow ran `cargo test` and Clippy and then
+>   published, which is what let a release proceed with nothing having checked the
+>   comparators, the truth cases, or the archive that would actually ship.
+>
+> The oracle environment itself is now pinned and verified
+> (`verification/check_oracle_env.py`), so when the oracle *is* present a drifted
+> environment is a loud failure rather than a silent change of baseline.
 
 ## 14. Ordered implementation work and release gates
 

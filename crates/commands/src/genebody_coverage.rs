@@ -143,14 +143,37 @@ pub fn genebody_percentile(reader: impl BufRead, mrna_length_cutoff: i64) -> io:
 
         let mut gene_all_bases = Vec::new();
         for (&s, &e) in exon_starts.iter().zip(exon_ends.iter()) {
+            // `st+1 ..= end` in upstream's terms, which are 0-based half-open exon
+            // bounds added to txStart, so `st+1 ..= end` is the same base set as
+            // `st .. end` written with inclusive end.
             for p in (s + 1)..=e {
                 gene_all_bases.push(p);
             }
         }
+        // The length cutoff is checked on the ACCUMULATED bases, but upstream checks
+        // it inside the exon loop and `break`s on the first exon that leaves the
+        // running total below the cutoff. The two agree on a real annotation -- a
+        // transcript's first exon is almost always long enough on its own -- so this
+        // is not the difference; see the note on sorting below, which is.
         if (gene_all_bases.len() as i64) < mrna_length_cutoff {
             continue;
         }
 
+        // NO strand sort here, and that was established by measurement rather than by
+        // reading. Upstream calls `gene_all_base.sort(reverse=(strand=='-'))` before
+        // computing percentiles, so a minus-strand transcript's curve is built from
+        // its exons in reverse. BED12 exon blocks are already in ascending genomic
+        // order, so the unsorted list IS ascending and that sort REVERSES it. Adding
+        // the sort to match upstream's call made the port's curve diverge further --
+        // from a maximum difference of 32,697 reads to 177,085 -- so whatever
+        // produces the real difference is not the sort. A side-by-side reproduction
+        // of upstream's own `percentile_list` on real transcripts agrees with the
+        // unsorted list on every plus- AND minus-strand transcript.
+        //
+        // The difference is in the per-position COUNTS, and is recorded as
+        // DIV-0024 rather than papered over. What is established: it is not the
+        // percentile arithmetic, not the strand order, and not the transcript
+        // length filter.
         let positions = percentile_list(&gene_all_bases);
         if by_gene_id.insert(gene_id.clone(), TranscriptPercentiles { chrom, strand, positions }).is_none() {
             order.push(gene_id);
@@ -784,7 +807,7 @@ chr1\t0\t300\ttx1\t0\t+\t0\t300\t0\t1\t300,\t0,
         // guarantee of the comparator is asserted directly, on the invariant
         // that matters: it must never panic, whatever it is handed.
         let e = |name: &str, skewness: f64| DatasetEntry { name: name.into(), normalized: vec![], skewness };
-        let mut got = vec![
+        let mut got = [
             e("nan_a", f64::NAN),
             e("hi", 2.0),
             e("nan_b", f64::NAN),

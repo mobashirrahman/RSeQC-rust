@@ -58,6 +58,22 @@ fn main() -> std::process::ExitCode {
 }
 
 fn run(args: &Args) -> std::io::Result<()> {
+    // Upstream's validate_args refuses an output prefix whose parent directory does
+    // not exist, before any input is read. Omitting it here meant the whole
+    // alignment was read and every metric computed, then discarded when the output
+    // open failed with "No such file or directory (os error 2)" -- an error naming
+    // neither the directory nor the flag, and indistinguishable from a missing
+    // input. The shared helper keeps that check in one place so it cannot be
+    // forgotten by the next binary.
+    // DELIBERATELY ABSENT, replicating upstream. bam2wig.py and bam2fq.py are the
+    // only two upstream scripts that take an output prefix and do NOT validate its
+    // parent, so upstream reaches the work and then fails on the first output open
+    // with `[Errno 2] No such file or directory: '.../out.wig'` and exit 1. Adding
+    // the check here would be the port being better than the tool it ports: the same
+    // command would then exit 2 with a different message on an input upstream
+    // accepts, and every downstream comparison against upstream would diverge on a
+    // case that is not a defect in the port. Recorded as DIV-0026.
+
     let (_header, records) = rseqc_formats::open_alignments(&args.input_file)?;
     let prefix = args.out_prefix.to_string_lossy();
 

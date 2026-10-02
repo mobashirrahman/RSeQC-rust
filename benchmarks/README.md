@@ -1,37 +1,61 @@
 # Benchmark suite
 
-**Status: measured.** Results from a full 10-repetition, gate-checked run are in
-[`RESULTS.generated.md`](RESULTS.generated.md), regenerated from
-[`results-main.json`](results-main.json) and [`results-scaling.json`](results-scaling.json)
-by `analyze.py`. The protocol these runs followed is frozen in
-[`protocol.md`](protocol.md); every post-freeze change to the protocol or the harness
-is recorded in [`CHANGES.md`](CHANGES.md).
+> **Status.** The version-1 results in [`RESULTS.generated.md`](RESULTS.generated.md)
+> are **historical development evidence**, retained for continuity. The 2026-10-01
+> readiness audit found comparator false-pass paths, lost repetition pairing, and an
+> unsafe timeout process-group fallback in the harness that produced them, so those
+> gate passes and paired intervals do not qualify any publication claim. All of those
+> defects are now closed and tested; the replacement study is specified in
+> [`protocol-v2.md`](protocol-v2.md) and has not yet been run at scale.
+>
+> See the [audit and executed probes](../docs/READINESS_AUDIT_2026-10-01.md) and
+> [`CHANGES.md`](CHANGES.md).
 
-> **These numbers are not publication-grade.** They were measured on shared,
-> non-isolated hardware. See [`protocol.md` §2](protocol.md) and RESULTS §7.
+**Version-1 results, as measured.** Results from a full 10-repetition,
+gate-checked run are in [`RESULTS.generated.md`](RESULTS.generated.md), regenerated
+from [`results-main.json`](results-main.json) and
+[`results-scaling.json`](results-scaling.json) by `analyze.py`. The protocol those
+runs followed is frozen in [`protocol.md`](protocol.md).
+
+> **Not publication-grade.** Measured on shared, non-isolated hardware, with a
+> harness whose comparators and pairing have since been found defective. See
+> [`protocol.md` §2](protocol.md), RESULTS §7, and `protocol-v2.md`.
 
 ## What is here
 
 | File | Role |
 |---|---|
-| `protocol.md` | Frozen preregistration: datasets, experiment classes, estimator, exclusions, predicted results. Written **before** any measurement. |
+| `protocol-v2.md` | **The next study's frozen protocol.** Repaired comparators, declared per-command expectations, adjacent matched blocks, per-run provenance. |
+| `protocol.md` | Version-1 preregistration, superseded. Retained unchanged: its recorded results are only interpretable against the protocol that produced them. |
 | `CHANGES.md` | Every post-freeze change, split into protocol clarifications and harness bugs whose results were discarded and re-measured. |
 | `generate_workload_real.py` | Tier A/B workload generator: real hg38 chromosomes + real RefSeq BED12, reads simulated from real transcript sequences. Validates every generated BAM against the reference before writing a manifest. |
 | `generate_workload.py` | Tier C legacy generator (1 contig, 3 genes). Retained for pinning old numbers; **not used for any claim**. |
-| `bench.py` | The harness: process-tree resources via `/usr/bin/time -v`, structural equivalence gate, randomised interleaved paired repetitions, paired block-bootstrap intervals. |
+| `bench.py` | The harness. Process-tree resources, structural equivalence gate over declared streams and artifacts, adjacent matched-block repetitions, block-bootstrap intervals, per-run provenance. |
+| `derive_expected_streams.py` | Runs both arms once per command and records what they actually emit, as a draft for `EXPECTED_STREAMS`. Observes behaviour; does not certify correctness. |
+| `test_bench_harness.py` | Harness-credibility tests. Every test asserts that a deliberate defect **fails**, so a comparator that stops rejecting corruption turns the suite red. |
 | `scaling.py` | Cost-driver sweeps (read count, transcript count, read length). |
 | `analyze.py` | Regenerates every table in RESULTS.generated.md from the raw JSON. |
 | `run_benchmarks.py` | **Superseded** by `bench.py`. Kept for reference; it covered 5 commands and compared exit codes plus a raw file diff. |
-| `results-main.json` | Raw per-run measurements, environment manifest, gate outcomes, failures. |
-| `results-scaling.json` | Raw per-run measurements for each scaling point. |
+| `results-main.json` | Version-1 raw per-run measurements. Comparator version 1; not comparable with version-2 rows. |
+| `results-scaling.json` | Version-1 raw per-run measurements for each scaling point. |
+
+Comparators are shared with the differential runner
+([`verification/comparators.py`](../verification/comparators.py)) so the two
+harnesses cannot drift apart again — which is how the benchmark's comparators came
+to accept corrupted BAM qualities, flags and tags while the differential suite had
+its own weaker copies.
 
 ## Headline
 
-- **All 29 measured commands are faster, and all 29 passed the equivalence gate.** The
-  first run found three that were not (`infer_experiment` 0.18x, `bam2fq` 0.35x,
-  `inner_distance` 0.53x); all three were root-caused, fixed and re-measured at 3.35x,
-  2.30x and 10.93x. See RESULTS §6.1 — notably the three shared a *symptom* but had
-  three *different* causes.
+> Every figure below was measured under comparator version 1 and a schedule whose
+> pairs were not the pairs it claimed. The *relative* orderings are still
+> informative; the gate passes and intervals are not evidence of equivalence.
+
+- **All 29 measured commands were faster, and all 29 passed the version-1
+  equivalence gate.** The first run found three that were not (`infer_experiment`
+  0.18x, `bam2fq` 0.35x, `inner_distance` 0.53x); all three were root-caused, fixed
+  and re-measured at 3.35x, 2.30x and 10.93x. See RESULTS §6.1 — notably the three
+  shared a *symptom* but had three *different* causes.
 - Speedup is **not** a single number. For `bam_stat` the end-to-end figure falls from
   14.2x at 2k reads to 4.8x at 800k while the compute-only figure *rises* from 2.3x to
   4.7x -- opposite trends on the same code, because ~0.09 s of the reference's time is
@@ -50,25 +74,31 @@ See RESULTS.generated.md §6 for the full findings and §7 for what is not estab
 
 ## Overview
 
-The benchmark runner implements section 12 of [testing.md](../testing.md), which specifies:
+The benchmark runner implements section 12 of [testing.md](../testing.md):
 
-1. **Deterministic workload generation** (`generate_workload.py`)
-   - Synthetic paired-end RNA-seq BAM with coordinate sorting and indexing
-   - Matching BED12 gene model
-   - FASTQ files
-   - Seeded reproducibility
+1. **Workload generation** (`generate_workload_real.py`, `generate_workload.py`)
+   - Real hg38 chromosomes and RefSeq BED12, reads simulated from real transcript
+     sequences; validated against the reference before a manifest is written
+   - Legacy synthetic generator retained only for pinning old numbers
 
-2. **Command execution and timing** (`run_benchmarks.py`)
-   - Runs each command with both Python and Rust implementations
-   - Captures wall time, CPU time, and peak memory
-   - Records environment (CPU, kernel, versions)
-   - Verifies output compatibility
+2. **Command execution and measurement** (`bench.py`)
+   - Each command runs in both arms as a real process invocation
+   - Captures wall, user and system CPU, and peak memory
+   - Records the environment, the toolchain, and per-run provenance including a
+     SHA256 of every binary invoked
+   - Gates equivalence on declared streams, labels and artifacts, per command
 
-3. **Analysis** (section 12.2 and 12.3)
-   - Raw paired measurements
-   - Median wall times and spread
-   - Bootstrap confidence intervals (requires post-processing)
-   - Separate scaling studies (independent sweeps of read count, depth, transcript count)
+3. **Scheduling and statistics**
+   - Adjacent matched blocks: repetition *i*'s two arms run back to back, with the
+     within-block order randomised from a recorded seed
+   - Block bootstrap over whole pairs, seed recorded
+   - Predeclared precision rule for adding repetitions
+   - Separate cost-driver sweeps, labelling measured rather than requested counts
+
+The version-1 harness globally shuffled individual arms and then zipped two
+independently ordered result lists, so at seed 20260929 all ten "pairs" had
+different repetition IDs. The intervals it reported described unpaired
+measurements. That is fixed; see [`protocol-v2.md`](protocol-v2.md) §7.1.
 
 ## Quick Start
 
@@ -93,17 +123,34 @@ This creates:
 ### Run benchmarks
 
 ```bash
-# Run a 3-repetition benchmark on the 1000-read workload
-oracle/venv/bin/python3 benchmarks/run_benchmarks.py \
+# Check the oracle environment matches its lock before trusting any result
+oracle/venv/bin/python3 verification/check_oracle_env.py
+
+# Run a 3-repetition benchmark on a workload, with the gate enabled
+oracle/venv/bin/python3 benchmarks/bench.py \
     --workload workloads/test_1000 \
     --commands bam_stat read_distribution geneBody_coverage \
     --reps 3 \
+    --label smoke \
     --output-dir benchmark_results/test_1000
 ```
 
 This produces:
-- `benchmark_results/test_1000/results.json` — raw per-run measurements and environment info
-- Console summary with median times and speedups
+- `benchmark_results/test_1000/results.json` — raw per-run measurements, per-run
+  provenance, gate outcomes and failures
+- `benchmark_results/test_1000/<command>.json` — the same for one command
+- A console table whose primary column is raw invocation time over adjacent matched
+  blocks, with the number of usable pairs and any failed repetitions shown
+
+To check the harness itself:
+
+```bash
+oracle/venv/bin/python3 benchmarks/test_bench_harness.py
+```
+
+Every test in that suite asserts that a deliberate defect **fails**. If it does not,
+a comparator has stopped detecting corruption and every gate pass it has issued is
+void.
 
 ## File Format Reference
 
@@ -185,21 +232,24 @@ Raw results in `results.json`:
 To satisfy section 12.3, run independent sweeps along each cost driver:
 
 ```bash
-# Scaling by read count
 for size in 100 500 1000 5000 10000; do
     oracle/venv/bin/python3 benchmarks/generate_workload.py \
         --size $size \
         --output-dir workloads/scale_reads_$size
-    
-    oracle/venv/bin/python3 benchmarks/run_benchmarks.py \
+
+    oracle/venv/bin/python3 benchmarks/bench.py \
         --workload workloads/scale_reads_$size \
         --commands bam_stat read_distribution geneBody_coverage \
         --reps 10 \
+        --label "scale_reads_$size" \
         --output-dir benchmark_results/scale_reads_$size
 done
 ```
 
-Aggregate these results and produce plots showing each command's cost curve.
+Report **measured** counts, never requested ones. Version 1's "20,000 transcript"
+point actually contained 9,179, because the panel was truncated to what was
+available; a reader comparing that point against a different generator would have
+been comparing different inputs.
 
 ## Publication Requirements (testing.md §12)
 

@@ -1,0 +1,5 @@
+samples:
+  panel_sample: /scratch/mdra00001/RSeQC-rust/datasets/heldout/aligned/SRR1177982/SRR1177982.bam
+refgene: /scratch/mdra00001/RSeQC-rust/datasets/heldout/reference/rn6.bed12
+outdir: /scratch/mdra00001/tmp/tmp.B2wPdqio59/snakemake
+mapq: 30

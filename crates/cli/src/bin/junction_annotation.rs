@@ -68,6 +68,15 @@ fn main() -> ExitCode {
 }
 
 fn run(args: &Args) -> std::io::Result<ExitCode> {
+    // Upstream's validate_args refuses an output prefix whose parent directory does
+    // not exist, before any input is read. Omitting it here meant the whole
+    // alignment was read and every metric computed, then discarded when the output
+    // open failed with "No such file or directory (os error 2)" -- an error naming
+    // neither the directory nor the flag, and indistinguishable from a missing
+    // input. The shared helper keeps that check in one place so it cannot be
+    // forgotten by the next binary.
+    rseqc_cli::require_existing_output_parent_or_exit("junction_annotation.py", &args.out_prefix);
+
     // Upstream: `print("Reading reference bed file: ",refgene, " ... ",
     // end=' ', file=sys.stderr)` -- print's default `sep=' '` between
     // positional args, combined with each string's own leading/trailing

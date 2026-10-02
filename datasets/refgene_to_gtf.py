@@ -8,27 +8,53 @@ name this project could resolve -- the same drift that forced GENCODE v47 for
 human. `database/refGene.txt.gz` does resolve, so the table is converted
 here instead.
 
-UCSC refGene columns (1-based, per the UCSC schema):
+UCSC refGene columns (per the UCSC schema):
     1 bin, 2 name, 3 chrom, 4 strand, 5 txStart, 6 txEnd, 7 cdsStart,
-    8 cdsEnd, 9 exonCount, 10 exonStarts (1-based, comma-separated),
-    11 exonEnds (1-based, comma-separated), ...
+    8 cdsEnd, 9 exonCount, 10 exonStarts (0-based, comma-separated),
+    11 exonEnds (1-based/exclusive, comma-separated), ...
 
 Both outputs are emitted because two consumers need different things:
 STAR's `--sjdbGTFfile` requires a GTF, and every RSeQC annotation-consuming
 command requires BED12.
 
-Coordinate handling is the part worth being careful about: refGene is 1-based
-inclusive, BED12 is 0-based half-open, and GTF is 1-based inclusive.
+COORDINATE HANDLING -- this is the part worth being careful about, and this
+module previously got it wrong twice.
 
-  BED12 transcript start = txStart - 1
-  BED12 exon size        = exonEnd - exonStart + 1     <- the +1 matters
-  BED12 exon start (rel) = exonStart - txStart
-  GTF exon start/end     = exonStart / exonEnd, unchanged
+UCSC refGene is *already* in the half-open 0-based genome-browser frame:
+`txStart`/`exonStarts` are 0-based start offsets and `exonEnds`/`txEnd` are
+exclusive end offsets. So a refGene exon is directly the half-open interval
+[start, end) that BED12 stores verbatim:
 
-The exon size is the one that bites: dropping the +1 shortens every exon by one
-base, shifts every exon end one base early, and makes junction annotation
-report essentially nothing as annotated. Verified on NM_001099460: correct
-first-exon size 207, the buggy form gave 206.
+  BED12 chromStart        = txStart                       (unchanged)
+  BED12 exon size         = exonEnd - exonStart           (unchanged)
+  BED12 exon start (rel)  = exonStart - txStart           (unchanged)
+  GTF   exon start        = exonStart + 1                 (1-based inclusive)
+  GTF   exon end          = exonEnd                       (already exclusive)
+
+Sources: UCSC's documented counting systems and the refGene schema, which
+defines exonStarts as 0-based and exonEnds as 1-based end offsets.
+
+A worked probe (see datasets/test_refgene_to_gtf.py, which asserts it):
+
+    refGene row  0  NM_TEST  chr1  +  100  400  100  400  2  100,300,  200,400,
+    BED12         chr1 100 400 NM_TEST 0 + 100 400 255 2 100,100, 0,200,
+    GTF exons     101-200 and 301-400
+
+Two earlier revisions were wrong, and both errors were real defects rather
+than harmless off-by-one noise:
+
+  * Subtracting 1 from `txStart` while keeping the +1 exon-size rule treats the
+    table as 1-based inclusive. That shifts the transcript one base left and
+    makes every exon one base too long (start 99, sizes 101,101 above).
+  * An earlier "+1 correction" that added 1 to the exon size to compensate for
+    treating exonEnds as inclusive made every exon one base too long and, again,
+    placed GTF starts one base early (100,300 above).
+
+Either way the pair of errors did not cancel, because the BED and GTF consumers
+disagree about inclusivity: a length computed with an inclusive end is wrong by
+one base even when its start is right. The downstream symptom is junction
+annotation reporting almost nothing as annotated (7 of 44,176 on the rat
+stratum, 0.02%), which is what prompted the original investigation.
 """
 from __future__ import annotations
 
@@ -81,19 +107,21 @@ def main() -> int:
                 continue
             if len(t["exon_starts"]) < args.min_exons:
                 continue
-            start0 = t["tx_start"] - 1
+            if any(e <= s for s, e in zip(t["exon_starts"], t["exon_ends"])):
+                print(f"  skip {t['name']}: empty exon interval in refGene row",
+                      file=sys.stderr)
+                continue
+            start0 = t["tx_start"]
             attr = f'gene_id "{t["name"]}"; transcript_id "{t["name"]}"; gene_name "{t["name"]}";'
             for s, e in zip(t["exon_starts"], t["exon_ends"]):
-                # GTF is 1-based inclusive, so s and e pass through unchanged.
-                gf.write(f'{t["chrom"]}\tsource\texon\t{s}\t{e}\t.\t{t["strand"]}\t.\t{attr}\n')
+                # refGene exonStarts are 0-based, so GTF's 1-based inclusive start
+                # is s + 1. exonEnds are already exclusive, which is exactly GTF's
+                # inclusive end, so e passes through unchanged.
+                gf.write(f'{t["chrom"]}\tsource\texon\t{s + 1}\t{e}\t.\t{t["strand"]}\t.\t{attr}\n')
                 n_gtf += 1
-            # refGene exon starts/ends are 1-based INCLUSIVE, so a BED12
-            # exon size is (end - start + 1). Using (end - start) makes every
-            # exon one base short, which places each exon END one base early and
-            # destroys junction matching. That bug was caught by endpoint E5 on
-            # the rat stratum, which saw 7 annotated of 44,176 total junctions
-            # (0.02%) where a rat library should be majority annotated.
-            sizes = ",".join(str(e - s + 1) for s, e in zip(t["exon_starts"], t["exon_ends"])) + ","
+            # refGene is already in the 0-based half-open frame BED12 uses, so the
+            # exon size is the plain difference. See the module docstring.
+            sizes = ",".join(str(e - s) for s, e in zip(t["exon_starts"], t["exon_ends"])) + ","
             starts = ",".join(str(s - t["tx_start"]) for s in t["exon_starts"]) + ","
             bf.write(
                 f'{t["chrom"]}\t{start0}\t{t["tx_end"]}\t{t["name"]}\t0\t{t["strand"]}\t'

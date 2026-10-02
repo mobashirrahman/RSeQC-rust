@@ -1,0 +1,162 @@
+# A five-command bulk RNA-seq QC panel, as a Snakemake workflow.
+#
+# WHY THIS EXISTS. Stage C of the release plan asks for "a tested Nextflow or
+# Snakemake example" once artifact behaviour has stabilised, because a command that
+# only ever runs from a shell is not evidence that it runs inside a real pipeline.
+# The point of this file is to be executed, not to look plausible: test/run_panel.sh
+# runs the whole panel on a real alignment through Snakemake and diffs every result
+# against the same commands invoked directly, so a wrapper bug (a wrong flag, a
+# missing output, a swallowed exit code) fails the test rather than quietly changing
+# somebody's QC numbers.
+#
+# WHAT IT DEMONSTRATES, AND WHAT IT DOES NOT. This is a QC panel, not a complete
+# RNA-seq pipeline: it consumes alignments that already exist and writes per-sample
+# reports. It deliberately does not include alignment or quantification, so any
+# end-to-end saving attributable to this project is bounded by the QC fraction --
+# see docs/ENVELOPE.md for the measured panel share of a realistic pipeline.
+#
+# The panel is bam_stat -> infer_experiment -> read_distribution -> read_NVC ->
+# read_quality, which is what this project's own workflow measurement times
+# (benchmarks/pipeline-impact-rat-8M.json).
+#
+# Every path is under {outdir}/{sample}/ because a QC report with no sample in its
+# path is a QC report that will be compared against the wrong sample by someone.
+
+configfile: "config/config.yaml"
+
+SAMPLES = config["samples"]          # { sample_name: bam_path }
+OUTDIR  = config["outdir"]
+Q       = config.get("mapq", 30)     # matches bam_stat's own default
+# The gene model, in BED12, used by the two stages that need one. It is a required
+# config value rather than a per-sample one because every sample in a panel is
+# quantified against the same annotation, and a QC panel that silently mixed two
+# annotations would produce reports that disagree for reasons no one could see.
+REFGENE = config["refgene"]
+
+
+rule all:
+    input:
+        expand("{outdir}/{sample}/panel.complete",
+               outdir=OUTDIR, sample=list(SAMPLES)),
+
+
+# One rule per command rather than one rule with a loop inside, so Snakemake's DAG
+# and its retry/resume machinery see real steps. The five stages are independent of
+# each other; only the completion marker depends on all of them, which is what makes
+# it usable as a dependency.
+rule bam_stat:
+    input:  bam = lambda w: SAMPLES[w.sample]
+    output: "{outdir}/{sample}/bam_stat.txt"
+    log:    "{outdir}/{sample}/logs/bam_stat.log"
+    threads: 1
+    shell:  "rseqc bam_stat.py -i {input.bam} -q {Q} > {output} 2> {log}"
+
+
+rule infer_experiment:
+    # The gene model is a declared input, not just an interpolated config value, so
+    # Snakemake re-runs these stages when the annotation changes. Interpolating a
+    # path into a shell line without declaring it is how a pipeline reports stale QC
+    # results against a model that was edited months ago.
+    input:  bam = lambda w: SAMPLES[w.sample], gene = REFGENE
+    output: "{outdir}/{sample}/infer_experiment.txt"
+    log:    "{outdir}/{sample}/logs/infer_experiment.log"
+    threads: 1
+    # Writes its report to STDOUT; upstream does the same, so no -o is passed.
+    shell:  "rseqc infer_experiment.py -i {input.bam} -r {input.gene} > {output} 2> {log}"
+
+
+rule read_distribution:
+    input:  bam = lambda w: SAMPLES[w.sample], gene = REFGENE
+    output: "{outdir}/{sample}/read_distribution.txt"
+    log:    "{outdir}/{sample}/logs/read_distribution.log"
+    threads: 1
+    # Takes no output flag at all, in either implementation. Passing one is an
+    # error, which is how the port's own first attempt at this rule failed.
+    shell:  "rseqc read_distribution.py -i {input.bam} -r {input.gene} > {output} 2> {log}"
+
+
+# read_NVC and read_quality need Rscript unless --skip-plot is passed. A QC panel
+# that silently requires R on every sample fails on the first headless node, so
+# --skip-plot is passed here and the .xls data table is kept. The heat map is a
+# plotting convenience, not a QC signal.
+rule read_NVC:
+    input:  bam = lambda w: SAMPLES[w.sample]
+    # The artifact name is derived from the --out-prefix, so the declared output must
+    # be written as the command writes it: `-o X` produces `X.NVC.xls`, not `X`. A
+    # rule whose `output:` does not name the file the shell line creates fails with
+    # MissingOutputException after the command has already succeeded.
+    output: "{outdir}/{sample}/read_NVC.NVC.xls"
+    log:    "{outdir}/{sample}/logs/read_NVC.log"
+    threads: 1
+    shell:  "rseqc read_NVC.py -i {input.bam} -o {wildcards.outdir}/{wildcards.sample}/read_NVC --skip-plot 2> {log}"
+
+
+rule read_quality:
+    input:  bam = lambda w: SAMPLES[w.sample]
+    # With --skip-plot this command's ONLY deliverable is the R script
+    # `X.qual.r`, which embeds the quality counts inline. It writes no .xls and no
+    # separate data table, in the port or upstream. So a QC pipeline that wants a
+    # machine-readable quality table must parse that script, or run the plotting path;
+    # it must not wait for a table that is never produced.
+    output: "{outdir}/{sample}/read_quality.qual.r"
+    log:    "{outdir}/{sample}/logs/read_quality.log"
+    threads: 1
+    shell:  "rseqc read_quality.py -i {input.bam} -o {wildcards.outdir}/{wildcards.sample}/read_quality --skip-plot 2> {log}"
+
+
+# The aggregate every panel must produce, so downstream rules and humans have one
+# file to look at. Written only when all five stages exist, which is what makes it
+# usable as a dependency -- and its counts are taken from the files, so it cannot
+# disagree with them.
+rule panel_complete:
+    input:
+        stats = "{outdir}/{sample}/bam_stat.txt",
+        infer = "{outdir}/{sample}/infer_experiment.txt",
+        dist  = "{outdir}/{sample}/read_distribution.txt",
+        nvc   = "{outdir}/{sample}/read_NVC.NVC.xls",
+        qual  = "{outdir}/{sample}/read_quality.qual.r",
+    output: "{outdir}/{sample}/panel.complete"
+    threads: 1
+    # Built with awk rather than a chain of printf calls: printf's \t and \n escapes
+    # have to survive being embedded in a Python string inside a Snakemake shell
+    # block that is itself format()-ed, which is two layers of unescaping to reason
+    # about. awk emits the tab literally and cannot be misread at either layer.
+    #
+    # Every print is inside BEGIN, and that is load-bearing. awk runs its main block
+    # once per INPUT LINE, and this command is given no input files, so a main-block
+    # print never executes at all -- the marker comes out empty. It is not
+    # hypothetical: it happened while writing this workflow, and the test that checks
+    # the marker reported "ok, every named file present" over a zero-line file,
+    # because a loop over no lines checks nothing and succeeds. The test now also
+    # refuses an empty marker.
+
+    shell:
+        """
+        # Counts are measured by wc and passed to awk with -v, not read inside awk.
+        # awk's `getline var < file` yields the LINE, not a count, so a wc() helper
+        # built on it stores file content in the field -- which is exactly what
+        # happened here: every "count" in the marker was the first line of the
+        # corresponding report.
+        #
+        # Every print is inside BEGIN, and that is load-bearing. awk runs its main
+        # block once per INPUT LINE, and this command is given no input files, so a
+        # main-block print never executes and the marker comes out EMPTY. It is not
+        # hypothetical: it happened here, and the test that checks the marker reported
+        # "ok, every named file present" over a zero-line file, because a loop over
+        # no lines checks nothing and succeeds. The test now refuses an empty marker.
+        awk -v sample="{wildcards.sample}" \\
+            -v stats="$(wc -l < {input.stats})" \\
+            -v infer="$(wc -l < {input.infer})" \\
+            -v dist="$(wc -l < {input.dist})" \\
+            -v nvc="$(wc -l < {input.nvc})" \\
+            -v qual="$(wc -l < {input.qual})" \\
+            'BEGIN {{
+               OFS = "\\t"
+               print "sample", sample
+               print "bam_stat_lines", stats
+               print "infer_experiment_lines", infer
+               print "read_distribution_lines", dist
+               print "read_NVC_rows", nvc
+               print "read_quality_script_lines", qual
+             }}' > {output}
+        """

@@ -1,0 +1,1383 @@
+{
+  "schema": 1,
+  "generated_from": "executed binaries; every field is observed, not declared",
+  "fixture": {
+    "bam": "datasets/aligned/tiny/tiny.bam",
+    "bam_sha256": "11c0a08544d6a44e693bbc62dada14b61100e8764f0e451081bb7d5df5fa3473",
+    "bed": "datasets/aligned/tiny/model.bed12"
+  },
+  "commands": {
+    "bam_stat": {
+      "binary": "bam_stat",
+      "binary_sha256": "d98416529dd19779ceba1107d1871e363bd8f74a4e7be5d2ad9bbd68a72b4606",
+      "input_formats": {
+        "applies": true,
+        "primary_input_kind": "alignment",
+        "bam": {
+          "status": "ACCEPTED",
+          "exit": 0,
+          "detail": ""
+        },
+        "sam": {
+          "status": "ACCEPTED",
+          "exit": 0,
+          "detail": ""
+        },
+        "cram": {
+          "status": "REJECTED",
+          "exit": 1,
+          "detail": "e embedded, e.g. pysam AlignmentFile(path, 'wc', header=header) with no reference_filename, which makes htslib embed it."
+        }
+      },
+      "helper_dependency": {
+        "needs_helper": "no",
+        "requires_rscript": false,
+        "detail": "succeeds with no helper, no PDF",
+        "plot_artifact": "absent"
+      },
+      "skip_plot_contract": {
+        "has_skip_plot": false,
+        "suppresses_helper": null
+      },
+      "determinism": {
+        "stdout_deterministic": true,
+        "data_deterministic": null,
+        "plot_deterministic_after_timestamp_normalisation": null,
+        "data_artifacts": 0,
+        "plot_artifacts": 0
+      }
+    },
+    "bam2fq": {
+      "binary": "bam2fq",
+      "binary_sha256": "8a5ed1a91daf25af5676ab0ee074ef1e7ad8fcf4c0551ff87543c0174210680d",
+      "input_formats": {
+        "applies": true,
+        "primary_input_kind": "alignment",
+        "bam": {
+          "status": "ACCEPTED",
+          "exit": 0,
+          "detail": ""
+        },
+        "sam": {
+          "status": "ACCEPTED",
+          "exit": 0,
+          "detail": ""
+        },
+        "cram": {
+          "status": "REJECTED",
+          "exit": 1,
+          "detail": "e embedded, e.g. pysam AlignmentFile(path, 'wc', header=header) with no reference_filename, which makes htslib embed it."
+        }
+      },
+      "helper_dependency": {
+        "needs_helper": "no",
+        "requires_rscript": false,
+        "detail": "succeeds with no helper, no PDF",
+        "plot_artifact": "absent"
+      },
+      "skip_plot_contract": {
+        "has_skip_plot": false,
+        "suppresses_helper": null
+      },
+      "determinism": {
+        "stdout_deterministic": true,
+        "data_deterministic": true,
+        "plot_deterministic_after_timestamp_normalisation": null,
+        "data_artifacts": 2,
+        "plot_artifacts": 0
+      }
+    },
+    "divide_bam": {
+      "binary": "divide_bam",
+      "binary_sha256": "169fa142880da0a2e1a676c9626f42248e3de34b614e464b4a2f0af4e6f1907a",
+      "input_formats": {
+        "applies": true,
+        "primary_input_kind": "alignment",
+        "known_restriction": "BAM only, inherited from upstream: the command's own `validate_args` rejects a non-`.bam` extension with parser.error before reading the file. Reproduced deliberately; a port that accepted more than upstream here would disagree on an input the user was told was invalid.",
+        "bam": {
+          "status": "ACCEPTED",
+          "exit": 0,
+          "detail": ""
+        },
+        "sam": {
+          "status": "REJECTED",
+          "exit": 1,
+          "detail": "divide_bam.py: error: invalid BGZF header"
+        },
+        "cram": {
+          "status": "REJECTED",
+          "exit": 1,
+          "detail": "divide_bam.py: error: invalid BGZF header"
+        }
+      },
+      "helper_dependency": {
+        "needs_helper": "no",
+        "requires_rscript": false,
+        "detail": "succeeds with no helper, no PDF",
+        "plot_artifact": "absent"
+      },
+      "skip_plot_contract": {
+        "has_skip_plot": false,
+        "suppresses_helper": null
+      },
+      "determinism": {
+        "stdout_deterministic": false,
+        "data_deterministic": false,
+        "plot_deterministic_after_timestamp_normalisation": null,
+        "data_artifacts": 2,
+        "plot_artifacts": 0
+      }
+    },
+    "split_bam": {
+      "binary": "split_bam",
+      "binary_sha256": "1ff2704723ea1169c4c005df25436ac244e7363c21f7d1b6c5efceb83960e0fa",
+      "input_formats": {
+        "applies": true,
+        "primary_input_kind": "alignment",
+        "known_restriction": "BAM only, inherited from upstream: the command's own `validate_args` rejects a non-`.bam` extension with parser.error before reading the file. Reproduced deliberately; a port that accepted more than upstream here would disagree on an input the user was told was invalid.",
+        "bam": {
+          "status": "ACCEPTED",
+          "exit": 0,
+          "detail": ""
+        },
+        "sam": {
+          "status": "REJECTED",
+          "exit": 1,
+          "detail": "a00001/RSeQC-rust/datasets/aligned/tiny/model.bed12\nLoaded exon intervals for 1 chromosome(s)\nerror: invalid BGZF header"
+        },
+        "cram": {
+          "status": "REJECTED",
+          "exit": 1,
+          "detail": "a00001/RSeQC-rust/datasets/aligned/tiny/model.bed12\nLoaded exon intervals for 1 chromosome(s)\nerror: invalid BGZF header"
+        }
+      },
+      "helper_dependency": {
+        "needs_helper": "no",
+        "requires_rscript": false,
+        "detail": "succeeds with no helper, no PDF",
+        "plot_artifact": "absent"
+      },
+      "skip_plot_contract": {
+        "has_skip_plot": false,
+        "suppresses_helper": null
+      },
+      "determinism": {
+        "stdout_deterministic": true,
+        "data_deterministic": true,
+        "plot_deterministic_after_timestamp_normalisation": null,
+        "data_artifacts": 3,
+        "plot_artifacts": 0
+      }
+    },
+    "split_paired_bam": {
+      "binary": "split_paired_bam",
+      "binary_sha256": "3c0af850dee8430a3acab2cfd35369103ddb292769610baadcde41fb38a96232",
+      "input_formats": {
+        "applies": true,
+        "primary_input_kind": "alignment",
+        "known_restriction": "BAM only, inherited from upstream: the command's own `validate_args` rejects a non-`.bam` extension with parser.error before reading the file. Reproduced deliberately; a port that accepted more than upstream here would disagree on an input the user was told was invalid.",
+        "bam": {
+          "status": "ACCEPTED",
+          "exit": 0,
+          "detail": ""
+        },
+        "sam": {
+          "status": "REJECTED",
+          "exit": 1,
+          "detail": "Splitting /scratch/mdra00001/tmp/tmp03m40gku/tiny.sam\nerror: invalid BGZF header"
+        },
+        "cram": {
+          "status": "REJECTED",
+          "exit": 1,
+          "detail": "Splitting /scratch/mdra00001/tmp/tmp03m40gku/tiny.cram\nerror: invalid BGZF header"
+        }
+      },
+      "helper_dependency": {
+        "needs_helper": "no",
+        "requires_rscript": false,
+        "detail": "succeeds with no helper, no PDF",
+        "plot_artifact": "absent"
+      },
+      "skip_plot_contract": {
+        "has_skip_plot": false,
+        "suppresses_helper": null
+      },
+      "determinism": {
+        "stdout_deterministic": true,
+        "data_deterministic": true,
+        "plot_deterministic_after_timestamp_normalisation": null,
+        "data_artifacts": 3,
+        "plot_artifacts": 0
+      }
+    },
+    "read_GC": {
+      "binary": "read_GC",
+      "binary_sha256": "d16e9188895a9f358c1616ca4cb548f205a1192810be83a481673cf5a4be72b0",
+      "input_formats": {
+        "applies": true,
+        "primary_input_kind": "alignment",
+        "bam": {
+          "status": "ACCEPTED",
+          "exit": 0,
+          "detail": ""
+        },
+        "sam": {
+          "status": "ACCEPTED",
+          "exit": 0,
+          "detail": ""
+        },
+        "cram": {
+          "status": "REJECTED",
+          "exit": 1,
+          "detail": "e embedded, e.g. pysam AlignmentFile(path, 'wc', header=header) with no reference_filename, which makes htslib embed it."
+        }
+      },
+      "helper_dependency": {
+        "needs_helper": "yes",
+        "reports_missing_helper": true,
+        "helper": "Rscript",
+        "requires_rscript": true,
+        "detail": " BAM file ...  Done\nwriting GC content ...\nwriting R script ...\nread_GC.py: error: Rscript executable not found: Rscript"
+      },
+      "skip_plot_contract": {
+        "has_skip_plot": true,
+        "exit": 0,
+        "pdfs_written": 0,
+        "rscripts_written": 1,
+        "suppresses_helper": true
+      },
+      "determinism": {
+        "stdout_deterministic": true,
+        "data_deterministic": true,
+        "plot_deterministic_after_timestamp_normalisation": true,
+        "data_artifacts": 2,
+        "plot_artifacts": 1
+      }
+    },
+    "read_NVC": {
+      "binary": "read_NVC",
+      "binary_sha256": "cf6858fdf8c527f4cdbbc18fccebacdb7b3cc938dfe9aae027f3e00377c359c1",
+      "input_formats": {
+        "applies": true,
+        "primary_input_kind": "alignment",
+        "bam": {
+          "status": "ACCEPTED",
+          "exit": 0,
+          "detail": ""
+        },
+        "sam": {
+          "status": "ACCEPTED",
+          "exit": 0,
+          "detail": ""
+        },
+        "cram": {
+          "status": "REJECTED",
+          "exit": 1,
+          "detail": "e embedded, e.g. pysam AlignmentFile(path, 'wc', header=header) with no reference_filename, which makes htslib embed it."
+        }
+      },
+      "helper_dependency": {
+        "needs_helper": "yes",
+        "reports_missing_helper": true,
+        "helper": "Rscript",
+        "requires_rscript": true,
+        "detail": " ...  Done\ngenerating data matrix ...\ngenerating R script  ...\nread_NVC.py: error: Rscript executable not found: Rscript"
+      },
+      "skip_plot_contract": {
+        "has_skip_plot": true,
+        "exit": 0,
+        "pdfs_written": 0,
+        "rscripts_written": 1,
+        "suppresses_helper": true
+      },
+      "determinism": {
+        "stdout_deterministic": true,
+        "data_deterministic": true,
+        "plot_deterministic_after_timestamp_normalisation": true,
+        "data_artifacts": 2,
+        "plot_artifacts": 1
+      }
+    },
+    "read_quality": {
+      "binary": "read_quality",
+      "binary_sha256": "0ff4173be085957d6f012d2b4078ff3669fcb340d40e7d8c0771f51d9d41b513",
+      "input_formats": {
+        "applies": true,
+        "primary_input_kind": "alignment",
+        "bam": {
+          "status": "ACCEPTED",
+          "exit": 0,
+          "detail": ""
+        },
+        "sam": {
+          "status": "ACCEPTED",
+          "exit": 0,
+          "detail": ""
+        },
+        "cram": {
+          "status": "REJECTED",
+          "exit": 1,
+          "detail": "e embedded, e.g. pysam AlignmentFile(path, 'wc', header=header) with no reference_filename, which makes htslib embed it."
+        }
+      },
+      "helper_dependency": {
+        "needs_helper": "yes",
+        "reports_missing_helper": true,
+        "helper": "Rscript",
+        "requires_rscript": true,
+        "detail": "Read BAM file ...  Done\nread_quality.py: error: Rscript executable not found: Rscript"
+      },
+      "skip_plot_contract": {
+        "has_skip_plot": true,
+        "exit": 0,
+        "pdfs_written": 0,
+        "rscripts_written": 1,
+        "suppresses_helper": true
+      },
+      "determinism": {
+        "stdout_deterministic": true,
+        "data_deterministic": true,
+        "plot_deterministic_after_timestamp_normalisation": true,
+        "data_artifacts": 1,
+        "plot_artifacts": 2
+      }
+    },
+    "read_duplication": {
+      "binary": "read_duplication",
+      "binary_sha256": "dac63f5a53fc7ce23e1d24d50e04500cb8bdf86c5561fbe54cb49fca49e61f89",
+      "input_formats": {
+        "applies": true,
+        "primary_input_kind": "alignment",
+        "bam": {
+          "status": "ACCEPTED",
+          "exit": 0,
+          "detail": ""
+        },
+        "sam": {
+          "status": "ACCEPTED",
+          "exit": 0,
+          "detail": ""
+        },
+        "cram": {
+          "status": "REJECTED",
+          "exit": 1,
+          "detail": "e embedded, e.g. pysam AlignmentFile(path, 'wc', header=header) with no reference_filename, which makes htslib embed it."
+        }
+      },
+      "helper_dependency": {
+        "needs_helper": "yes",
+        "reports_missing_helper": true,
+        "helper": "Rscript",
+        "requires_rscript": true,
+        "detail": "licte rate based on mapping  ...\ngenerate R script ...\nread_duplication.py: error: Rscript executable not found: Rscript"
+      },
+      "skip_plot_contract": {
+        "has_skip_plot": true,
+        "exit": 0,
+        "pdfs_written": 0,
+        "rscripts_written": 1,
+        "suppresses_helper": true
+      },
+      "determinism": {
+        "stdout_deterministic": true,
+        "data_deterministic": true,
+        "plot_deterministic_after_timestamp_normalisation": true,
+        "data_artifacts": 3,
+        "plot_artifacts": 1
+      }
+    },
+    "clipping_profile": {
+      "binary": "clipping_profile",
+      "binary_sha256": "a9167b451e5a2b81621036cf2e3cfaf86242983c449315c3c8aa897dea9e8e45",
+      "input_formats": {
+        "applies": true,
+        "primary_input_kind": "alignment",
+        "bam": {
+          "status": "ACCEPTED",
+          "exit": 0,
+          "detail": ""
+        },
+        "sam": {
+          "status": "ACCEPTED",
+          "exit": 0,
+          "detail": ""
+        },
+        "cram": {
+          "status": "REJECTED",
+          "exit": 1,
+          "detail": "e embedded, e.g. pysam AlignmentFile(path, 'wc', header=header) with no reference_filename, which makes htslib embed it."
+        }
+      },
+      "helper_dependency": {
+        "needs_helper": "yes",
+        "reports_missing_helper": true,
+        "helper": "Rscript",
+        "requires_rscript": true,
+        "detail": "\nTotoal read-1 used: 288162\nTotoal read-2 used: 288154\nclipping_profile.py: error: Rscript executable not found: Rscript"
+      },
+      "skip_plot_contract": {
+        "has_skip_plot": true,
+        "exit": 0,
+        "pdfs_written": 0,
+        "rscripts_written": 1,
+        "suppresses_helper": true
+      },
+      "determinism": {
+        "stdout_deterministic": true,
+        "data_deterministic": true,
+        "plot_deterministic_after_timestamp_normalisation": true,
+        "data_artifacts": 2,
+        "plot_artifacts": 2
+      }
+    },
+    "insertion_profile": {
+      "binary": "insertion_profile",
+      "binary_sha256": "ddfa76d9316ccc748a79c2b9a52d822e856661ef7e2be9a35e240f8c5cf7247e",
+      "input_formats": {
+        "applies": true,
+        "primary_input_kind": "alignment",
+        "bam": {
+          "status": "ACCEPTED",
+          "exit": 0,
+          "detail": ""
+        },
+        "sam": {
+          "status": "ACCEPTED",
+          "exit": 0,
+          "detail": ""
+        },
+        "cram": {
+          "status": "REJECTED",
+          "exit": 1,
+          "detail": "e embedded, e.g. pysam AlignmentFile(path, 'wc', header=header) with no reference_filename, which makes htslib embed it."
+        }
+      },
+      "helper_dependency": {
+        "needs_helper": "yes",
+        "reports_missing_helper": true,
+        "helper": "Rscript",
+        "requires_rscript": true,
+        "detail": "Totoal read-1 used: 288162\nTotoal read-2 used: 288154\ninsertion_profile.py: error: Rscript executable not found: Rscript"
+      },
+      "skip_plot_contract": {
+        "has_skip_plot": true,
+        "exit": 0,
+        "pdfs_written": 0,
+        "rscripts_written": 1,
+        "suppresses_helper": true
+      },
+      "determinism": {
+        "stdout_deterministic": true,
+        "data_deterministic": true,
+        "plot_deterministic_after_timestamp_normalisation": true,
+        "data_artifacts": 2,
+        "plot_artifacts": 2
+      }
+    },
+    "deletion_profile": {
+      "binary": "deletion_profile",
+      "binary_sha256": "7f41fdcb4c70d33070ed04d094b556eab1defc200d46677fa0b4499c0329cd84",
+      "input_formats": {
+        "applies": true,
+        "primary_input_kind": "alignment",
+        "known_restriction": "BAM only, inherited from upstream: the command's own `validate_args` rejects a non-`.bam` extension with parser.error before reading the file. Reproduced deliberately; a port that accepted more than upstream here would disagree on an input the user was told was invalid.",
+        "bam": {
+          "status": "ACCEPTED",
+          "exit": 0,
+          "detail": ""
+        },
+        "sam": {
+          "status": "REJECTED",
+          "exit": 1,
+          "detail": "deletion_profile.py: error: invalid BGZF header"
+        },
+        "cram": {
+          "status": "REJECTED",
+          "exit": 1,
+          "detail": "deletion_profile.py: error: invalid BGZF header"
+        }
+      },
+      "helper_dependency": {
+        "needs_helper": "yes",
+        "reports_missing_helper": true,
+        "helper": "Rscript",
+        "requires_rscript": true,
+        "detail": "Process BAM file ...  Total reads used: 15572\ndeletion_profile.py: error: Rscript executable not found: Rscript"
+      },
+      "skip_plot_contract": {
+        "has_skip_plot": true,
+        "exit": 0,
+        "pdfs_written": 0,
+        "rscripts_written": 1,
+        "suppresses_helper": true
+      },
+      "determinism": {
+        "stdout_deterministic": true,
+        "data_deterministic": true,
+        "plot_deterministic_after_timestamp_normalisation": true,
+        "data_artifacts": 2,
+        "plot_artifacts": 1
+      }
+    },
+    "mismatch_profile": {
+      "binary": "mismatch_profile",
+      "binary_sha256": "d1a371654d59b0296bfba3cb3a156db16210bf8979ed2b19252fdafd0f12463e",
+      "input_formats": {
+        "applies": true,
+        "primary_input_kind": "alignment",
+        "known_restriction": "BAM only, inherited from upstream: the command's own `validate_args` rejects a non-`.bam` extension with parser.error before reading the file. Reproduced deliberately; a port that accepted more than upstream here would disagree on an input the user was told was invalid.",
+        "bam": {
+          "status": "ACCEPTED",
+          "exit": 0,
+          "detail": ""
+        },
+        "sam": {
+          "status": "REJECTED",
+          "exit": 1,
+          "detail": "mismatch_profile.py: error: invalid BGZF header"
+        },
+        "cram": {
+          "status": "REJECTED",
+          "exit": 1,
+          "detail": "mismatch_profile.py: error: invalid BGZF header"
+        }
+      },
+      "helper_dependency": {
+        "needs_helper": "no",
+        "requires_rscript": false,
+        "detail": "succeeds with no helper, no PDF",
+        "plot_artifact": "absent"
+      },
+      "skip_plot_contract": {
+        "has_skip_plot": true,
+        "exit": 0,
+        "pdfs_written": 0,
+        "rscripts_written": 1,
+        "suppresses_helper": true
+      },
+      "determinism": {
+        "stdout_deterministic": true,
+        "data_deterministic": true,
+        "plot_deterministic_after_timestamp_normalisation": null,
+        "data_artifacts": 2,
+        "plot_artifacts": 0
+      }
+    },
+    "read_hexamer": {
+      "binary": "read_hexamer",
+      "binary_sha256": "f84f918862e3d3ad06178904a4ad4be4f69859accb2a2d073bd166699074654e",
+      "input_formats": {
+        "applies": false,
+        "primary_input_kind": "fastq",
+        "note": "not an alignment-consuming command; its input support is not covered by feeding it a BAM"
+      },
+      "helper_dependency": {
+        "needs_helper": "no",
+        "requires_rscript": false,
+        "detail": "succeeds with no helper, no PDF",
+        "plot_artifact": "absent"
+      },
+      "skip_plot_contract": {
+        "has_skip_plot": false,
+        "suppresses_helper": null
+      },
+      "determinism": {
+        "stdout_deterministic": true,
+        "data_deterministic": true,
+        "plot_deterministic_after_timestamp_normalisation": null,
+        "data_artifacts": 1,
+        "plot_artifacts": 0
+      }
+    },
+    "infer_experiment": {
+      "binary": "infer_experiment",
+      "binary_sha256": "c0963cb8737dcdb823b834d0a18f9efdade055d6fce3ad2849bf28f814a0a12b",
+      "input_formats": {
+        "applies": true,
+        "primary_input_kind": "alignment",
+        "bam": {
+          "status": "ACCEPTED",
+          "exit": 0,
+          "detail": ""
+        },
+        "sam": {
+          "status": "ACCEPTED",
+          "exit": 0,
+          "detail": ""
+        },
+        "cram": {
+          "status": "REJECTED",
+          "exit": 1,
+          "detail": "e embedded, e.g. pysam AlignmentFile(path, 'wc', header=header) with no reference_filename, which makes htslib embed it."
+        }
+      },
+      "helper_dependency": {
+        "needs_helper": "no",
+        "requires_rscript": false,
+        "detail": "succeeds with no helper, no PDF",
+        "plot_artifact": "absent"
+      },
+      "skip_plot_contract": {
+        "has_skip_plot": false,
+        "suppresses_helper": null
+      },
+      "determinism": {
+        "stdout_deterministic": true,
+        "data_deterministic": null,
+        "plot_deterministic_after_timestamp_normalisation": null,
+        "data_artifacts": 0,
+        "plot_artifacts": 0
+      }
+    },
+    "read_distribution": {
+      "binary": "read_distribution",
+      "binary_sha256": "8604692ece850139c1098f74985dcefe7e910bf19e5bae4191656f4dafabbce5",
+      "input_formats": {
+        "applies": true,
+        "primary_input_kind": "alignment",
+        "bam": {
+          "status": "ACCEPTED",
+          "exit": 0,
+          "detail": ""
+        },
+        "sam": {
+          "status": "ACCEPTED",
+          "exit": 0,
+          "detail": ""
+        },
+        "cram": {
+          "status": "REJECTED",
+          "exit": 1,
+          "detail": "e embedded, e.g. pysam AlignmentFile(path, 'wc', header=header) with no reference_filename, which makes htslib embed it."
+        }
+      },
+      "helper_dependency": {
+        "needs_helper": "no",
+        "requires_rscript": false,
+        "detail": "succeeds with no helper, no PDF",
+        "plot_artifact": "absent"
+      },
+      "skip_plot_contract": {
+        "has_skip_plot": false,
+        "suppresses_helper": null
+      },
+      "determinism": {
+        "stdout_deterministic": true,
+        "data_deterministic": null,
+        "plot_deterministic_after_timestamp_normalisation": null,
+        "data_artifacts": 0,
+        "plot_artifacts": 0
+      }
+    },
+    "inner_distance": {
+      "binary": "inner_distance",
+      "binary_sha256": "75049a00df3f4bfc2fd04fb31dc9870c2d19f524b0bd1e8b439608751a6cc4fb",
+      "input_formats": {
+        "applies": true,
+        "primary_input_kind": "alignment",
+        "bam": {
+          "status": "ACCEPTED",
+          "exit": 0,
+          "detail": ""
+        },
+        "sam": {
+          "status": "ACCEPTED",
+          "exit": 0,
+          "detail": ""
+        },
+        "cram": {
+          "status": "REJECTED",
+          "exit": 1,
+          "detail": "e embedded, e.g. pysam AlignmentFile(path, 'wc', header=header) with no reference_filename, which makes htslib embed it."
+        }
+      },
+      "helper_dependency": {
+        "needs_helper": "yes",
+        "reports_missing_helper": true,
+        "helper": "Rscript",
+        "requires_rscript": true,
+        "detail": "..\nLoad BAM file ...  Done\nTotal read pairs  used 288165\ninner_distance.py: error: Rscript executable not found: Rscript"
+      },
+      "skip_plot_contract": {
+        "has_skip_plot": true,
+        "exit": 0,
+        "pdfs_written": 0,
+        "rscripts_written": 1,
+        "suppresses_helper": true
+      },
+      "determinism": {
+        "stdout_deterministic": true,
+        "data_deterministic": true,
+        "plot_deterministic_after_timestamp_normalisation": true,
+        "data_artifacts": 3,
+        "plot_artifacts": 1
+      }
+    },
+    "RNA_fragment_size": {
+      "binary": "RNA_fragment_size",
+      "binary_sha256": "1c4de6d7dbd6410b6ad2f11e781bfa292f65f2a737b280b237a9382bad5faee1",
+      "input_formats": {
+        "applies": true,
+        "primary_input_kind": "alignment",
+        "known_restriction": "BAM only, inherited from upstream: the command's own `validate_args` rejects a non-`.bam` extension with parser.error before reading the file. Reproduced deliberately; a port that accepted more than upstream here would disagree on an input the user was told was invalid.",
+        "bam": {
+          "status": "ACCEPTED",
+          "exit": 0,
+          "detail": ""
+        },
+        "sam": {
+          "status": "REJECTED",
+          "exit": 1,
+          "detail": "RNA_fragment_size.py: error: invalid BGZF header"
+        },
+        "cram": {
+          "status": "REJECTED",
+          "exit": 1,
+          "detail": "RNA_fragment_size.py: error: invalid BGZF header"
+        }
+      },
+      "helper_dependency": {
+        "needs_helper": "no",
+        "requires_rscript": false,
+        "detail": "succeeds with no helper, no PDF",
+        "plot_artifact": "absent"
+      },
+      "skip_plot_contract": {
+        "has_skip_plot": false,
+        "suppresses_helper": null
+      },
+      "determinism": {
+        "stdout_deterministic": true,
+        "data_deterministic": true,
+        "plot_deterministic_after_timestamp_normalisation": null,
+        "data_artifacts": 1,
+        "plot_artifacts": 0
+      }
+    },
+    "junction_annotation": {
+      "binary": "junction_annotation",
+      "binary_sha256": "f0f64cee37cac0eec459013c50d8adac64dee22466ed5776658e46c40a551499",
+      "input_formats": {
+        "applies": true,
+        "primary_input_kind": "alignment",
+        "bam": {
+          "status": "ACCEPTED",
+          "exit": 0,
+          "detail": ""
+        },
+        "sam": {
+          "status": "ACCEPTED",
+          "exit": 0,
+          "detail": ""
+        },
+        "cram": {
+          "status": "REJECTED",
+          "exit": 1,
+          "detail": "e embedded, e.g. pysam AlignmentFile(path, 'wc', header=header) with no reference_filename, which makes htslib embed it."
+        }
+      },
+      "helper_dependency": {
+        "needs_helper": "yes",
+        "reports_missing_helper": true,
+        "helper": "Rscript",
+        "requires_rscript": true,
+        "detail": "===================================================\njunction_annotation.py: error: Rscript executable not found: Rscript"
+      },
+      "skip_plot_contract": {
+        "has_skip_plot": true,
+        "exit": 0,
+        "pdfs_written": 0,
+        "rscripts_written": 1,
+        "suppresses_helper": true
+      },
+      "determinism": {
+        "stdout_deterministic": true,
+        "data_deterministic": true,
+        "plot_deterministic_after_timestamp_normalisation": true,
+        "data_artifacts": 2,
+        "plot_artifacts": 2
+      }
+    },
+    "junction_saturation": {
+      "binary": "junction_saturation",
+      "binary_sha256": "c7174e6190e90668042aa522d431dcb120ee8ece4fe47d55870164e4fcf8253b",
+      "input_formats": {
+        "applies": true,
+        "primary_input_kind": "alignment",
+        "bam": {
+          "status": "ACCEPTED",
+          "exit": 0,
+          "detail": ""
+        },
+        "sam": {
+          "status": "ACCEPTED",
+          "exit": 0,
+          "detail": ""
+        },
+        "cram": {
+          "status": "REJECTED",
+          "exit": 1,
+          "detail": "e embedded, e.g. pysam AlignmentFile(path, 'wc', header=header) with no reference_filename, which makes htslib embed it."
+        }
+      },
+      "helper_dependency": {
+        "needs_helper": "yes",
+        "reports_missing_helper": true,
+        "helper": "Rscript",
+        "requires_rscript": true,
+        "detail": " splicing junctions. 2606 novel splicing junctions.\njunction_saturation.py: error: Rscript executable not found: Rscript"
+      },
+      "skip_plot_contract": {
+        "has_skip_plot": true,
+        "exit": 0,
+        "pdfs_written": 0,
+        "rscripts_written": 1,
+        "suppresses_helper": true
+      },
+      "determinism": {
+        "stdout_deterministic": true,
+        "data_deterministic": false,
+        "plot_deterministic_after_timestamp_normalisation": false,
+        "data_artifacts": 1,
+        "plot_artifacts": 1
+      }
+    },
+    "tin": {
+      "binary": "tin",
+      "binary_sha256": "9fe7be5a2678892efce81cdb3b53069d84a5fe1b58464e7880d647dfaccdb217",
+      "input_formats": {
+        "applies": true,
+        "primary_input_kind": "alignment",
+        "known_restriction": "BAM only, inherited from upstream: the command's own `validate_args` rejects a non-`.bam` extension with parser.error before reading the file. Reproduced deliberately; a port that accepted more than upstream here would disagree on an input the user was told was invalid.",
+        "bam": {
+          "status": "ACCEPTED",
+          "exit": 0,
+          "detail": ""
+        },
+        "sam": {
+          "status": "REJECTED",
+          "exit": 1,
+          "detail": "Get BAM file(s) ...\nNo BAM files found"
+        },
+        "cram": {
+          "status": "REJECTED",
+          "exit": 1,
+          "detail": "Get BAM file(s) ...\nNo BAM files found"
+        }
+      },
+      "helper_dependency": {
+        "needs_helper": "no",
+        "requires_rscript": false,
+        "detail": "succeeds with no helper, no PDF",
+        "plot_artifact": "absent"
+      },
+      "skip_plot_contract": {
+        "has_skip_plot": false,
+        "suppresses_helper": null
+      },
+      "determinism": {
+        "stdout_deterministic": true,
+        "data_deterministic": true,
+        "plot_deterministic_after_timestamp_normalisation": null,
+        "data_artifacts": 2,
+        "plot_artifacts": 0
+      }
+    },
+    "FPKM_count": {
+      "binary": "FPKM_count",
+      "binary_sha256": "7fe40b3b2165ef90ce9d6a5a230927d625d1546fe584aef6d6c93457618cd252",
+      "input_formats": {
+        "applies": true,
+        "primary_input_kind": "alignment",
+        "known_restriction": "BAM only, inherited from upstream: the command's own `validate_args` rejects a non-`.bam` extension with parser.error before reading the file. Reproduced deliberately; a port that accepted more than upstream here would disagree on an input the user was told was invalid.",
+        "bam": {
+          "status": "ACCEPTED",
+          "exit": 0,
+          "detail": ""
+        },
+        "sam": {
+          "status": "REJECTED",
+          "exit": 1,
+          "detail": "egions from /scratch/mdra00001/RSeQC-rust/datasets/aligned/tiny/model.bed12...\nFPKM_count.py: error: invalid BGZF header"
+        },
+        "cram": {
+          "status": "REJECTED",
+          "exit": 1,
+          "detail": "egions from /scratch/mdra00001/RSeQC-rust/datasets/aligned/tiny/model.bed12...\nFPKM_count.py: error: invalid BGZF header"
+        }
+      },
+      "helper_dependency": {
+        "needs_helper": "no",
+        "requires_rscript": false,
+        "detail": "succeeds with no helper, no PDF",
+        "plot_artifact": "absent"
+      },
+      "skip_plot_contract": {
+        "has_skip_plot": false,
+        "suppresses_helper": null
+      },
+      "determinism": {
+        "stdout_deterministic": true,
+        "data_deterministic": true,
+        "plot_deterministic_after_timestamp_normalisation": null,
+        "data_artifacts": 1,
+        "plot_artifacts": 0
+      }
+    },
+    "FPKM_UQ": {
+      "binary": "FPKM_UQ",
+      "binary_sha256": "38976ef3f41d89fec83b33fa5a61da13d0da0ad039b5b2fa25ecc415ad23f2d9",
+      "input_formats": {
+        "applies": true,
+        "primary_input_kind": "alignment",
+        "bam": {
+          "status": "NOT_MEASURED",
+          "exit": 1,
+          "detail": "requires an external helper that is absent, so input support was not tested"
+        },
+        "sam": {
+          "status": "NOT_MEASURED",
+          "exit": 1,
+          "detail": "requires an external helper that is absent, so input support was not tested"
+        },
+        "cram": {
+          "status": "NOT_MEASURED",
+          "exit": 1,
+          "detail": "requires an external helper that is absent, so input support was not tested"
+        }
+      },
+      "helper_dependency": {
+        "needs_helper": "yes",
+        "reports_missing_helper": true,
+        "helper": "htseq-count",
+        "requires_rscript": false,
+        "detail": "FPKM-UQ.py: error: cannot find htseq-count executable \"htseq-count\""
+      },
+      "skip_plot_contract": {
+        "has_skip_plot": false,
+        "suppresses_helper": null
+      },
+      "determinism": {
+        "data_deterministic": null,
+        "plot_deterministic": null,
+        "stdout_deterministic": null,
+        "detail": "not measured: requires an external helper that is absent (FPKM-UQ.py: error: cannot find htseq-count executable \"htseq-count\")"
+      }
+    },
+    "RPKM_saturation": {
+      "binary": "RPKM_saturation",
+      "binary_sha256": "1c63c9425d08f3ac7642567e6d7c4a5b7365956c0310708944854a29711967d6",
+      "input_formats": {
+        "applies": true,
+        "primary_input_kind": "alignment",
+        "bam": {
+          "status": "ACCEPTED",
+          "exit": 0,
+          "detail": ""
+        },
+        "sam": {
+          "status": "ACCEPTED",
+          "exit": 0,
+          "detail": ""
+        },
+        "cram": {
+          "status": "REJECTED",
+          "exit": 1,
+          "detail": "e embedded, e.g. pysam AlignmentFile(path, 'wc', header=header) with no reference_filename, which makes htslib embed it."
+        }
+      },
+      "helper_dependency": {
+        "needs_helper": "yes",
+        "reports_missing_helper": true,
+        "helper": "Rscript",
+        "requires_rscript": true,
+        "detail": "00001/RSeQC-rust/datasets/aligned/tiny/model.bed12 ...\n\nRPKM_saturation.py: error: Rscript executable not found: Rscript"
+      },
+      "skip_plot_contract": {
+        "has_skip_plot": true,
+        "exit": 0,
+        "pdfs_written": 0,
+        "rscripts_written": 1,
+        "suppresses_helper": true
+      },
+      "determinism": {
+        "stdout_deterministic": true,
+        "data_deterministic": false,
+        "plot_deterministic_after_timestamp_normalisation": false,
+        "data_artifacts": 3,
+        "plot_artifacts": 1
+      }
+    },
+    "bam2wig": {
+      "binary": "bam2wig",
+      "binary_sha256": "109959854b6f6b2f80e2daba4d8a5ef4b8ac6d21b2bc25f1c0c9d1532ce5feff",
+      "input_formats": {
+        "applies": true,
+        "primary_input_kind": "alignment",
+        "known_restriction": "BAM only, inherited from upstream: the command's own `validate_args` rejects a non-`.bam` extension with parser.error before reading the file. Reproduced deliberately; a port that accepted more than upstream here would disagree on an input the user was told was invalid.",
+        "bam": {
+          "status": "ACCEPTED",
+          "exit": 0,
+          "detail": ""
+        },
+        "sam": {
+          "status": "REJECTED",
+          "exit": 1,
+          "detail": "Skip multi-hits: False\nbam2wig.py: error: invalid BGZF header"
+        },
+        "cram": {
+          "status": "REJECTED",
+          "exit": 1,
+          "detail": "Skip multi-hits: False\nbam2wig.py: error: invalid BGZF header"
+        }
+      },
+      "helper_dependency": {
+        "needs_helper": "no",
+        "requires_rscript": false,
+        "detail": "succeeds with no helper, no PDF",
+        "plot_artifact": "absent"
+      },
+      "skip_plot_contract": {
+        "has_skip_plot": false,
+        "suppresses_helper": null
+      },
+      "determinism": {
+        "stdout_deterministic": true,
+        "data_deterministic": true,
+        "plot_deterministic_after_timestamp_normalisation": null,
+        "data_artifacts": 1,
+        "plot_artifacts": 0
+      }
+    },
+    "geneBody_coverage": {
+      "binary": "geneBody_coverage",
+      "binary_sha256": "d8ee2da36f345798ef9b943351909d445d1855dea87a0d54d3988ea8adf8c30f",
+      "input_formats": {
+        "applies": true,
+        "primary_input_kind": "alignment",
+        "bam": {
+          "status": "ACCEPTED",
+          "exit": 0,
+          "detail": ""
+        },
+        "sam": {
+          "status": "REJECTED",
+          "exit": 1,
+          "detail": "e gene model) ...\nTotal 5840 transcripts loaded\nGet BAM file(s) ...\ngeneBody_coverage.py: error: no BAM files were found"
+        },
+        "cram": {
+          "status": "REJECTED",
+          "exit": 1,
+          "detail": "e gene model) ...\nTotal 5840 transcripts loaded\nGet BAM file(s) ...\ngeneBody_coverage.py: error: no BAM files were found"
+        }
+      },
+      "helper_dependency": {
+        "needs_helper": "yes",
+        "reports_missing_helper": true,
+        "helper": "Rscript",
+        "requires_rscript": true,
+        "detail": "wness\n\ttiny\t-4.366603271785929\nRunning R script ...\ngeneBody_coverage.py: error: Rscript executable not found: \"Rscript\""
+      },
+      "skip_plot_contract": {
+        "has_skip_plot": true,
+        "exit": 0,
+        "pdfs_written": 0,
+        "rscripts_written": 1,
+        "suppresses_helper": true
+      },
+      "determinism": {
+        "stdout_deterministic": true,
+        "data_deterministic": true,
+        "plot_deterministic_after_timestamp_normalisation": true,
+        "data_artifacts": 2,
+        "plot_artifacts": 1
+      }
+    },
+    "geneBody_coverage2": {
+      "binary": "geneBody_coverage2",
+      "binary_sha256": "6a2463aa4acbd6ec26c56037fd0861fe73da1ff543c398cda34eb0e4363c5e94",
+      "input_formats": {
+        "applies": false,
+        "primary_input_kind": "bigwig",
+        "note": "not an alignment-consuming command; its input support is not covered by feeding it a BAM"
+      },
+      "helper_dependency": {
+        "needs_helper": "yes",
+        "reports_missing_helper": true,
+        "helper": "Rscript",
+        "requires_rscript": true,
+        "detail": "ne body ...\n\t1 genes finished\n \t2 genes finished\n \ngeneBody_coverage2.py: error: Rscript executable not found: \"Rscript\""
+      },
+      "skip_plot_contract": {
+        "has_skip_plot": true,
+        "exit": 0,
+        "pdfs_written": 0,
+        "rscripts_written": 1,
+        "suppresses_helper": true
+      },
+      "determinism": {
+        "stdout_deterministic": true,
+        "data_deterministic": true,
+        "plot_deterministic_after_timestamp_normalisation": true,
+        "data_artifacts": 2,
+        "plot_artifacts": 1
+      }
+    },
+    "normalize_bigwig": {
+      "binary": "normalize_bigwig",
+      "binary_sha256": "7320aba1932036e5e309941d2686667633fc94c3da44a6c80528abf211272604",
+      "input_formats": {
+        "applies": false,
+        "primary_input_kind": "bigwig",
+        "note": "not an alignment-consuming command; its input support is not covered by feeding it a BAM"
+      },
+      "helper_dependency": {
+        "needs_helper": "no",
+        "requires_rscript": false,
+        "detail": "succeeds with no helper, no PDF",
+        "plot_artifact": "absent"
+      },
+      "skip_plot_contract": {
+        "has_skip_plot": false,
+        "suppresses_helper": null
+      },
+      "determinism": {
+        "stdout_deterministic": true,
+        "data_deterministic": true,
+        "plot_deterministic_after_timestamp_normalisation": null,
+        "data_artifacts": 1,
+        "plot_artifacts": 0
+      }
+    },
+    "overlay_bigwig": {
+      "binary": "overlay_bigwig",
+      "binary_sha256": "559b23d7711e380a3493fbe04d68a09af345573a807d27cdbdfce57d62a7d8a0",
+      "input_formats": {
+        "applies": false,
+        "primary_input_kind": "bigwig",
+        "note": "not an alignment-consuming command; its input support is not covered by feeding it a BAM"
+      },
+      "helper_dependency": {
+        "needs_helper": "no",
+        "requires_rscript": false,
+        "detail": "succeeds with no helper, no PDF",
+        "plot_artifact": "absent"
+      },
+      "skip_plot_contract": {
+        "has_skip_plot": false,
+        "suppresses_helper": null
+      },
+      "determinism": {
+        "stdout_deterministic": true,
+        "data_deterministic": true,
+        "plot_deterministic_after_timestamp_normalisation": null,
+        "data_artifacts": 1,
+        "plot_artifacts": 0
+      }
+    },
+    "sc_bamStat": {
+      "binary": "sc_bamStat",
+      "binary_sha256": "1abe5136b583c275ef39196e165efc9852545aa672ae41460ea66c038195ef31",
+      "input_formats": {
+        "applies": false,
+        "primary_input_kind": "single_cell_alignment",
+        "note": "not an alignment-consuming command; its input support is not covered by feeding it a BAM"
+      },
+      "helper_dependency": {
+        "needs_helper": "no",
+        "requires_rscript": false,
+        "detail": "succeeds with no helper, no PDF",
+        "plot_artifact": "absent"
+      },
+      "skip_plot_contract": {
+        "has_skip_plot": false,
+        "suppresses_helper": null
+      },
+      "determinism": {
+        "stdout_deterministic": true,
+        "data_deterministic": null,
+        "plot_deterministic_after_timestamp_normalisation": null,
+        "data_artifacts": 0,
+        "plot_artifacts": 0
+      }
+    },
+    "sc_editMatrix": {
+      "binary": "sc_editMatrix",
+      "binary_sha256": "1cddc2382b4cfcacd123e125c0e2cd5770ad56b3bd0e9101ca2bdec5daafd9eb",
+      "input_formats": {
+        "applies": false,
+        "primary_input_kind": "single_cell_alignment",
+        "note": "not an alignment-consuming command; its input support is not covered by feeding it a BAM"
+      },
+      "helper_dependency": {
+        "needs_helper": "yes",
+        "reports_missing_helper": true,
+        "helper": "Rscript",
+        "requires_rscript": true,
+        "detail": " out.CB_edits_count.csv\n2026-10-02 08:53:46 [INFO] Created out.UMI_edits_count.csv\nRscript executable not found: Rscript"
+      },
+      "skip_plot_contract": {
+        "has_skip_plot": false,
+        "suppresses_helper": null
+      },
+      "determinism": {
+        "data_deterministic": null,
+        "plot_deterministic": null,
+        "stdout_deterministic": null,
+        "detail": "not measured: requires an external helper that is absent (R package 'pheatmap' is not installed. Install it with \"Rscript -e \\\"install.packages('pheatmap', repos='https://cloud.r-project.org')\\\"\", r)"
+      }
+    },
+    "sc_seqQual": {
+      "binary": "sc_seqQual",
+      "binary_sha256": "906d2f380f8dda34cf246366b3c30d850b51f2d1af4be006d1a53aabc1a9c171",
+      "input_formats": {
+        "applies": false,
+        "primary_input_kind": "fastq",
+        "note": "not an alignment-consuming command; its input support is not covered by feeding it a BAM"
+      },
+      "helper_dependency": {
+        "needs_helper": "yes",
+        "reports_missing_helper": true,
+        "helper": "Rscript",
+        "requires_rscript": true,
+        "detail": " out.qual_count.csv\n2026-10-02 08:53:46 [INFO] Created out.qual_percent.csv\nerror: Rscript executable not found: Rscript"
+      },
+      "skip_plot_contract": {
+        "has_skip_plot": false,
+        "suppresses_helper": null
+      },
+      "determinism": {
+        "data_deterministic": null,
+        "plot_deterministic": null,
+        "stdout_deterministic": null,
+        "detail": "not measured: requires an external helper that is absent (error: R package 'pheatmap' is not installed. Install it with \"Rscript -e \\\"install.packages('pheatmap', repos='https://cloud.r-project.org')"
+      }
+    },
+    "sc_seqLogo": {
+      "binary": "sc_seqLogo",
+      "binary_sha256": "8af598fa2caedad3c11a0bae99282a652fab37bf2f21aaa49ef10d8ee0b6d15a",
+      "input_formats": {
+        "applies": false,
+        "primary_input_kind": "fastq",
+        "note": "not an alignment-consuming command; its input support is not covered by feeding it a BAM"
+      },
+      "helper_dependency": {
+        "needs_helper": "no",
+        "requires_rscript": false,
+        "plot_artifact": "present even without a helper"
+      },
+      "skip_plot_contract": {
+        "has_skip_plot": false,
+        "suppresses_helper": null
+      },
+      "determinism": {
+        "stdout_deterministic": true,
+        "data_deterministic": true,
+        "plot_deterministic_after_timestamp_normalisation": true,
+        "data_artifacts": 1,
+        "plot_artifacts": 2
+      }
+    }
+  },
+  "summary": {
+    "commands_probed": 33,
+    "not_judged_because_a_helper_is_absent": [
+      "FPKM_UQ",
+      "sc_editMatrix",
+      "sc_seqQual"
+    ],
+    "requires_helper_at_runtime": [
+      "FPKM_UQ",
+      "RPKM_saturation",
+      "clipping_profile",
+      "deletion_profile",
+      "geneBody_coverage",
+      "geneBody_coverage2",
+      "inner_distance",
+      "insertion_profile",
+      "junction_annotation",
+      "junction_saturation",
+      "read_GC",
+      "read_NVC",
+      "read_duplication",
+      "read_quality",
+      "sc_editMatrix",
+      "sc_seqQual"
+    ],
+    "non_deterministic_by_design": [
+      "RPKM_saturation",
+      "divide_bam",
+      "junction_saturation"
+    ],
+    "non_deterministic_unexplained": [],
+    "nondeterministic_data": [
+      "RPKM_saturation",
+      "divide_bam",
+      "junction_saturation"
+    ],
+    "nondeterministic_plots": [
+      "RPKM_saturation",
+      "junction_saturation"
+    ],
+    "accepts_format": {
+      "bam": [
+        "FPKM_count",
+        "RNA_fragment_size",
+        "RPKM_saturation",
+        "bam2fq",
+        "bam2wig",
+        "bam_stat",
+        "clipping_profile",
+        "deletion_profile",
+        "divide_bam",
+        "geneBody_coverage",
+        "infer_experiment",
+        "inner_distance",
+        "insertion_profile",
+        "junction_annotation",
+        "junction_saturation",
+        "mismatch_profile",
+        "read_GC",
+        "read_NVC",
+        "read_distribution",
+        "read_duplication",
+        "read_quality",
+        "split_bam",
+        "split_paired_bam",
+        "tin"
+      ],
+      "sam": [
+        "RPKM_saturation",
+        "bam2fq",
+        "bam_stat",
+        "clipping_profile",
+        "infer_experiment",
+        "inner_distance",
+        "insertion_profile",
+        "junction_annotation",
+        "junction_saturation",
+        "read_GC",
+        "read_NVC",
+        "read_distribution",
+        "read_duplication",
+        "read_quality"
+      ]
+    },
+    "primary_input_kind": {
+      "bigwig": [
+        "geneBody_coverage2",
+        "normalize_bigwig",
+        "overlay_bigwig"
+      ],
+      "fastq": [
+        "read_hexamer",
+        "sc_seqLogo",
+        "sc_seqQual"
+      ],
+      "single_cell_alignment": [
+        "sc_bamStat",
+        "sc_editMatrix"
+      ]
+    }
+  }
+}

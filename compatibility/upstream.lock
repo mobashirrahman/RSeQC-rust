@@ -1,5 +1,19 @@
 # Frozen oracle baseline (PORTING_PLAN.md Step 1, deliverable of gate G0).
 # Do not mutate in place; a new baseline gets a new file/profile.
+#
+# SCOPE CHANGE 2026-10-01. This file previously pinned the upstream SOURCE only,
+# and said so in `host_used_for_lock`: "Upstream's own environment ... is NOT yet
+# built. This lock only pins the source identity". The readiness audit's P1
+# finding was that `upstream.lock` leaves executable dependencies unpinned, so a
+# recorded differential result could not be attributed to a specific reference
+# environment. The executable environment recorded below closes that: every
+# dependency the oracle actually imports or shells out to now has an exact
+# version, and a digest of this file is bound into every benchmark run's
+# provenance so a row cannot be read under a different oracle than the one that
+# produced it.
+#
+# Verify with:
+#     oracle/venv/bin/python3 verification/check_oracle_env.py
 
 source:
   repo: https://github.com/liguowang/RSeQC.git
@@ -12,17 +26,136 @@ source:
 
 primary_baseline: github   # decision per PORTING_PLAN.md Step 1.3; PyPI 5.0.5 sdist cross-check not yet performed
 
-host_used_for_lock:
-  os: Linux 6.14.0-37-generic (Ubuntu 24.04-based)
-  arch: x86_64
-  python: "3.13.13"
-  note: >
-    Upstream's own environment (pysam/bx-python/numpy/pyBigWig/logomaker/pandas/matplotlib/
-    Rscript/wigToBigWig pins) is NOT yet built. This lock only pins the source identity;
-    Step 2 (executable reference environment) still needs the dependency version matrix,
-    container digest, locale, and timezone before oracle runs are trustworthy.
+# ---------------------------------------------------------------------------------
+# Executable reference environment
+# ---------------------------------------------------------------------------------
+# Recorded by observing the environment the recorded differential and benchmark
+# runs actually executed in, on 2026-10-01. `pip freeze` output is reproduced
+# verbatim rather than curated, so an unexpected extra or missing package is
+# visible rather than smoothed over.
+executable_environment:
+  recorded: "2026-10-01"
+  python:
+    version: "3.13.15"
+    executable: oracle/venv/bin/python3
+    note: >
+      The venv's interpreter is a locally built CPython 3.13 in oracle/python313;
+      it is not the system python. `oracle/venv` is a gitignored working copy.
+  host:
+    os: Linux 6.14.0-37-generic (Ubuntu 24.04-based)
+    arch: x86_64
+  pip_freeze:
+    bx-python: "0.15.1"
+    contourpy: "1.4.0"
+    cycler: "0.12.1"
+    fonttools: "4.65.0"
+    kiwisolver: "1.5.1"
+    logomaker: "0.8.7"
+    matplotlib: "3.11.2"
+    numpy: "2.5.3"
+    packaging: "26.3"
+    pandas: "3.0.5"
+    pillow: "12.3.0"
+    pyBigWig: "0.3.26"
+    pyparsing: "3.3.2"
+    pysam: "0.24.1"
+    python-dateutil: "2.9.0.post0"
+    setuptools: "84.0.0"
+    six: "1.17.0"
+    wheel: "0.48.0"
+  importable_version_checks:
+    numpy: "2.5.3"
+    pysam: "0.24.1"
+  editable_install:
+    name: qcmodule
+    version: "0.0.0"
+    path: oracle/upstream-src
+    remote: none
+    note: >
+      The oracle runs the upstream tree in place via an editable install with no
+      remote. The version string 0.0.0 is the editable-install placeholder and
+      carries no information about which upstream commit is present; the source
+      identity above is what pins the code.
+
+# ---------------------------------------------------------------------------------
+# External helper programs
+# ---------------------------------------------------------------------------------
+# Upstream shells out to these. Their ABSENCE is a documented cause of benchmark
+# rows failing identically in both arms rather than measuring an analysis, so
+# they are recorded explicitly with their status. `required_by` names the
+# commands that cannot do their real work without them.
+external_programs:
+  - name: Rscript
+    version: "4.3.3 (2024-02-29)"
+    path: /usr/bin/Rscript
+    status: present
+    required_by: [geneBody_coverage, geneBody_coverage2, junction_annotation]
+    note: >
+      Present at a distro version, not a pinned one. It is used to render plots
+      upstream, which the benchmark rows skip via --skip-plot; the data tables it
+      would plot are still compared.
+  - name: wigToBigWig
+    version: absent
+    path: null
+    status: absent
+    required_by: [bam2wig, normalize_bigwig]
+    note: >
+      Not installed. Rows that would invoke it measure the failure path in both
+      arms, not the conversion, and are labelled as such. bam2wig's bedGraph
+      output is upstream of the conversion and is compared normally.
+  - name: htseq-count
+    version: absent
+    path: null
+    status: absent
+    required_by: [FPKM-UQ]
+    note: >
+      Not installed, which is why FPMK-UQ is a declared exclusion rather than a
+      row.
+  - name: STAR
+    version: "2.7.11b"
+    path: /scratch/mdra00001/tmp/mamba/envs/t4star/bin/STAR
+    status: present_outside_repo
+    required_by: []
+    note: >
+      Used only to build the fixture panel's alignment indexes and BAMs, never by
+      a benchmark or differential row. It lives outside the repository in a
+      micromamba environment, so a checkout on another host does not reproduce
+      the fixture panel without rebuilding that environment. Recorded as a known
+      reproducibility limit rather than a pinned dependency.
+  - name: samtools
+    version: absent
+    path: null
+    status: absent
+    required_by: []
+    note: >
+      Not required by any row. htslib-based interoperability checks use pysam
+      instead, which is pinned above.
+
+# ---------------------------------------------------------------------------------
+# Deliberately unpinned
+# ---------------------------------------------------------------------------------
+# Recorded as a limit on what these numbers mean, not as an oversight.
+unpinned_by_design:
+  - item: >
+      Locale and timezone for oracle runs.
+    reason: >
+      Not recorded. The ported commands are locale-insensitive by construction and
+      no recorded row sorts or formats under a locale-dependent collation, but
+      this is an assumption, not a measurement. It becomes a real gap if a
+      command that sorts is ever added to the matrix.
+  - item: >
+      Exact wheel hashes for the pip packages above.
+    reason: >
+      Versions are pinned exactly; wheel digests are not, so a re-resolve could in
+      principle fetch different bytes for the same version. Adequate for
+      reproducing behaviour on this host, insufficient for bit-exact archival.
 
 open_items:
   - Independently inspect the matching PyPI 5.0.5 release and confirm it matches this commit's contents.
-  - Pin exact Python/pysam/bx-python/numpy/pyBigWig/logomaker/pandas/matplotlib versions.
+  - Record wheel digests so the environment is bit-exactly reproducible, not merely version-pinned.
+  - Decide whether the rat stratum's SEQC library metadata can be resolved well enough to un-suspend E1.
   - Resolve README (GPL-3.0-or-later) vs LICENSE (GPLv3) vs classifier (GPLv2) inconsistency before release metadata is chosen.
+  - >
+      Build the fixture-panel environment (STAR + micromamba prefix) reproducibly
+      inside the repository, or document the external step in CONTRIBUTING.md.
+      Until then a fresh checkout cannot regenerate datasets/aligned/ by itself.

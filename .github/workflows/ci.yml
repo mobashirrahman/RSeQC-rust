@@ -77,9 +77,23 @@ jobs:
           "$(pwd)/target/release/bam_stat.py" --help >/dev/null
           echo "bam_stat.py alias smoke test passed"
 
+  # The audit's P1 baseline/CI finding: the differential suite, the comparator
+  # tests and the annotation-converter truth cases are not run by any CI job, so
+  # a change could break the port's comparators or its own validation machinery
+  # without anything going red. This job is deliberately SMALL and MANDATORY
+  # rather than a full differential run: it needs only a Python 3 interpreter
+  # plus pysam, runs in well under a minute, and gates every push. The full
+  # 90-case differential suite needs the pinned oracle environment and stays in
+  # release-validation.yml, which runs it on a release candidate.
+  # NOTE: comparator credibility, independent truth cases, the differential
+  # matrix and distribution-archive validation live in release-validation.yml.
+  # They used to be absent entirely, which was the audit's P1 finding; they are
+  # deliberately not duplicated here, because two copies of a test is one copy too
+  # many and they will drift.
+
   docker-build:
     name: Build container image and smoke-test it
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     # This is the first REAL verification the Dockerfile gets: this
     # development sandbox has no `docker` available, so the Dockerfile
     # itself was only checked by hand (base image tags confirmed to

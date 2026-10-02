@@ -60,6 +60,15 @@ fn main() -> std::process::ExitCode {
 }
 
 fn run(args: &Args) -> std::io::Result<()> {
+    // Upstream's validate_args refuses an output prefix whose parent directory does
+    // not exist, before any input is read. Omitting it here meant the whole
+    // alignment was read and every metric computed, then discarded when the output
+    // open failed with "No such file or directory (os error 2)" -- an error naming
+    // neither the directory nor the flag, and indistinguishable from a missing
+    // input. The shared helper keeps that check in one place so it cannot be
+    // forgotten by the next binary.
+    rseqc_cli::require_existing_output_parent_or_exit("deletion_profile.py", &args.out_prefix);
+
     let (mut reader, _header) = rseqc_formats::open_bam(&args.input_file)?;
     // Upstream: `print("Process BAM file ... ", end=' ', file=sys.stderr)`
     // -- the string literal's own trailing space plus `end=' '` gives two

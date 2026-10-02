@@ -156,6 +156,12 @@ fn generate_heatmap(matrix_file: &str, out_prefix: &str, file_type: &str, cell_w
 }
 
 fn run(args: &Args) -> std::io::Result<()> {
+    // Upstream's validate_args refuses an output prefix whose parent directory does
+    // not exist, before any input is read. Omitting it here meant the whole
+    // alignment was read and every matrix computed, then discarded when the output
+    // open failed. The shared helper keeps that check in one place so it cannot be
+    // forgotten by the next binary.
+    rseqc_cli::require_existing_output_parent_or_exit("sc_editMatrix.py", &args.out_file);
     if let Some(n) = args.reads_num {
         if n <= 0 {
             return Err(std::io::Error::new(std::io::ErrorKind::InvalidInput, "--limit must be greater than zero"));

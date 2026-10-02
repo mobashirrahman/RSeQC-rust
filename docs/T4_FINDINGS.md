@@ -1,5 +1,13 @@
 # T4 findings: scientific qualification
 
+> **Superseded interpretation (2026-10-01):** this historical write-up includes
+> unsupported strand and causal interpretations. The independent audit also
+> confirmed that the rat refGene converter still uses incorrect coordinate
+> conventions, invalidating its annotation-based conclusions. Read the
+> [current readiness audit](READINESS_AUDIT_2026-10-01.md) and
+> [reviewed endpoint results](../datasets/ENDPOINT_RESULTS.md) before using
+> these findings. The raw records remain available for audit.
+
 Status: T4 **partially complete**. The held-out panel is built, aligned and
 evaluated; four of the eight coverage domains in `testing.md` §11.1 remain
 uncovered. This document records what was found, what it means, and what is
@@ -27,8 +35,11 @@ Identical to four decimals on held-out data. `geneBody_coverage` and
 time of writing (upstream is pure Python; ~85 min for 50,725 transcripts) and
 are **not yet claimed**.
 
-Separately, T4.1 holds: 86/90 differential cases run on real reads with 86
-passing, 4 explicit skips, 0 failures, 118 byte-identical assertions.
+Separately, T4.1 holds: **90/90 differential cases pass** as of 2026-10-01, re-run
+with failure-closed comparators and the corrected rat annotation. The earlier
+invocation was 86/90 with 4 explicit skips. The panel still mixes substituted real
+inputs with fixed synthetic/regression fixtures, so the count is a count of
+compatibility checks rather than of independently validated libraries.
 
 ## 2. Held-out endpoint results
 
@@ -168,12 +179,47 @@ Four domains outstanding. T4 cannot be called passed on this evidence.
   whole-genome GENCODE indexing OOMs at 31 GB and swap cannot be enabled. This
   confounds E1's absolute unassigned fraction on two of three strata, and it
   is the direct cause of the rat junction situation in §4.
-- **E1's expectation is metadata-dependent.** `library_selection=PCR` implies
-  unstranded, so cross-lab is evaluated as a strand-*balance* check
-  (dominant ≤ 0.65, fixed from the dev reference's 0.369/0.365). `cDNA`
-  selection for rat does not determine strandedness, so rat's strong claim is
-  not evaluable at all. Unstated protocol is recorded as *not evaluated*,
-  never as *passed*.
+- **E1's expectation is metadata-dependent, and the wrong metadata was used.**
+  This was the audit's P1 scientific-interpretation finding, and the earlier
+  version of this file reasoned from `library_selection`, which is the wrong
+  field. ENA's `library_selection` records *how a library was amplified*
+  (`PCR`, `cDNA`, `polyA`); it does not record the library's strandedness, which
+  comes from the library-preparation protocol. Inferring "PCR implies unstranded"
+  and evaluating cross-lab as a strand-*balance* check (dominant ≤ 0.65) was
+  therefore a claim about an assumption rather than about the library.
+  `validate_endpoints.py` no longer infers a strand expectation from library
+  selection: without explicit `--protocol-strandedness`, E1 is
+  **NOT_EVALUATED** and the measured fractions are recorded for reference only.
+  A forward/reverse expectation combined with `library_selection=PCR` is now
+  rejected outright as self-contradictory. Cross-lab's balance figure remains in
+  the raw results as an observation, but it is not an endpoint verdict.
+
+  **Consequence for this document:** cross-lab's PASS rested on the inference
+  above and is therefore **retracted**. Re-running E1 requires
+  `--protocol-strandedness` from the library-preparation record; until that
+  metadata is obtained, cross-lab is NOT_EVALUATED. `cDNA` selection for rat
+  never determined strandedness either, so rat's strong claim remains not
+  evaluable on either route.
+
+- **E3's estimand is narrower than its causal reading.** The statistic is the
+  correlation between one library's gene-body coverage curve and the
+  *development panel's* curve. That is a similarity between two samples. It is
+  not evidence about degradation, reverse transcription or priming, and a
+  mechanism and a non-mechanism can produce the same correlation.
+  `validate_endpoints.py --estrand` now names the estimand being claimed; without
+  it the endpoint records the similarity estimand explicitly and refuses the
+  mechanistic reading. The BGISEQ-500 / HiSeq-2500 contrast that drove the
+  "chemistry matters" reading is confounded for the same reason: two libraries
+  differing in many respects produced different curves, and the difference was
+  attributed to chemistry.
+
+- **The rat junction disposition is retired pending corrected preparation.** The
+  annotation-density explanation (A6) was added *after* the rat result was seen,
+  and the coordinate conversion underlying it was independently found incorrect.
+  A6 is withdrawn as an explanation: it is neither confirmed nor refuted on
+  corrected data, because no corrected evaluation exists. `datasets/ENDPOINT_RESULTS.md`
+  records the sequence of events; the density figure (32% of the indexed
+  sequence) is retained as a recorded observation, not as an accepted account.
 - **Lab verification came from `center_name`, not accession inference**, which
   changed a conclusion: the rat arm's submitter is Fudan, the same centre as
   development, so cross-lab coverage genuinely rests on the Charité run rather

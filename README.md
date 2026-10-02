@@ -11,10 +11,12 @@ All 33 upstream commands are implemented, build cleanly (`cargo build --workspac
 `cargo test --workspace` / `cargo clippy --workspace --all-targets -- -D warnings`. Compatibility
 is verified with a 90-case differential harness (`verification/run_diff.py`) that runs the real
 upstream Python CLI and this port's compiled binary against the same fixture and diffs their actual
-output — not just unit tests against this port's own expectations. The latest recorded run against
-the real-read panel executed 86 cases and passed all 86; four cases were skipped because the panel
-does not contain their required inputs. This is compatibility evidence for those cases, not proof
-of scientific validity; see [Limitations](#limitations).
+output — not just unit tests against this port's own expectations. The latest recorded run, on
+2026-10-01 after the comparators were made failure-closed, is **90 of 90 passing**. The previous
+invocation was 86 of 90 with four skipped for want of a fixture. Both combine substituted real
+inputs with fixed synthetic/regression fixtures, so this is 90 compatibility checks and not 90
+real-data validations. This is compatibility evidence for the exercised cases; see
+[Limitations](#limitations) and the [readiness audit](docs/READINESS_AUDIT_2026-10-01.md).
 
 **This is not yet a finished, published release.** See [Limitations](#limitations) below for what
 still needs work before that's a fair claim, and `testing.md` / `docs/PORTING_PLAN.md` for the
@@ -137,43 +139,217 @@ this table, is the authoritative compatibility record.
   genuinely requires external reference resolution will fail to decode rather than silently
   producing wrong data; this port does not fetch references over the network the way `htslib` can,
   by design (see DIV-0002/0004).
-- **Scientific validation remains incomplete.** The real-read differential run executed 86 of
-  90 cases and all 86 passed against upstream; four were skipped because the panel lacks their
-  required inputs. The separate held-out scientific endpoint report records 3 passes, 3 failures,
-  3 inconclusive outcomes, and 9 not-evaluated outcomes across its endpoint/stratum rows.
-  Those endpoints assess scientific claims about upstream outputs; they do not test port-versus-
-  upstream compatibility. The held-out samples have been inspected and are consumed for
-  confirmation purposes. See [the endpoint results](datasets/ENDPOINT_RESULTS.md) and
-  `testing.md` sections 10-11.
-- **Performance has been benchmarked, but not to publication standard.** A preregistered
-  run over 29 commands (10 paired repetitions each, structural equivalence gate, cost-driver
-  sweeps) is in `benchmarks/RESULTS.generated.md`. It was measured on shared, non-isolated
-  hardware, so it is internal engineering evidence: **no speedup figure from it may be
-  published** without repeating it on isolated hardware with locked frequency. The
-  benchmark found three commands that were genuinely *slower* than upstream
-  (`infer_experiment`, `bam2fq`, `inner_distance`); all three have since been
-  root-caused, fixed and re-measured faster, with outputs verified byte-identical
-  against upstream. A memory regression the benchmark also found -- the alignment reader
-  decoded whole files up front, extrapolating to ~23 GB for a 50M-read-pair BAM -- has
-  since been fixed by streaming the reader, and the two remaining outliers -- `tin`'s and
-  `geneBody_coverage`'s own whole-file read indexes -- by replacing both with a sliding
-  window (366 MB -> 20 MB and 75 MB -> 14 MB). The port now uses less memory than
-  upstream on **all 29** measured commands, from 1.4x lighter (`bam2wig`) to 15.7x
-  (`sc_seqQual`).
-- **No fuzzing has been done.**
-- **Release packaging covers one platform.** `.github/workflows/release.yml` publishes a Linux
-  x86_64 archive. CI also builds and tests on macOS and Windows and builds the Docker image, but
-  there are no macOS/Windows release archives or Python wheel.
+  The CRAM path buffers the whole file (`AlignmentRecords::CramBuffered` in
+  `crates/formats/src/lib.rs`), so CRAM input is bounded by available memory rather than
+  by alignment size. This is a code fact, not a timing measurement: the CRAM fixture is
+  10 records. See [`docs/ENVELOPE.md`](docs/ENVELOPE.md).
+- **Scientific validation remains incomplete, and three verdicts have been withdrawn.** The
+  differential suite is 90/90 (2026-10-01, failure-closed comparators), on the
+  development panel with retained synthetic/regression fixtures. Separately, the held-out endpoint
+  validator scores Rust binary output against pre-registered endpoints; it does not run
+  upstream on held-out inputs, so it cannot compare the two implementations there.
+  Three things were wrong with how its results were read, and are now corrected:
+  - **E1's cross-lab PASS is retracted.** Its strand expectation came from ENA
+    `library_selection`, which records how a library was amplified, not its strandedness.
+    Without explicit protocol metadata E1 is now NOT_EVALUATED rather than guessed.
+  - **A6 is withdrawn.** The rat junction "annotation density" explanation was written
+    after the rat result was seen and rested on a mis-stated coverage figure (32% from
+    transcript *spans*, which count introns as annotated; from merged exon bases it is
+    1.8%).
+  - **The rat annotation conversion was wrong and has been corrected**, independently
+    confirmed against the genome sequence: UCSC refGene is half-open 0-based, not
+    1-based inclusive. With the corrected BED12 and a rebuilt STAR index, the rat
+    annotated-junction fraction is 0.585 against 0.026 before, clearing the
+    pre-registered 0.50 bar.
+  - **E3's estimand is narrower than a mechanistic reading.** It correlates one library's
+    gene-body curve with the development panel's, which is a similarity between two
+    samples and not evidence about any mechanism. `--estrand` now names the claim.
+  - **Feature stratification now exists** (`--stratify`, by coverage, transcript length,
+    exon count, GC and annotation ambiguity) and already shows that the aggregate E3 pass
+    conceals stratum-level variation.
+  All three held-out runs have been inspected and are consumed for confirmation; anything
+  they prompt needs fresh independent data. See
+  [the endpoint results](datasets/ENDPOINT_RESULTS.md) and `testing.md` sections 10-11.
+- **Performance has been benchmarked, but not to publication standard.** A version-1
+  preregistered run over 29 commands is in `benchmarks/RESULTS.generated.md`. It was
+  measured on shared, non-isolated hardware, and the independent audit found defects in
+  the harness that produced it: comparator false-pass paths, lost repetition pairing,
+  and an output gate that accepted two empty directories. All are now repaired and
+  covered by executable tests (`benchmarks/test_bench_harness.py`), and the replacement
+  study is specified in [`benchmarks/protocol-v2.md`](benchmarks/protocol-v2.md). **No
+  speedup figure from the version-1 run may be published**, because its gate passes do
+  not establish equivalence and its intervals describe unpaired measurements. The
+  version-1 relative orderings remain useful engineering evidence. The benchmark did
+  find three commands that were *slower* than upstream (`infer_experiment`, `bam2fq`,
+  `inner_distance`), all since root-caused and fixed, and a memory regression -- the
+  alignment reader decoded whole files up front, extrapolating to ~23 GB for a
+  50M-read-pair BAM -- since fixed for BAM/SAM by streaming, with `tin`'s and
+  `geneBody_coverage`'s own indexes replaced by a sliding window.
+- **The rat endpoint figure is confirmed, and a third reference-preparation defect
+  was found while confirming it.** The corrected annotation and a rebuilt index were
+  both on disk and every digest matched — but the rat BAM had been aligned hours
+  before the index was rebuilt, so the annotation was current and only the
+  *alignment* was stale. Re-running the endpoint command reproduced an earlier figure
+  while the recorded table said a different one, and nothing in the repository could
+  distinguish them: the alignment's `align.json` named the index's parameters but not
+  its annotation digest. `datasets/align_run.sh` now records that digest and refuses
+  to align against an index whose stamp disagrees with the annotation beside it;
+  `datasets/build_star_index.sh` gives each assembly its own index directory, so
+  rebuilding the rat index cannot overwrite the human one; and
+  `verification/check_rat_reference.py` asserts the whole chain (27 checks). Both
+  implementations were then run on the identical corrected inputs and produced
+  byte-identical junction tables, stdout and stderr — see
+  [`datasets/ENDPOINTS.md`](datasets/ENDPOINTS.md) §6.3.
+- **Capacity is measured per cost driver, and no envelope is declared.**
+  [`docs/ENVELOPE.md`](docs/ENVELOPE.md) records what is measured. On a synthetic
+  fixture over a 29x range of record counts: `bam_stat` flat at ~2.9 MB (the control,
+  −0.1 bytes/record), `read_duplication` 43.1 bytes/record, `bam2wig` 250.4. An earlier
+  version of this document reported 0.6, 135.6 and 270.4 bytes/record; those were
+  fitted over a 1.22x range whose two larger points held *identical* record counts,
+  and they are withdrawn.
+  On the real 8.2M-record rat alignment over a 174x range: `bam_stat` flat,
+  `read_duplication` **130.5** bytes/record, `bam2wig` 207.5 — a three-fold difference
+  from the synthetic fixture, which is the point: a per-record cost measured on
+  generated reads is a property of the generator.
+  Behaviour past the limit is measured too. Under `ulimit -v` at 80%, 40% and 20% of
+  their limit-free peaks, both non-flat commands abort with **no partial output and
+  no input damage**, so a consumer cannot read a truncated result as a complete one —
+  but the diagnostic is Rust's internal `memory allocation of N bytes failed`, not a
+  message naming the command and its input. That is a known gap, recorded rather than
+  closed. No whole-genome or production-size run at the audit's 10M/50M-pair targets
+  has been performed, and no per-command memory limit is claimed.
+- **Bounded property/fuzz suites exist.** Five `proptest` suites and a campaign report
+  are in [verification/FUZZING.md](verification/FUZZING.md), covering BED parsing,
+  CIGAR traversal, Python numeric formatting, FASTA/FASTQ parsing and the compressed
+  input layer, with fixed regression seeds. They are bounded and deterministic; they do
+  **not** establish coverage-guided fuzzing, resource-bounded robustness, or
+  command-wide scientific correctness, and "no panic" is not evidence of correct
+  biological meaning. Fixed seeds run in CI; varied-seed campaigns with recorded seeds
+  and resource limits belong after shared-parser changes.
+- **The validation machinery itself is tested.** 153 unit tests assert that the
+  comparators and gates still reject what they must: corrupted BAM qualities, flags,
+  tags, mates and headers; a truncated FASTQ record; a finite metric replaced by NaN;
+  two empty output trees; a timeout that must kill only its own process group; a
+  `CITATION.cff` placeholder that a TOML-only pattern had silently exempted. Every
+  one asserts a *failing* result, so a comparator or check that stops rejecting
+  corruption turns CI red rather than turning a regression into a reported speedup.
+  On top of that, 120 command-contract checks (missing, empty, unreadable, malformed
+  and truncated input; invalid flags; missing sidecars; existing output; spaces in
+  paths; unwritable output; killed and concurrent runs) and 37 interoperability
+  checks against htslib. See
+  [`benchmarks/test_bench_harness.py`](benchmarks/test_bench_harness.py),
+  [`verification/test_comparators.py`](verification/test_comparators.py),
+  [`verification/test_run_diff.py`](verification/test_run_diff.py),
+  [`scripts/test_release_metadata.py`](scripts/test_release_metadata.py),
+  [`verification/check_command_contracts.py`](verification/check_command_contracts.py)
+  and [`verification/check_interop.py`](verification/check_interop.py).
+- **One command's real-data equivalence is unproven, and the release says so.**
+  `geneBody_coverage.py` does **not** currently reproduce upstream's gene-body
+  coverage curve on real data: on the 8.2M-record rat alignment, 76 of 100 bins
+  differ, by up to 839 reads, in both directions. It is bisected to a single
+  904-base transcript (`compatibility/divergences.yaml` DIV-0024, open) and is in the
+  archive manifest's `known_limitations`. The 90-case differential suite passes while
+  this is wrong, because its `geneBody_coverage` fixture is too shallow to expose it;
+  the benchmark harness's structural gate is what caught it. **No speedup or
+  scientific claim is made for this command**, and `verification/fixtures/check_gene_body_divergence.sh`
+  re-checks that the defect is still present so the ledger entry cannot go stale.
+- **Every shipped command has a measured capability record, not a prose claim.**
+  [`verification/capability_matrix.py`](verification/capability_matrix.py) produces
+  [`benchmarks/capability-matrix.json`](benchmarks/capability-matrix.json) by
+  *executing* each command: feeding it a real file of each declared input format,
+  re-running it with a `PATH` containing no `Rscript`, and running it twice to compare
+  artifacts. That record is embedded in the archive manifest's `per_command` block, and
+  `scripts/check_release_metadata.py` refuses a manifest whose record does not cover
+  exactly the binaries the archive ships, **or whose recorded per-command binary hash
+  is not the hash the manifest records for that binary**. Coverage alone cannot catch
+  a stale hash: all 33 records once existed while all 33 hashes were stale after a
+  rebuild, and every coverage check passed.
+  What it establishes: **15 of 33 commands require `Rscript`** at runtime and report
+  its absence, and a sixteenth needs a helper but not Rscript (`FPKM_UQ`, whose helper
+  is `htseq-count`) — the record names *which* helper, because deriving "requires
+  Rscript" from a single generic "needs a helper" flag mislabels exactly the command
+  that does not need R; **24 accept BAM, 14 accept SAM, and 9 are BAM-only because upstream's own
+  `validate_args` rejects any other extension**; `junction_saturation`,
+  `RPKM_saturation` and `divide_bam` are non-deterministic by design (unseeded
+  resampling, as upstream — `divide_bam` becomes reproducible with `--seed`); and
+  `FPKM_UQ`, `sc_editMatrix` and `sc_seqQual` cannot be judged here because
+  `htseq-count` and R's `pheatmap` are absent. No unexplained non-determinism remains.
+- **The benchmark gate's own declarations are verified against live runs, not
+  trusted.** [`verification/verify_stream_declarations.py`](verification/verify_stream_declarations.py)
+  re-derives every `EXPECTED_STREAMS` entry — stdout presence, declared labels or
+  substrings, produced artifacts — by running both arms once, and fails on any
+  mismatch. This exists because three commands were gated on rules that did not
+  describe them while their arms agreed byte-for-byte: `bam2wig` (a one-line stdout),
+  `RNA_fragment_size` (a 369 KB table on stdout that a label-parsing probe had mistaken
+  for no stdout at all), and `bam2wig` again via its artifact declaration. A gate built
+  on a wrong declaration cannot report anything trustworthy about the commands it gates.
+- **The QC panel is also delivered as a workflow, and the workflow is tested by running
+  it.** [`workflows/qc_panel/Snakefile`](workflows/qc_panel/Snakefile) wires the
+  five-command panel into Snakemake, and
+  [`workflows/qc_panel/test/run_panel.sh`](workflows/qc_panel/test/run_panel.sh) runs
+  the whole DAG on a real alignment, re-runs the same five commands directly, and diffs
+  every artifact — so a wrapper bug fails a test instead of quietly changing somebody's
+  QC numbers. Running it found five real errors in the Snakefile, each now documented at
+  the mistake: a missing `-r`; `-o X` producing `X.NVC.xls` rather than `X`;
+  `read_quality --skip-plot` producing *only* an R script and no data table; an awk
+  `print` outside `BEGIN` never running and yielding an empty summary that the checker
+  then passed, because a loop over zero lines checks nothing; and awk's
+  `getline var < file` returning the line rather than a count. A corresponding Bioconda
+  recipe is at [`recipes/rseqc-rust/meta.yaml`](recipes/rseqc-rust/meta.yaml), built
+  `--locked` and installing the third-party notices, with
+  `scripts/test_bioconda_recipe.py` rendering it so a recipe conda-build would reject
+  cannot sit unnoticed.
+- **The QC panel is measured as a workflow, and shows per-command speedups are the
+  wrong lever.** [`verification/measure_pipeline.py`](verification/measure_pipeline.py)
+  times the five-command bulk QC panel against the 8.2M-record rat alignment:
+  **48.8 s wall, 0.0135 CPU-hours, 1.06 GB peak per sample.** *(The wall and
+  CPU-hour figures stand. The aggregate-memory figure in the JSON is marked
+  SUPERSEDED: it was measured with a baseline sampled after the panels started,
+  which the harness has since fixed, and the panel included `geneBody_coverage`,
+  which is not currently qualified. Recollect before citing it.)* The two streaming
+  commands this project optimised — `bam_stat` and `infer_experiment` — are
+  **1.5% of that**; `geneBody_coverage` and `read_duplication` are 78%. Running
+  whole panels in parallel scales throughput to **3.3x at four samples** and 4.8x at
+  eight on 16 cores, with per-sample CPU rising from 0.0133 to 0.0214 CPU-hours as they
+  contend for memory bandwidth. The deployment that works is parallelism across
+  samples; a per-command speedup is bounded by where the time actually is. This is one
+  sample on one machine, not a claim about total pipeline cost.
+- **Per-job memory is measured additive, not assumed.**
+  [`verification/measure_concurrency.py`](verification/measure_concurrency.py) samples
+  aggregate system memory while N invocations run. On the 8.2M-record rat alignment,
+  `bam2wig` peaks at 1.89 GB at ×1 and 11.99 GB at ×8 (1.12× and 7.11× a 1.69 GB
+  per-job maximum), and wall time is nearly flat in concurrency — 8 samples finish in
+  1.3× the time of one. That is the parallelism-across-samples deployment the audit
+  asks about, and it is measured rather than asserted; the caveats, including a ~90 MB
+  noise floor in `/proc/meminfo` on this shared machine, are recorded in
+  [`docs/ENVELOPE.md`](docs/ENVELOPE.md). The per-transcript cost of
+  `geneBody_coverage` and `junction_annotation` is bounded only from above — below
+  the measurement's own repeatability at a 16x model range. `tin`'s is measured at
+  ~1.7 KB per transcript. A slope is published only when the fitted quantity moves at
+  least 3x the repeat-to-repeat spread, and every point in the record is the peak of
+  three repeats with its spread reported.
+- **Release packaging covers one platform, and cannot publish yet.** CI builds and
+  tests on macOS and Windows and builds the Docker image, but only a Linux x86_64
+  archive is produced; there are no macOS/Windows release archives and no Python wheel.
+  The archive builder now stages an explicit allowlist of 33 commands, bundles the
+  LICENSE, README, CHANGELOG, citation metadata and third-party notices, writes a
+  manifest with per-file digests and a declared glibc floor, and smoke-tests the
+  *extracted* archive outside the source tree on a real workload and on paths
+  containing spaces. **Publication is blocked**: `Cargo.toml` and `CITATION.cff` still
+  carry `TBD` repository URLs, because the permanent URL and support channel are
+  maintainer decisions, and `scripts/check_release_metadata.py` refuses a strict build
+  while they are unresolved. `release-validation.yml` runs on every push, every pull
+  request and every tag, and `release.yml` cannot publish without it.
 - **The Python API compatibility layer is not implemented yet.** The `rseqc-python` crate is
   currently a stub; importing upstream's `qcmodule` API is not supported.
-- **Licensing is settled and bundled.** The root `LICENSE` carries the canonical GPLv3 text and
-  this project is released as **GPL-3.0-or-later** (DIV-0003 resolved 2026-10-01). Upstream's own
+- **The repository license is settled.** The root `LICENSE` carries the canonical GPLv3 text and
+  this project declares **GPL-3.0-or-later** (DIV-0003 resolved 2026-10-01). Upstream's own
   license metadata is internally inconsistent — its README says GPL-3.0-or-later while a packaging
   classifier says GPLv2 — and that inconsistency is recorded rather than reproduced.
 - **Clean-room testing has been done once, on Linux x86_64 only** (2026-09-28): the built
   distribution archive was extracted and run with `PATH` limited to its own `bin/` directory (no
   Python/R/`wigToBigWig`). Core commands and `sc_seqLogo.py` work standalone; `bam2wig.py` falls
-  back gracefully without `wigToBigWig`; the 16 `Rscript`-using commands now report upstream's own
+  back gracefully without `wigToBigWig`; the 15 `Rscript`-using commands now report upstream's own
   "Rscript executable not found" message (DIV-0021) — use `--skip-plot`/`--skip-heatmap` to avoid
   needing R. Not repeated on macOS/Windows.
 

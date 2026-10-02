@@ -1,9 +1,31 @@
 # T4.2 — scientific endpoint specification (PRE-REGISTERED)
 
 Prepared: 2026-09-30. Status: **pre-registered and signed off 2026-10-01;
-held-out validation was subsequently run once on 2026-10-01.** Results are
+held-out endpoints were evaluated beginning 2026-10-01.** Results are
 reported separately in [`ENDPOINT_RESULTS.md`](ENDPOINT_RESULTS.md). This
-file preserves the protocol as registered before the held-out data was scored.
+file preserves the original protocol and dated amendments. Not every amendment
+preceded held-out scoring; the exposure status is recorded below and in the
+results review.
+
+> **Post-audit amendments (2026-10-01). Three changes in this file were made after
+> held-out results were seen, and each is marked where it appears. An amendment
+> added in response to a result cannot convert that result into confirmation, so
+> the affected dispositions are recorded as post-exposure in
+> [`ENDPOINT_RESULTS.md`](ENDPOINT_RESULTS.md) — including two that have been
+> withdrawn outright.**
+>
+> - **A6** (E5 not evaluable where annotation covers less than half the indexed
+>   sequence) is **withdrawn**. It was added after the rat result was seen and it
+>   rested on a mis-stated coverage figure: the 32% was computed from transcript
+>   spans, which count introns as annotated. From merged exon bases the same
+>   annotation covers 1.8% of the indexed sequence. The corrected-coordinates rat
+>   run gives an annotated junction fraction of 0.585, which clears the original
+>   0.50 bar without needing the density rule at all.
+> - **E1's strand expectation** is no longer derived from ENA `library_selection`.
+>   That field records how a library was amplified, not its strandedness.
+>   `validate_endpoints.py` now requires explicit `--protocol-strandedness`.
+> - **E3's estimand** is stated as curve-to-curve similarity against the
+>   development panel. `--estrand` names any wider claim explicitly.
 
 **This file exists because `testing.md` §11.2 requires it to exist first:**
 
@@ -22,9 +44,30 @@ in `ENDPOINT_RESULTS.md`.
 
 ---
 
-## 0. What T4.1 already established, and what this file is not about
+## 0. T4.1 compatibility and T4.2 scientific endpoints
 
-T4.1 ran the 90-case differential matrix against real reads: **86 run, 86
+**Re-run 2026-10-01, after the comparator and coordinate repairs: all 90 cases
+PASS.** The invocation recorded below executed 86 of 90 with four skipped for want
+of a fixture. Two things changed since.
+
+The comparators are now failure-closed on paths that previously passed silently: a
+finite metric replaced by NaN, a truncated FASTQ record, a corrupted BAM quality
+string, duplicate flag, NM tag or mate field, and two empty compared files all fail
+now. Two cases that legitimately produce zero-byte artifacts declare that per file,
+with the reason, rather than being exempted wholesale.
+
+The rat annotation preparation is corrected and the STAR index rebuilt from it, so
+the rat stratum's inputs are right for the first time.
+
+The count is 90/90 on the **development panel**, and that panel mixes synthetic and
+regression fixtures with real-panel substitutions. It is 90 compatibility checks, not
+90 real-data validations, and it is not a scientific result. See
+[`ENDPOINT_RESULTS.md`](ENDPOINT_RESULTS.md).
+
+### Earlier T4.1 invocation (superseded)
+
+T4.1 ran the 90-case differential matrix against the real-read development
+panel: **86 run, 86
 pass, 4 skipped for want of a fixture, 0 failures, 118 byte-identical
 assertions.** That answers "does the port reproduce upstream's outputs?".
 
@@ -38,11 +81,14 @@ sized by the last record processed, `mystat.percentile_list`'s round-half-even
 interpolation). Preserving a bug is correct for a port and wrong for a
 science claim, and this file is where the two are separated.
 
-Consequence: **no endpoint below is a test of the port.** The port is
-assumed byte-identical to upstream (T4.1). These are tests of whether
-upstream's own answers survive contact with real data. Where upstream is
-wrong, the finding is recorded against upstream, and whether the port should
-diverges is a separate decision requiring its own evidence.
+Consequence: **T4.2 endpoint values are computed from the Rust port's output.**
+`verification/validate_endpoints.py` invokes the native binaries in
+`target/release`; it does not run upstream RSeQC on those held-out BAMs.
+T4.1 covers the development panel and does not establish port/upstream parity
+on held-out inputs. A held-out endpoint failure could reflect a port
+difference, upstream behavior, or an input/protocol confound. Compare both
+implementations on the same BAM, BED, flags, and environment before
+attributing it.
 
 ---
 
@@ -193,10 +239,18 @@ blocks the corresponding claim outright.
 
 | outcome | consequence |
 |---|---|
-| endpoint passes on all three held-out strata | claim supported, scope limited to §5 |
-| passes on development, fails on a held-out stratum | the port still reproduces upstream (T4.1); the finding is against upstream's algorithm. Recorded, and whether the port should diverge becomes its own decision with its own evidence. |
-| fails on a controlled perturbation (E2, E3) | the metric is insensitive to what it claims to measure. This is a finding against upstream regardless of the port, and the strongest kind available here. |
+| endpoint passes on all three held-out strata | claim supported, scope limited to §5, provided required metadata and feature-stratification conditions are also met |
+| passes on development, fails on a held-out stratum | record a mismatch. Development parity alone cannot attribute it; compare port and upstream on the same held-out inputs and options before assigning cause. |
+| fails on a controlled perturbation (E2, E3) | evidence of metric insensitivity only when the registered controlled perturbation is actually run. A finding against upstream requires scoring upstream on that perturbation too. |
 | cannot be evaluated (metadata absent, e.g. strand unstated) | recorded as **not evaluated**. Never as a pass. |
+
+**Post-run clarification (2026-10-01):** the original signed rule attributed a
+held-out failure to upstream based on development parity. That inference does
+not apply here: T4.1 parity covers the development panel only, and T4.2 did
+not run upstream on the held-out inputs. E3 was also amended under 6.1 A4 to
+score similarity to the development reference, rather than the registered
+controlled known-skew perturbation. The revised consequences above narrow the
+interpretation after exposure; they do not change endpoint thresholds.
 
 ---
 
@@ -238,14 +292,23 @@ MD5-verified, the rat reference was on disk, and **no RSeQC command had been
 run against any held-out run**. The human held-out alignment was in progress
 and is data preparation, not inspection.
 
-### 6.1 Amendment after sign-off (2026-10-01)
+### 6.1 Dated amendments (2026-10-01)
 
-Two items were flagged as under-specified at pre-registration and are
-resolved here. This is an **amendment to a pre-registered document**, made
-after sign-off and before any held-out output was seen, so it is recorded as
-a dated change rather than folded silently into the text above. No threshold
-was loosened; one threshold was made concrete and one definition was made
-computable.
+This section records amendments to the signed protocol; their exposure status
+differs, and the differences matter.
+
+| Amendment | Exposure status |
+|---|---|
+| A1, A2, A3 | **Not recorded.** Do not describe these as pre-registered without dated evidence. |
+| A4 | Pre-exposure: its E3/E5 calibration used development data before any held-out output existed. |
+| A5 | Pre-exposure: a development-panel degradation series. |
+| A6 | **Post-exposure, and WITHDRAWN.** Added after the initial held-out rat E5 result was seen, to explain that result away. Withdrawn on 2026-10-01; see its entry below for the three independent reasons. |
+| A7 | Post-exposure on the rat stratum only; its development-panel degradation series is pre-exposure. |
+| A8 | Post-audit: states E3's estimand and requires `--estrand` for a wider claim. |
+
+These changes are kept visible rather than folded silently into the original
+definitions. An amendment added in response to an observed result cannot convert
+that result into confirmation, which is exactly what happened with A6.
 
 **A1 — E2's monotonicity threshold, now concrete.** At pre-registration E2
 asserted only that TIN is non-increasing as degradation increases, with no
@@ -330,44 +393,77 @@ for, and it remains genuinely open. `validate_endpoints.py` additionally
 refuses to score any run against a reference curve derived from that same run,
 which would return r = 1.0 by construction.
 
-**A6 — E5 reclassified INCONCLUSIVE when the annotation is too sparse to
-annotate the index (2026-10-01).** Found by running E5 on the rat stratum and
-getting 7 annotated junctions out of 44,176 (0.02%), which is not a
-plausible biological result for a rat library aligned to rat sequence with rat
-annotation. Diagnosed rather than accepted:
+**A6 — WITHDRAWN 2026-10-01. Originally: E5 reclassified INCONCLUSIVE when the
+annotation is too sparse to annotate the index.** This amendment is kept, with the
+reason it is withdrawn, because a withdrawn explanation recorded as history is more
+useful than one deleted.
 
-* It was **my bug first**. `datasets/refgene_to_gtf.py` converted refGene
-  exons to BED12 with size `end - start` instead of `end - start + 1`.
-  refGene is 1-based inclusive, so every exon came out one base short, every
-  exon end one base early, and junction matching collapsed. Fixing it moved the
-  annotated fraction from 0.02% to 2.57% — a 162x improvement that confirmed
-  the off-by-one was real. The converter is now cross-checked against the
-  project's own `make_bed12.py` GTF path, which agrees base for base, and all
-  19,160 rat transcripts are asserted to have exon blocks that reconstruct
-  their span exactly. The GTF fed to STAR was never affected, so no re-index
-  or re-alignment was needed.
+**Why it is withdrawn.** Three independent reasons, any one of which would
+suffice:
 
-* The remaining 2.57% is **not a port defect and not a rat biology finding**.
-  It is annotation density. The rat index annotates **32%** of its own indexed
-  sequence (chr1 32%, chr2 27%, chr10 43%), because UCSC refGene for rat is a
-  thin transcript set. The human index, for contrast, annotates **503%** of
-  its indexed bases, because GENCODE v47 places many overlapping transcripts
-  per locus. STAR's splice-aware alignment invents introns across the
-  unannotated remainder — the rat BAM genuinely contains CIGARs like
-  `55M498576N46M` — and the port reports them as novel, correctly.
+1. *It was post-exposure.* A6 was written after the rat E5 result was seen. It
+   explained away a number that had already been observed, and an explanation
+   formulated to fit an observed result is not confirmation of it.
 
-  E5 is therefore **not evaluable** where the annotation covers less than half
-  the indexed sequence, because there the annotated/non-annotated ratio is
-  dominated by coverage rather than by splicing fidelity. The 0.5 bar is an
-  a priori rule, not a fitted one, and it does not affect the human strata,
-  which pass at 503% density and 0.706 annotated fraction. The rat stratum
-  keeps the verdict INCONCLUSIVE with the coverage figures attached.
+2. *The converter fix it credited was incomplete, and the direction of the
+   original reasoning was wrong.* A6 records that refGene "is 1-based inclusive",
+   and that fixing a `end - start` to `end - start + 1` moved the annotated
+   fraction from 0.02% to 2.57% — a 162x improvement that "confirmed the
+   off-by-one was real". It did not. UCSC refGene is half-open **0-based**:
+   `txStart`/`exonStarts` are 0-based offsets and `exonEnds`/`txEnd` are exclusive.
+   The correct conversion keeps `txStart` as the BED12 start, uses
+   `exonEnd - exonStart` as the exon size, and shifts only the GTF start by +1. Two
+   successive revisions were wrong in opposite directions — one shifted the
+   transcript start by −1 while lengthening exons by +1, the other lengthened
+   exons by +1 while leaving GTF starts unshifted — which is why the errors did not
+   cancel: BED12 and GTF disagree about inclusivity, so a length computed with an
+   inclusive end is wrong even when its start is right.
 
-* A hypothesis I had to discard: giant introns are not rat-specific. The human
-  held-out BAM has 2,352,546 spliced reads with a >20 kb intron against the
-  rat's 1,378,374, and the human run scores 0.706 while the rat scores 0.026.
-  So intron size was a red herring, and the density comparison is what
-  actually explains the difference.
+   The frame is now confirmed from the genome sequence rather than from
+   documentation: `datasets/verify_refgene_frame.py` reads the bases at `cdsStart`
+   and `cdsEnd` for transcripts whose CDS refGene marks complete, and requires an
+   ATG at the transcript's 5' end and a stop codon at its 3' end. On the rat
+   annotation, 60/60 transcripts satisfy that under the 0-based half-open reading
+   and 0/60 under the 1-based reading.
+   `datasets/test_refgene_to_gtf.py` pins the arithmetic against hand-derived
+   expectations, including the audit's probe row, minus strand, and the
+   zero-coordinate boundary.
+
+3. *The coverage figure it rested on was wrong.* A6 reported that the rat index
+   annotates "32% of its own indexed sequence (chr1 32%, chr2 27%, chr10 43%)".
+   That is computed from transcript **spans** (`chromStart`..`chromEnd`), which
+   counts introns as annotated. From merged **exon bases**, the corrected rat
+   annotation covers **1.8%** of the indexed sequence (chr1 2.0%, chr2 1.1%,
+   chr10 3.0%). The human comparison figure has the same problem: "503%" is
+   possible only because overlapping transcripts are counted more than once, which
+   is a different quantity again.
+
+**What the corrected run actually shows.** With the corrected conversion, the rat
+annotation regenerated, the STAR index rebuilt from it, and the reads re-aligned, the
+annotated junction fraction is **0.617** (26,905 of 43,594) and the annotated splice
+*event* fraction is **0.948** (2,138,286 of 2,255,750), against 0.026 and 0.003 for
+the superseded run. Both clear the original pre-registered 0.50 bar, so the density
+rule was not a necessary amendment: it was an attempt to explain a defect that a
+further correction removed.
+
+The port is not implicated at any point. The change is in reference preparation, and
+both implementations read the same BAM.
+
+**What survives.** Two observations, neither of which is an explanation:
+
+* UCSC refGene for rat is a thin transcript set, and unannotated sequence is real
+  unannotated sequence. STAR's splice-aware alignment places novel introns across
+  it, and the port reports those as novel, which is correct behaviour.
+* A discarded hypothesis is recorded because it was discarded on evidence: giant
+  introns are not rat-specific. The human held-out BAM has 2,352,546 spliced reads
+  with a >20 kb intron against the rat's 1,378,374, and the human run scored 0.706
+  while the rat scored 0.026. Intron size did not explain the gap; the incorrect
+  annotation did.
+
+**The 0.5 coverage bar is not reinstated.** It is retained in
+`validate_endpoints.py` as a guard for a *future* stratum whose annotation really
+is too sparse to annotate its index, and its rationale is restated in terms of
+merged exon bases. It played no part in the rat result and must not be cited for it.
 
 **A7 — E2 measured against a real degradation series; the pre-registered
 direction was RIGHT and the pre-registered per-transcript threshold was not
@@ -453,4 +549,120 @@ is taken from archive metadata. For `cross_lab` that metadata must actually
 be checked before the endpoint is evaluated rather than assumed, because
 "unassigned fraction bounded" is a much weaker claim than "correct strand
 recovered" and the difference is exactly the kind that gets lost in
-summarising.
+summarising. The timing of this note relative to held-out inspection is not
+recorded; its pre-registration status is unverified.
+
+**A8 — E1's expectation source, and E3's estimand, stated explicitly
+(post-audit, 2026-10-01).** A3 asked for the metadata to be *checked*. The audit
+found it had been substituted instead: the strand expectation was taken from ENA
+`library_selection`, which records how a library was amplified, not how it was
+prepared. Two changes follow, both in the validator rather than in this
+specification's thresholds:
+
+* `--library-selection` is recorded and `--protocol-strandedness` is required for
+  an expectation. Without the latter, E1 is NOT_EVALUATED with the measured
+  fractions attached as observations. A forward or reverse expectation combined
+  with `library_selection=PCR` is rejected as self-contradictory.
+* `--estrand` names the estimand E3 is being read for. Absent it, the endpoint
+  records that its estimand is curve-to-curve similarity against the development
+  panel and refuses a mechanistic reading.
+
+Neither change moves a threshold. Both narrow what a verdict may be said to
+support, which is the point: the thresholds were pre-registered and are
+unchanged, while the claims made from them were not justified.
+
+### 6.2 Post-run coordinate erratum, and its closure (2026-10-01)
+
+The independent readiness audit found the rat converter still incorrect.
+UCSC database refGene coordinates are zero-based half-open, while
+`datasets/refgene_to_gtf.py` assumed one-based inclusive coordinates. A
+hand-specified two-exon probe confirmed that BED12 starts/sizes and GTF exon
+starts were wrong.
+
+**Closed.** The converter now converts from the half-open frame, and the frame
+itself is confirmed against the genome sequence rather than against
+documentation (see A6's entry for the confirmation method and the result).
+
+The correction was propagated to every affected artifact, which is where the
+audit also found a second defect. `datasets/build_star_index.sh` regenerated its
+contig subset only when the subset file was *absent*, so the corrected
+annotation was written and then ignored: STAR built a junction database from the
+old coordinates and reported success. The script now records a digest of its
+inputs and rebuilds when they change, which is what makes "this index was built
+from that annotation" answerable after the fact.
+
+The corrected sequence of work, all on the same reads (`SRR1177982`):
+
+| Stage | Annotated junctions | Fraction | Annotated splice events |
+|---|---|---|---|
+| Superseded: incorrect conversion in both BED12 and index | 1,134 / 44,176 | 0.026 | 5,089 / 1,786,750 (0.003) |
+| Intermediate: corrected BED12, index still built from the old coordinates | 25,851 / 44,176 | 0.585 | — |
+| **Final: corrected BED12 and index rebuilt from it, re-aligned, both implementations run on those inputs** | **26,905 / 43,594** | **0.617** | **2,138,286 / 2,255,750 (0.948)** |
+
+The final row is confirmed, not asserted. Both arms of the differential
+(`oracle/venv/bin/python3 oracle/upstream-src/scripts/junction_annotation.py` and
+`target/release/junction_annotation`) were run on the identical re-aligned BAM and
+BED12 and produced byte-identical `junction.xls`, stdout and stderr; see
+[`heldout/endpoint_results/SRR1177982_same_input/`](heldout/endpoint_results/SRR1177982_same_input/).
+Confirming it required a third defect to be found and fixed, described below.
+
+The middle row exists because the index rebuild silently reused a stale contig subset
+(see the build-script defect below). It is recorded rather than dropped because it
+shows the two halves of the correction are separable, and a reader comparing only the
+first and last rows would not know the annotation and the junction database needed
+separate correction.
+
+### 6.3 The alignment was not bound to its index, and the recorded figure was not reproducible
+
+Closing the erratum above exposed a third defect, of the same family and found the
+same way: a file was trusted instead of checked.
+
+**What happened.** The corrected annotation and a rebuilt index were both in place,
+and all the digest checks passed. But the rat BAM on disk had been aligned at 11:30
+against an index that was rebuilt at 21:23. The annotation on disk was genuinely the
+corrected one, so every digest matched; what was stale was the *alignment*. Running
+the endpoint command on that BAM reproduced 25,851 of 44,176 annotated junctions —
+the intermediate figure — while the recorded table said 26,905 of 43,594. Two
+numbers for the same stratum, and nothing in the repository could say which was
+current or why they differed.
+
+The digest recorded in the alignment's `align.json` made this unanswerable on its
+own: it named the index's parameters (`genome=`, `gtf=`, `contigs=`,
+`sjdbOverhang=`, …) but not the annotation's digest, so "was this BAM aligned
+against this index?" had no checkable answer. `datasets/align_run.sh` had been
+copying the stamp file, and the stamp only started recording digests after the
+index-rebuild fix.
+
+**Three fixes, each aimed at the class rather than the instance:**
+
+1. `verification/check_rat_reference.py` asserts the alignment is bound to the index
+   on disk: the digest in `align.json` must equal the stamp's `gtf_sha256`, and the
+   BAM must not be older than that stamp. It also requires the index's exon records
+   to be *exactly* the exon records of the corrected `rn6.gtf` restricted to the
+   contigs the stamp names, rather than digesting a copy that sits beside the index.
+2. `datasets/build_star_index.sh` gives each assembly its own index directory,
+   named after the genome, the annotation, the overhang and the contig set. A single
+   shared directory meant "build the rat index" silently overwrote the human index's
+   `Genome`, `SA`, `SA_*` and exon tables in place, and `align_run.sh` only checks
+   that `SA` exists, so the next human alignment would have run against a corrupt
+   index and produced plausible-looking output. This was not hypothetical: it
+   happened while re-deriving the rat junction database, and the human index had to
+   be rebuilt.
+3. The rat BAM was re-aligned against the corrected index, and the same-input
+   comparison above was run on it.
+
+**After the fix, 20/20 reference checks pass** and the junction table is
+byte-identical between the two implementations and to the previously recorded
+`junc.junction.xls`, so the 0.617 figure is now reproducible rather than carried
+forward.
+
+This erratum records a defect and its closure; it changes no endpoint cutoff. The
+0.617 figure clears the pre-registered 0.50 bar, so no amendment was needed for the
+verdict itself — which is itself the point: A6 was introduced to explain away a
+defect that a further correction removed.
+
+**What this does not establish.** The rat stratum is exposed: its result was seen
+three times. These numbers are diagnostic. A scientific claim needs fresh
+independent data, and A6's density explanation is withdrawn rather than reinstated.
+See [the audit](../docs/READINESS_AUDIT_2026-10-01.md) and
+[UCSC's coordinate conventions](https://genome-blog.gi.ucsc.edu/blog/2016/12/12/the-ucsc-genome-browser-coordinate-counting-systems/).

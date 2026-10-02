@@ -1,0 +1,275 @@
+{
+  "source_facts": {
+    "cram_decode_is_whole_file": "`AlignmentRecords::CramBuffered` collects the entire file before processing: `noodles-cram` 0.99 exposes record iteration only as `records(&header)`, which is single-use, so re-entering a drained reader yields a spurious decode error instead of EOF. This bounds CRAM input by available memory rather than by alignment size. It is a code fact read from crates/formats/src/lib.rs, not an inference from timing: the CRAM fixture is 10 records and could not demonstrate it.",
+    "duplication_retains_unique_entries": "read_duplication keeps one entry per unique sequence/position in a hash container, so its memory is proportional to DISTINCT reads. The measured slope below is the evidence for how that behaves on a real alignment.",
+    "wig_retains_covered_positions": "bam2wig materialises a per-position value map over covered bases, so its memory is proportional to covered positions and cannot be streamed down. The measured slope below quantifies it on this fixture."
+  },
+  "input": {
+    "bam": "datasets/aligned/tiny/tiny.bam",
+    "bed": "/scratch/mdra00001/RSeQC-rust/datasets/aligned/tiny/model.bed12",
+    "bam_sha256": "11c0a08544d6a44e693bbc62dada14b61100e8764f0e451081bb7d5df5fa3473",
+    "bed_sha256": "0a06cdb55b675c1f34c82304c14d61e21fa06ca5e5905c65b622832b322e9b21",
+    "total_records": 621783,
+    "total_covered_bases": 3518066
+  },
+  "drivers": {
+    "duplication": {
+      "command": "read_duplication",
+      "retains": "unique sequences and their positions",
+      "interpretation": "Duplicate detection keeps one entry per unique sequence/position, so RSS should track the number of DISTINCT reads rather than the alignment size. A slope near one would mean every read is retained.",
+      "points": [
+        {
+          "label": "chr17:0-832,574 (1%)",
+          "records": 21387,
+          "covered_bases": 124810,
+          "wall_s": 0.48,
+          "peak_rss_mb": 56.91015625,
+          "user_s": 0.23,
+          "exit_code": 0
+        },
+        {
+          "label": "chr17:0-1,665,148 (2%)",
+          "records": 43246,
+          "covered_bases": 271390,
+          "wall_s": 0.43,
+          "peak_rss_mb": 57.0234375,
+          "user_s": 0.29,
+          "exit_code": 0
+        },
+        {
+          "label": "chr17:0-4,162,872 (5%)",
+          "records": 83967,
+          "covered_bases": 724989,
+          "wall_s": 0.65,
+          "peak_rss_mb": 57.0390625,
+          "user_s": 0.38,
+          "exit_code": 0
+        },
+        {
+          "label": "chr17:0-8,325,744 (10%)",
+          "records": 245688,
+          "covered_bases": 1618058,
+          "wall_s": 1.82,
+          "peak_rss_mb": 56.77734375,
+          "user_s": 0.8,
+          "exit_code": 0
+        },
+        {
+          "label": "chr17:0-16,651,488 (20%)",
+          "records": 359156,
+          "covered_bases": 2241107,
+          "wall_s": 1.39,
+          "peak_rss_mb": 57.2421875,
+          "user_s": 1.04,
+          "exit_code": 0
+        },
+        {
+          "label": "chr17:0-33,302,976 (40%)",
+          "records": 621783,
+          "covered_bases": 3518066,
+          "wall_s": 2.4,
+          "peak_rss_mb": 85.18359375,
+          "user_s": 1.69,
+          "exit_code": 0
+        }
+      ],
+      "input_span_factor": 29.073,
+      "slope_vs_records": {
+        "mb_per_record": 4.1093e-05,
+        "bytes_per_record": 43.089,
+        "records_range": [
+          21387,
+          621783
+        ],
+        "rss_range_mb": [
+          56.8,
+          85.2
+        ]
+      },
+      "slope_vs_covered_bases": {
+        "mb_per_record": 6.917e-06,
+        "bytes_per_record": 7.253,
+        "records_range": [
+          124810,
+          3518066
+        ],
+        "rss_range_mb": [
+          56.8,
+          85.2
+        ]
+      }
+    },
+    "streams": {
+      "command": "bam_stat",
+      "retains": "nothing beyond the current record",
+      "interpretation": "Control case. A streaming command's peak RSS should be flat against alignment size. A rising slope here would mean the streaming claim is false, whatever the code comments say.",
+      "points": [
+        {
+          "label": "chr17:0-832,574 (1%)",
+          "records": 21387,
+          "covered_bases": 124810,
+          "wall_s": 0.03,
+          "peak_rss_mb": 2.96484375,
+          "user_s": 0.01,
+          "exit_code": 0
+        },
+        {
+          "label": "chr17:0-1,665,148 (2%)",
+          "records": 43246,
+          "covered_bases": 271390,
+          "wall_s": 0.05,
+          "peak_rss_mb": 2.92578125,
+          "user_s": 0.02,
+          "exit_code": 0
+        },
+        {
+          "label": "chr17:0-4,162,872 (5%)",
+          "records": 83967,
+          "covered_bases": 724989,
+          "wall_s": 0.11,
+          "peak_rss_mb": 2.9140625,
+          "user_s": 0.05,
+          "exit_code": 0
+        },
+        {
+          "label": "chr17:0-8,325,744 (10%)",
+          "records": 245688,
+          "covered_bases": 1618058,
+          "wall_s": 0.28,
+          "peak_rss_mb": 3.0625,
+          "user_s": 0.15,
+          "exit_code": 0
+        },
+        {
+          "label": "chr17:0-16,651,488 (20%)",
+          "records": 359156,
+          "covered_bases": 2241107,
+          "wall_s": 0.27,
+          "peak_rss_mb": 2.94921875,
+          "user_s": 0.21,
+          "exit_code": 0
+        },
+        {
+          "label": "chr17:0-33,302,976 (40%)",
+          "records": 621783,
+          "covered_bases": 3518066,
+          "wall_s": 0.69,
+          "peak_rss_mb": 2.9296875,
+          "user_s": 0.36,
+          "exit_code": 0
+        }
+      ],
+      "input_span_factor": 29.073,
+      "slope_vs_records": {
+        "mb_per_record": 2e-09,
+        "bytes_per_record": 0.002,
+        "records_range": [
+          21387,
+          621783
+        ],
+        "rss_range_mb": [
+          2.9,
+          3.1
+        ]
+      },
+      "slope_vs_covered_bases": {
+        "mb_per_record": 1e-09,
+        "bytes_per_record": 0.002,
+        "records_range": [
+          124810,
+          3518066
+        ],
+        "rss_range_mb": [
+          2.9,
+          3.1
+        ]
+      }
+    },
+    "wig": {
+      "command": "bam2wig",
+      "retains": "covered positions",
+      "interpretation": "WIG generation keeps a per-position value for every covered base, so RSS is proportional to covered positions. This is why bam2wig cannot process a whole-genome alignment at ordinary coverage within a modest memory budget, and it is the driver that bounds the declared envelope.",
+      "points": [
+        {
+          "label": "chr17:0-832,574 (1%)",
+          "records": 21387,
+          "covered_bases": 124810,
+          "wall_s": 0.18,
+          "peak_rss_mb": 7.48828125,
+          "user_s": 0.14,
+          "exit_code": 0
+        },
+        {
+          "label": "chr17:0-1,665,148 (2%)",
+          "records": 43246,
+          "covered_bases": 271390,
+          "wall_s": 0.56,
+          "peak_rss_mb": 13.3203125,
+          "user_s": 0.33,
+          "exit_code": 0
+        },
+        {
+          "label": "chr17:0-4,162,872 (5%)",
+          "records": 83967,
+          "covered_bases": 724989,
+          "wall_s": 0.93,
+          "peak_rss_mb": 32.203125,
+          "user_s": 0.76,
+          "exit_code": 0
+        },
+        {
+          "label": "chr17:0-8,325,744 (10%)",
+          "records": 245688,
+          "covered_bases": 1618058,
+          "wall_s": 2.99,
+          "peak_rss_mb": 70.46875,
+          "user_s": 2.19,
+          "exit_code": 0
+        },
+        {
+          "label": "chr17:0-16,651,488 (20%)",
+          "records": 359156,
+          "covered_bases": 2241107,
+          "wall_s": 4.8,
+          "peak_rss_mb": 96.64453125,
+          "user_s": 3.24,
+          "exit_code": 0
+        },
+        {
+          "label": "chr17:0-33,302,976 (40%)",
+          "records": 621783,
+          "covered_bases": 3518066,
+          "wall_s": 7.2,
+          "peak_rss_mb": 151.70703125,
+          "user_s": 5.71,
+          "exit_code": 0
+        }
+      ],
+      "input_span_factor": 29.073,
+      "slope_vs_records": {
+        "mb_per_record": 0.000239014,
+        "bytes_per_record": 250.625,
+        "records_range": [
+          21387,
+          621783
+        ],
+        "rss_range_mb": [
+          7.5,
+          151.7
+        ]
+      },
+      "slope_vs_covered_bases": {
+        "mb_per_record": 4.2531e-05,
+        "bytes_per_record": 44.597,
+        "records_range": [
+          124810,
+          3518066
+        ],
+        "rss_range_mb": [
+          7.5,
+          151.7
+        ]
+      }
+    }
+  }
+}

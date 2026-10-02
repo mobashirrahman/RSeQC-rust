@@ -109,6 +109,15 @@ fn check_output_paths(paths: &[PathBuf], overwrite: bool) -> std::io::Result<()>
 }
 
 fn run(args: &Args) -> std::io::Result<()> {
+    // Upstream's validate_args refuses an output prefix whose parent directory does
+    // not exist, before any input is read. Omitting it here meant the whole
+    // alignment was read and every metric computed, then discarded when the output
+    // open failed with "No such file or directory (os error 2)" -- an error naming
+    // neither the directory nor the flag, and indistinguishable from a missing
+    // input. The shared helper keeps that check in one place so it cannot be
+    // forgotten by the next binary.
+    rseqc_cli::require_existing_output_parent_or_exit("split_paired_bam.py", &args.out_prefix);
+
     // Upstream: `logging.info("Splitting %s", input_file)` -- unconditional.
     eprintln!("Splitting {}", args.input_file.display());
 

@@ -1,0 +1,153 @@
+{
+  "status": {
+    "state": "SUPERSEDED -- must be recollected before any figure here is cited",
+    "reasons": [
+      "peak_aggregate_mb was measured with a memory baseline sampled 1.0 s AFTER the panels started, so their allocations were inside the baseline and were then subtracted from the peak. That makes the figure 'how much had the panels NOT yet allocated at the 1 s mark', which is not a quantity, and it is not conservative either: a panel that has not reached its peak by 1 s inflates it. The 2026.6 MB at concurrency 1 against a 1.06 GB single-panel peak is the symptom. verification/measure_pipeline.py now samples the baseline before any panel starts, matching the corrected verification/measure_concurrency.py.",
+      "The panel includes geneBody_coverage, which does not currently reproduce upstream's curve on real data (compatibility/divergences.yaml DIV-0024, open). Its contribution to the panel's wall time is therefore a cost of an unqualified command, and the panel should be re-measured either without it or with it explicitly flagged, so the figure is attributable to work that is actually qualified."
+    ],
+    "recollect_with": "verification/measure_pipeline.py",
+    "do_not_cite_until": "this status block is removed by a recollection run"
+  },
+  "panel": [
+    "bam_stat",
+    "infer_experiment",
+    "read_distribution",
+    "geneBody_coverage",
+    "read_duplication"
+  ],
+  "input": {
+    "bam": "/scratch/mdra00001/RSeQC-rust/datasets/heldout/aligned/SRR1177982/SRR1177982.bam",
+    "bam_sha256": "8009fbc27272d6ea8f4e2714e8afe9864108f3cd5e8a78dde668815d0f19d89d",
+    "bed": "/scratch/mdra00001/RSeQC-rust/datasets/heldout/reference/rn6.indexed.bed12",
+    "bed_sha256": "d591e6c629189537929ec049cb6fb2ab204dc09c01cc478aa66532fa21cb3fb0"
+  },
+  "runs": [
+    {
+      "concurrency": 1,
+      "batch_wall_s": 47.09,
+      "panels": 1,
+      "panels_complete": 1,
+      "peak_aggregate_mb": 2026.6,
+      "samples": 939,
+      "samples_per_hour": 76.4,
+      "cpu_hours_per_sample": 0.0133
+    },
+    {
+      "concurrency": 2,
+      "batch_wall_s": 50.11,
+      "panels": 2,
+      "panels_complete": 2,
+      "peak_aggregate_mb": 2019.7,
+      "samples": 999,
+      "samples_per_hour": 143.7,
+      "cpu_hours_per_sample": 0.0141
+    },
+    {
+      "concurrency": 4,
+      "batch_wall_s": 57.23,
+      "panels": 4,
+      "panels_complete": 4,
+      "peak_aggregate_mb": 4489.9,
+      "samples": 1140,
+      "samples_per_hour": 251.6,
+      "cpu_hours_per_sample": 0.016
+    },
+    {
+      "concurrency": 8,
+      "batch_wall_s": 77.84,
+      "panels": 8,
+      "panels_complete": 8,
+      "peak_aggregate_mb": 7249.9,
+      "samples": 1547,
+      "samples_per_hour": 370.0,
+      "cpu_hours_per_sample": 0.0214
+    }
+  ],
+  "single_panel": {
+    "complete": true,
+    "stages": [
+      {
+        "stage": "bam_stat",
+        "argv": [
+          "-i",
+          "/scratch/mdra00001/RSeQC-rust/datasets/heldout/aligned/SRR1177982/SRR1177982.bam"
+        ],
+        "exit": 0,
+        "complete": true,
+        "wall_s": 4.18,
+        "cpu_s": 4.16,
+        "peak_rss_mb": 2.9,
+        "detail": ""
+      },
+      {
+        "stage": "infer_experiment",
+        "argv": [
+          "-i",
+          "/scratch/mdra00001/RSeQC-rust/datasets/heldout/aligned/SRR1177982/SRR1177982.bam",
+          "-r",
+          "/scratch/mdra00001/RSeQC-rust/datasets/heldout/reference/rn6.indexed.bed12"
+        ],
+        "exit": 0,
+        "complete": true,
+        "wall_s": 0.36,
+        "cpu_s": 0.35,
+        "peak_rss_mb": 3.3,
+        "detail": ""
+      },
+      {
+        "stage": "read_distribution",
+        "argv": [
+          "-i",
+          "/scratch/mdra00001/RSeQC-rust/datasets/heldout/aligned/SRR1177982/SRR1177982.bam",
+          "-r",
+          "/scratch/mdra00001/RSeQC-rust/datasets/heldout/reference/rn6.indexed.bed12"
+        ],
+        "exit": 0,
+        "complete": true,
+        "wall_s": 6.26,
+        "cpu_s": 6.26,
+        "peak_rss_mb": 26.5,
+        "detail": ""
+      },
+      {
+        "stage": "geneBody_coverage",
+        "argv": [
+          "-i",
+          "/scratch/mdra00001/RSeQC-rust/datasets/heldout/aligned/SRR1177982/SRR1177982.bam",
+          "-r",
+          "/scratch/mdra00001/RSeQC-rust/datasets/heldout/reference/rn6.indexed.bed12",
+          "--out-prefix",
+          "/scratch/mdra00001/tmp/tmpctp1r677/single/gb",
+          "--skip-plot"
+        ],
+        "exit": 0,
+        "complete": true,
+        "wall_s": 22.07,
+        "cpu_s": 22.02,
+        "peak_rss_mb": 220.9,
+        "detail": ""
+      },
+      {
+        "stage": "read_duplication",
+        "argv": [
+          "-i",
+          "/scratch/mdra00001/RSeQC-rust/datasets/heldout/aligned/SRR1177982/SRR1177982.bam",
+          "--out-prefix",
+          "/scratch/mdra00001/tmp/tmpctp1r677/single/dup"
+        ],
+        "exit": 0,
+        "complete": true,
+        "wall_s": 15.94,
+        "cpu_s": 15.92,
+        "peak_rss_mb": 1060.2,
+        "detail": ""
+      }
+    ],
+    "panel_wall_s": 48.81,
+    "panel_cpu_s": 48.71,
+    "panel_peak_rss_mb": 1060.2,
+    "output_bytes": 60503,
+    "output_files": 6,
+    "stages_run": 5
+  }
+}
