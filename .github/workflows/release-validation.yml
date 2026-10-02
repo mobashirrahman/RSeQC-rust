@@ -181,7 +181,12 @@ jobs:
       # including the audit's probe row, minus strand, and the zero-coordinate
       # boundary, so a converter matching its own previous output cannot pass.
       - name: refGene conversion truth cases
-        run: python datasets/test_refgene_to_gtf.py
+        run: |
+          python datasets/test_refgene_to_gtf.py
+          # The index-directory naming rule, which is what makes a whole-genome index
+          # buildable at all: a long contig set used to overflow NAME_MAX and fail with
+          # "File name too long" 90 seconds into the build.
+          python datasets/test_star_index_naming.py
 
       # The rat reference preparation on disk must be the one the manifest records,
       # and the alignment must be bound to the index it was produced from. The

@@ -243,6 +243,34 @@ this table, is the authoritative compatibility record.
   [`scripts/test_release_metadata.py`](scripts/test_release_metadata.py),
   [`verification/check_command_contracts.py`](verification/check_command_contracts.py)
   and [`verification/check_interop.py`](verification/check_interop.py).
+- **There is now a real measurement for 18 command rows, and it says which of them may
+  be quoted.** [`benchmarks/results-rat-real-8M/results.json`](benchmarks/results-rat-real-8M/results.json)
+  holds 18 rows on an 8.2M-record rat alignment, 5 matched blocks each, with per-run raw
+  timings, failures, the interleaved schedule and a per-binary SHA256 — and that hash
+  was checked against the binaries on disk *after* the run, so the rows provably measured
+  the code being shipped. **16 of 18 gates pass.** The two that fail are `geneBody_coverage`
+  and `tin`, which share the disclosed `max_depth` defect; their speedups are recorded
+  and explicitly not claimed, because a gate that refuses is the gate working.
+
+  | | ratio | 95% CI | gate |
+  |---|---|---|---|
+  | `inner_distance` | 14.79× | 14.45–15.36 | pass |
+  | `read_NVC` | 11.19× | 11.12–11.54 | pass |
+  | `read_distribution` | 4.58× | 4.50–4.68 | pass |
+  | `bam_stat` | 4.46× | 4.35–4.49 | pass |
+  | `clipping_profile` | 4.11× | 3.68–4.15 | pass |
+  | `read_hexamer` … `RNA_fragment_size` | 3.52×–1.54× | see the JSON | pass |
+  | `geneBody_coverage` | 12.36× | 11.83–12.81 | **fail — not claimed** |
+  | `tin` | 7.79× | 7.78–7.92 | **fail — not claimed** |
+
+  What this does **not** license is stated rather than implied: the alignment carries
+  reads on **3 of 58 annotated contigs**, so it is a diagnostic panel, not the
+  whole-genome pilot the protocol asks for; it is **one session on one machine**, which
+  the protocol says a bootstrap interval cannot make generalisable; and 5 blocks per row
+  is short of the 10 the protocol starts from. These are indicative figures for a scoped
+  beta, not publication figures. The harness itself also earned three corrections during
+  this study — three commands were gated on declarations that did not describe them, and
+  a relative `--output-dir` silently invalidated the first attempt entirely.
 - **Two commands' real-data equivalence is unproven, and the release says so.**
   `geneBody_coverage.py` and `tin.py` do **not** currently reproduce upstream's output on
   real data, from **one shared cause**: they both reach it through the same pileup

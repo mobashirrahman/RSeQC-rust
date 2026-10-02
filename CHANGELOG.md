@@ -233,6 +233,34 @@ of a feature or a closed divergence, not every commit.
   --locked` with the reason, and `scripts/check_release_metadata.py` compares every
   command's recorded hash against the binary actually staged in the archive — a check
   that already earned its place by catching exactly this.
+- **The study is now 18 rows on real data, and the README says which of them may be
+  quoted.** 16 of 18 gates pass; the two failures are `geneBody_coverage` and `tin`,
+  sharing the disclosed DIV-0024 defect, and their speedups are recorded and explicitly
+  not claimed. Three things bound the claim and are stated rather than implied: the
+  alignment carries reads on **3 of 58 annotated contigs**, so it is a diagnostic panel
+  rather than the whole-genome pilot protocol-v2 section 2 asks for; it is **one session
+  on one machine**, which section 6 says a bootstrap interval cannot make generalisable;
+  and 5 blocks per row is short of the 10 the protocol starts from. These are indicative
+  figures for a scoped beta, not publication figures — which is a narrower and more
+  useful statement than the previous blanket "no performance figure may be published",
+  and it names the three measurements that would change it.
+
+- **A whole-genome rat index could not be built at all, because the index directory
+  name embedded the contig set and overflowed the 255-byte filename limit.** That is
+  the scope the production pilot needs, and the failure was `mkdir: File name too long`
+  from inside the build script — after it had located STAR and begun unpacking the
+  genome, so 90 seconds into a 45-minute job rather than at argument-parsing time. A
+  long contig set is now summarised rather than dropped: the first two contigs stay
+  readable, the count of the remainder follows, and a digest of the full set keeps the
+  name unique, so rn6 and rn7 whole-genome indexes still get different directories. The
+  complete contig list is recorded in the index's marker file either way, so nothing is
+  lost by abbreviating. `build_star_index.sh --print-index-key` exposes the rule without
+  building anything, and `datasets/test_star_index_naming.py` checks it: a short set is
+  unchanged (otherwise every existing index directory would become unreachable), a
+  whole-genome set fits in a filename, the summary says what it summarises, and two
+  different contig sets can never collide — which is the same silent-damage mode that
+  destroyed the human rat index earlier.
+
 - **A partial re-collection silently shrank the study summary from 18 rows to 3.**
   Recollecting a subset of rows is a normal protocol operation — protocol-v2 says to
   recollect affected rows only when code, methods or an unresolved discrepancy justify
@@ -664,10 +692,22 @@ smoke-tested outside the source tree. The differential matrix is **90/90**.
 
 **Still open, and each is a real limit rather than a pending nicety:**
 
-- **No performance figure may be published.** The version-1 benchmark numbers are void
-  as equivalence or precision evidence (defective comparators, unpaired repetitions);
-  `benchmarks/protocol-v2.md` specifies the replacement study and it has not been run at
-  scale. Its results were also on shared, non-isolated hardware.
+- **The replacement study has been run, and what it does not yet license is narrower
+  than "no figure may be published".** Version-1 numbers remain void (defective
+  comparators, unpaired repetitions). Under `benchmarks/protocol-v2.md` there are now 18
+  command rows on real data, 5 matched blocks each, with per-run raw timings, failures,
+  the interleaved schedule, and a per-binary SHA256 that was verified against the
+  binaries on disk afterwards. **16 of 18 gates PASS; the two failures are
+  `geneBody_coverage` and `tin`, which share the disclosed DIV-0024 cap defect, so no
+  speedup is claimed for either.** Three things still bound the claim, and each is a
+  specific missing measurement rather than a general reservation: the alignment covers
+  **3 of 58 annotated contigs**, so it is a diagnostic panel rather than the
+  whole-genome pilot protocol-v2 section 2 asks for; it is **one session on one
+  machine**, and section 6 says a bootstrap interval on a single shared-machine run does
+  not capture dataset or hardware generalisability; and there is **one dataset**. The
+  protocol requires 10 valid matched pairs as a starting point and a predeclared
+  precision rule; 5 blocks per row with intervals reported is short of that, so these
+  are indicative figures for a scoped beta, not publication figures.
 - **Three endpoint verdicts are withdrawn or narrowed.** E1's cross-lab strand
   expectation came from the wrong archive field and is now NOT_EVALUATED without
   explicit protocol metadata; A6's annotation-density explanation is withdrawn; E3's
@@ -676,9 +716,13 @@ smoke-tested outside the source tree. The differential matrix is **90/90**.
   figure (0.617) is computed on corrected, index-bound reference preparation and
   reproduced by three independent invocations, but the stratum has been inspected five
   times across three preparation states, so it is diagnostic rather than confirmatory.
-- **No capacity envelope is declared.** A cost per record and a measured peak are not
-  a limit, and no run at the audit's 10M/50M-pair production targets has been
-  performed.
+- **No capacity envelope is declared.** A cost per record and a measured peak are not a
+  limit, and no run at the audit's 10M/50M-pair production targets has been performed.
+  The whole-genome rat index needed for a realistic pilot is being built and has already
+  cost one real obstacle: `build_star_index.sh` was killed mid-sort when the invoking
+  shell exited, so the build must be detached with `setsid`. That is recorded here
+  because it is the kind of thing that looks like an intermittent STAR failure and is
+  not.
 - **Publication is blocked** on the permanent repository URL and support channel, which
   are maintainer decisions; `scripts/check_release_metadata.py` enforces that rather
   than letting a `TBD` URL ship.

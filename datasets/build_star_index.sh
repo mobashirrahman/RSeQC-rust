@@ -48,7 +48,31 @@ INDEX_KEY="$(basename "${GENOME:-hg38.fa.gz}" .gz)-$(basename "${GTF:-gencode.v4
 # without changing either input file.
 CONTIGS="${CONTIGS:-chr1 chr17 chrM}"
 SJDB_OVERHANG="${SJDB_OVERHANG:-149}"
-INDEX_KEY="$INDEX_KEY-o$SJDB_OVERHANG-$(echo "$CONTIGS" | tr ' ' '_')"
+# The contig set goes into the directory name so two indexes differing only in contig
+# scope cannot collide -- but spelled out in full it overflows the 255-byte filename
+# limit for a WHOLE-GENOME set, which is the scope the production pilot needs. So a long
+# set is summarised rather than dropped: the first two contigs stay readable, the count
+# follows, and a digest of the full set keeps the name unique. Two whole-genome indexes
+# for different assemblies still get different directories, and the marker file inside
+# records the complete contig list either way, so nothing is lost by abbreviating.
+contig_slug="$(echo "$CONTIGS" | tr ' ' '_')"
+if [ "${#contig_slug}" -gt 60 ]; then
+  contig_digest="$(printf '%s' "$CONTIGS" | sha256sum | cut -c1-10)"
+  contig_count="$(echo "$CONTIGS" | wc -w | tr -d ' ')"
+  contig_slug="$(echo "$CONTIGS" | cut -d' ' -f1-2 | tr ' ' '_')-plus${contig_count}more-${contig_digest}"
+fi
+INDEX_KEY="$INDEX_KEY-o$SJDB_OVERHANG-$contig_slug"
+
+# Print the derived directory name and exit, without building anything. This exists so
+# the naming rule is TESTABLE: a whole-genome contig set overflows the 255-byte filename
+# limit, and that only shows up as "File name too long" after STAR has been located and
+# the genome unpacked -- 90 seconds into a 45-minute build. The rule also has to stay
+# readable and collision-free, which is a judgement no filesystem error will make for us.
+if [ "${1:-}" = "--print-index-key" ]; then
+  echo "$INDEX_KEY"
+  exit 0
+fi
+
 IDX_DIR="${IDX_DIR:-$HERE/star_index/$INDEX_KEY}"
 MAMBA_ROOT_PREFIX="${MAMBA_ROOT_PREFIX:-/scratch/mdra00001/tmp/mamba}"
 ENV_NAME="${ENV_NAME:-t4star}"
