@@ -265,6 +265,20 @@ of a feature or a closed divergence, not every commit.
   differs, and only in the output directory it embeds in its own `pdf()` calls.
   Evidence and provenance: `datasets/heldout/endpoint_results/SRR1177982_wholegenome/`.
 
+- **The whole-genome claim is now checked by the reference checker, not just recorded.**
+  `verification/check_rat_reference.py` verifies the 58-contig index's build record and
+  both of its digests, that the alignment is bound to *that exact* index build (compared
+  as parsed key/value sets, because `align_run.sh` flattens the marker to one line and a
+  raw string compare fails on formatting alone), and — the point of the exercise — that
+  the recorded byte-identity is true of the files on disk, plus that both arms' junction
+  total equals STAR's own spliced-junction count, so neither is inventing or dropping
+  junctions relative to the aligner. 39/39 checks pass. Both new check families were
+  mutation-tested: falsifying the recorded hash fails the hash check, and appending one
+  byte to one arm fails the identity check. Two of the first-draft checks failed for
+  reasons of my own making — the stamp records the digest of the UNPACKED `genome.fa`
+  STAR read, not of the re-fetchable `rn6.fa.gz`, so comparing it to the `.gz` was
+  simply the wrong comparison.
+
 - **The study is now 18 rows on real data, and the README says which of them may be
   quoted.** 16 of 18 gates pass; the two failures are `geneBody_coverage` and `tin`,
   sharing the disclosed DIV-0024 defect, and their speedups are recorded and explicitly

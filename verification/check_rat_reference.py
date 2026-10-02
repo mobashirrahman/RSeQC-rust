@@ -375,6 +375,107 @@ def main() -> int:
         check("BED12 and GTF both present", False,
               f"{bed} or {gtf} missing")
 
+    # ------------------------------------------------------------------
+    # Whole-genome stratum. The three-contig panel above turned out to retain only
+    # 20.31% of uniquely mapped reads, because most rat reads fall outside
+    # chr1/chr2/chr10 -- so a contig subset is a biased sample, not a smaller sample of
+    # the same thing. The whole-genome alignment is now the primary substrate, and it
+    # gets the same provenance checks plus one more: that the recorded byte-identity is
+    # actually true of the files on disk. A stored hash of a claim is not the claim.
+    # ------------------------------------------------------------------
+    wg_index = Path("datasets/heldout/star_index/rn6-wholegenome-o100")
+    wg_align = Path("datasets/heldout/aligned_wholegenome/SRR1177982")
+    wg_evidence = Path("datasets/heldout/endpoint_results/SRR1177982_wholegenome")
+
+    if wg_index.is_dir() and wg_align.is_dir():
+        stamps = sorted(wg_index.glob(".built-*"))
+        check("whole-genome index has a build record", bool(stamps),
+              stamps[0].name if stamps else "no .built-* marker")
+        stamp_text = stamps[0].read_text() if stamps else ""
+        contig_field = next((l.split("=", 1)[1] for l in stamp_text.splitlines()
+                             if l.startswith("contigs=")), "")
+        check("whole-genome index records all 58 contigs",
+              len(contig_field.split()) == 58,
+              f"{len(contig_field.split())} contigs recorded")
+        # The stamp's genome_sha256 is the digest of the UNPACKED genome.fa STAR
+        # actually read, not of the rn6.fa.gz a user would re-fetch -- comparing it to
+        # the .gz fails for a reason that has nothing to do with the index. So the
+        # unpacked form is checked here, and the input form is checked against the
+        # manifest above, which is where a re-fetchable digest belongs.
+        for field, path in (("genome_sha256", wg_index / "genome.fa"),
+                            ("gtf_sha256", REF / "rn6.gtf")):
+            want = next((l.split("=", 1)[1] for l in stamp_text.splitlines()
+                         if l.startswith(field + "=")), "")
+            got = sha256(path) if path.is_file() else "(missing)"
+            check(f"whole-genome index digest for {path.name} matches the stamp",
+                  want == got, "matches" if want == got else f"stamp={want[:16]} disk={got[:16]}")
+
+        ajson = wg_align / "SRR1177982.align.json"
+        if ajson.is_file():
+            aj = json.loads(ajson.read_text())
+            check("whole-genome alignment records the index it was built against",
+                  Path(aj.get("index_dir", "")).name == wg_index.name,
+                  aj.get("index_dir", "(none)"))
+            # align_run.sh flattens the marker into one space-separated line, so the
+            # two are compared as PARSED key/value sets. A raw string comparison here
+            # would fail on formatting alone, which is how a real binding difference
+            # would get lost in a false positive.
+            def parse_stamp(s):
+                out = {}
+                for part in s.split():
+                    k, _, v = part.partition("=")
+                    if v:
+                        out[k] = v
+                return out
+
+            stamp_fields = parse_stamp(stamp_text)
+            align_fields = parse_stamp(aj.get("index_stamp", ""))
+            shared = set(stamp_fields) & set(align_fields)
+            differing = sorted(k for k in shared if stamp_fields[k] != align_fields[k])
+            check("whole-genome alignment is bound to this exact index build",
+                  bool(shared) and not differing
+                  and set(align_fields) == set(stamp_fields),
+                  f"{len(align_fields)} fields compared"
+                  + (f", DIFFERING: {differing}" if differing else "")
+                  + (f", only in one side: "
+                     f"{sorted(set(align_fields) ^ set(stamp_fields))}"
+                     if set(align_fields) != set(stamp_fields) else ""))
+            check("whole-genome alignment is indexed and coordinate-sorted",
+                  (wg_align / "SRR1177982.bam.bai").is_file())
+
+        if wg_evidence.is_dir() and (wg_evidence / "evidence.json").is_file():
+            ev = json.loads((wg_evidence / "evidence.json").read_text())
+            for name, rec in ev.get("byte_identical_artifacts", {}).items():
+                up = wg_evidence / f"upstream.{name}"
+                rs = wg_evidence / f"rust.{name}"
+                if not (up.is_file() and rs.is_file()):
+                    check(f"whole-genome {name} artifacts present", False,
+                          "one side missing")
+                    continue
+                a, b = sha256(up), sha256(rs)
+                check(f"whole-genome {name} is byte-identical as recorded", a == b,
+                      f"{up.stat().st_size:,} bytes, sha {a[:16]}")
+                check(f"whole-genome {name} digest matches the evidence record",
+                      rec.get("upstream_sha256") == a,
+                      "the recorded hash is the file's hash")
+            # The scientific claim, checked rather than quoted: both arms must report
+            # STAR's own spliced-junction count, so neither is inventing or dropping
+            # junctions relative to the aligner.
+            star_total = None
+            final = wg_align / "SRR1177982.Log.final.out"
+            if final.is_file():
+                for line in final.read_text().splitlines():
+                    if "Number of splices: Total" in line:
+                        star_total = int(line.split("|")[-1].strip())
+            claimed = ev.get("results", {}).get("upstream_total")
+            check("both arms' junction total equals STAR's spliced-junction count",
+                  star_total is not None and claimed == star_total
+                  and ev.get("results", {}).get("rust_total") == star_total,
+                  f"STAR={star_total} upstream={claimed} rust={ev.get('results',{}).get('rust_total')}")
+    else:
+        check("whole-genome rat stratum present", False,
+              f"{wg_index} or {wg_align} missing")
+
     failed = [r for r in results if not r["pass"]]
     print()
     if args.json:
