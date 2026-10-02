@@ -161,10 +161,18 @@ def main() -> int:
                     default=Path("/tmp/opencode/wl-rat"),
                     help="a workload directory the harness can drive")
     ap.add_argument("--commands", nargs="*", default=None)
-    ap.add_argument("--workload-for", nargs="*", default=[], metavar="CMD=DIR",
+    # `action="append"` is load-bearing. With the default store action and nargs="*",
+    # each occurrence REPLACES the previous list, so
+    #   --workload-for a=X --workload-for b=Y --workload-for c=Z
+    # silently keeps only c. Every override but the last is dropped, and the run then
+    # reports those commands as "UNVERIFIED because the workload does not supply their
+    # input shape" -- which reads as a property of the commands rather than a bug in the
+    # invocation. It was exactly that, and it is why the sweep sat at 24/29 while every
+    # individual override worked when passed alone.
+    ap.add_argument("--workload-for", action="append", nargs="*", default=[],
+                    metavar="CMD=DIR",
                     help="per-command workload directory, as the harness takes; "
-                         "commands with a different input shape (FASTQ, FASTA, "
-                         "BigWig) need one")
+                         "repeatable, and several CMD=DIR values may follow one flag")
     args = ap.parse_args()
 
     if not args.workload.is_dir():
@@ -174,9 +182,15 @@ def main() -> int:
     names = args.commands or [
         n for n in bench.COMMANDS if n not in bench.EXCLUDED]
     overrides = {}
-    for spec_str in args.workload_for:
-        cmd, _, path = spec_str.partition("=")
-        overrides[cmd] = Path(path).resolve()
+    for group in args.workload_for:
+        for spec_str in group:
+            cmd, _, path = spec_str.partition("=")
+            if not cmd or not path:
+                print(f"skip: malformed --workload-for {spec_str!r}; expected CMD=DIR")
+                continue
+            overrides[cmd] = Path(path).resolve()
+    if overrides:
+        print(f"per-command workloads: {', '.join(sorted(overrides))}")
 
     all_problems: list[str] = []
     all_unverified: list[str] = []

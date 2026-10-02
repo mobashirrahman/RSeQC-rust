@@ -29,7 +29,7 @@
 //! These are NOT equivalent due to `percentile_list`'s asymmetric
 //! floor/ceil interpolation formula; replicated via the exact same
 //! sort-then-percentile mechanism, not the reverse-the-output shortcut.
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::io::{self, BufRead};
 
 use rseqc_formats::bigwig::BigWigReader;
@@ -71,7 +71,9 @@ fn parse_bed12_line(line: &str) -> Option<Bed12Record> {
 /// upstream's `defaultdict(float)` staying empty in that case (NOT a
 /// 100-length all-zero vector).
 pub fn coverage_gene_body_bigwig(bw: &mut BigWigReader, refbed: impl BufRead) -> io::Result<(Vec<f64>, i64)> {
-    let chrom_set: HashSet<String> = bw.chroms().into_iter().map(|(name, _)| name).collect();
+    let chrom_lengths: HashMap<String, u64> =
+        bw.chroms().into_iter().map(|(n, l)| (n, l as u64)).collect();
+    let chrom_set: HashSet<String> = chrom_lengths.keys().cloned().collect();
 
     let mut coverage: Vec<f64> = Vec::new();
     let mut gene_count = 0i64;
@@ -117,6 +119,38 @@ pub fn coverage_gene_body_bigwig(bw: &mut BigWigReader, refbed: impl BufRead) ->
             coverage.resize(percentile_bases.len(), 0.0);
         }
         for (index, &genomic_position) in percentile_bases.iter().enumerate() {
+            // A sampled position past the end of its chromosome is REFUSED, not
+            // silently treated as zero.
+            //
+            // Upstream calls pyBigWig's `values(chrom, pos-1, pos)`, which raises
+            // "Invalid interval bounds!" and exits 1 when that interval lies outside
+            // the chromosome. This port's BigWig reader returns NaN for such an
+            // interval instead of failing, and the NaN was mapped to 0.0 -- so a gene
+            // model extending past the last base of a chromosome produced a
+            // confidently wrong coverage curve, with the uncovered tail silently
+            // contributing nothing rather than the run refusing. That is the audit's
+            // "no silent metric loss and no successful corrupt output" failure: the
+            // answer looks like an answer and understates coverage for every affected
+            // transcript.
+            //
+            // It was found by verification/verify_stream_declarations.py, which runs
+            // each declared command once and noticed that this one SUCCEEDED where
+            // upstream refused -- the mirror image of the three declaration bugs it
+            // found, and the reason that tool reports per-command outcomes at all.
+            if let Some(&chrom_len) = chrom_lengths.get(&rec.chrom) {
+                if genomic_position < 1 || genomic_position as u64 > chrom_len {
+                    return Err(io::Error::new(
+                        io::ErrorKind::InvalidData,
+                        format!(
+                            "gene model position {} on {} lies outside that \
+                             chromosome in the BigWig ({} bp). Upstream refuses this \
+                             input; it is refused here too rather than counted as zero \
+                             coverage, which would silently understate this transcript.",
+                            genomic_position, rec.chrom, chrom_len
+                        ),
+                    ));
+                }
+            }
             let signal = bw.values(&rec.chrom, (genomic_position - 1) as u32, genomic_position as u32)?;
             let v = signal[0];
             coverage[index] += if v.is_nan() { 0.0 } else { v as f64 };
@@ -229,6 +263,60 @@ mod tests {
     }
 
     #[test]
+    fn a_model_position_past_the_chromosome_end_is_refused_not_zero_filled() {
+        // The silent-metric-loss case this guards.
+        //
+        // Upstream calls pyBigWig's values(chrom, pos-1, pos), which raises
+        // "Invalid interval bounds!" and exits 1 when the interval is outside the
+        // chromosome. The port's BigWig reader returns NaN there instead of failing,
+        // and NaN was mapped to 0.0 -- so a model extending past a chromosome's last
+        // base produced a confident coverage curve whose uncovered tail contributed
+        // nothing instead of the run refusing. Found by verify_stream_declarations.py
+        // noticing this command SUCCEEDING where upstream refused.
+        //
+        // (A `"""` docstring cannot be used here: Rust reads it as `""` followed by a
+        // string, so the embedded quotes below it would be a syntax error.)
+        let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../formats/tests/fixtures/pybigwig_test.bw");
+        let mut bw = BigWigReader::open(&fixture).unwrap();
+        // Chromosome "1" is 195,471,971 bp in the fixture, so a 100 bp single-exon
+        // transcript at 195,471,950 puts sampled positions past the end.
+        let bed = "1\t195471950\t195472050\tOUTOFRANGE\t0\t+\t195471950\t195472050\t0\t1\t100,\t0,\n";
+        let err = coverage_gene_body_bigwig(&mut bw, Cursor::new(bed))
+            .expect_err("a position past the chromosome end must be refused, not zero-filled");
+        let text = err.to_string();
+        assert!(text.contains("outside that chromosome"), "message: {text}");
+        assert!(text.contains("195471971"), "message must name the length: {text}");
+        // The reported position is the first SAMPLED position past the end, not the
+        // transcript start, because the check runs per percentile sample. So the
+        // invariant is "the position it names is beyond the chromosome", not "it names
+        // the position I happened to write in the fixture".
+        let reported: u64 = text
+            .split_whitespace()
+            .nth(3)
+            .and_then(|w| w.parse().ok())
+            .unwrap_or_else(|| panic!("message must name a numeric position: {text}"));
+        assert!(
+            reported > 195_471_971,
+            "the position reported as out of range ({reported}) must exceed the \
+             chromosome length the message also states"
+        );
+    }
+
+    #[test]
+    fn a_model_inside_the_chromosome_is_still_accepted() {
+        // The refusal must not turn into a blanket failure: the same fixture, a
+        // transcript well inside chromosome "1", has to keep working.
+        let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../formats/tests/fixtures/pybigwig_test.bw");
+        let mut bw = BigWigReader::open(&fixture).unwrap();
+        let bed = "1\t1000\t1200\tINSIDE\t0\t+\t1000\t1200\t0\t1\t200,\t0,\n";
+        let (coverage, gene_count) =
+            coverage_gene_body_bigwig(&mut bw, Cursor::new(bed)).unwrap();
+        assert_eq!(gene_count, 1);
+        assert_eq!(coverage.len(), 100);
+    }
+
     fn coverage_gene_body_bigwig_returns_empty_for_no_matching_chrom() {
         // Exercise the actual function with a real (fixture) BigWig
         // reader for the "no BED lines match any BigWig chromosome"

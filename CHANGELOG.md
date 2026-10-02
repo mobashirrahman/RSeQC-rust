@@ -265,6 +265,30 @@ of a feature or a closed divergence, not every commit.
   differs, and only in the output directory it embeds in its own `pdf()` calls.
   Evidence and provenance: `datasets/heldout/endpoint_results/SRR1177982_wholegenome/`.
 
+- **A scientific command silently produced a wrong answer where upstream refuses.**
+  `verification/verify_stream_declarations.py` runs each declared command once and
+  compares its outcome against upstream's, so it catches the *reverse* of what it was
+  built for: `geneBody_coverage2` **succeeded** where upstream **refused**. Upstream calls
+  pyBigWig's `values(chrom, pos-1, pos)`, which raises `Invalid interval bounds!` and
+  exits 1 for a gene model extending past a chromosome's last base. The port's BigWig
+  reader returns NaN there instead of failing, and that NaN was mapped to **0.0** — so
+  the uncovered tail contributed nothing and the command emitted a confident coverage
+  curve. That is the audit's "no silent metric loss and no successful corrupt output"
+  failure, in a scientific command. It now refuses, naming the sampled position, the
+  chromosome and its length. The exit status matches upstream; the message is clearer
+  than pyBigWig's, and that difference is recorded (DIV-0027) rather than papered over
+  by reproducing a worse diagnostic for byte parity. The new differential case fails on
+  the old binary and passes on the fixed one, so it is a real negative control.
+
+- **My own tool silently ignored five of six `--workload-for` overrides**, which is why
+  the declaration sweep sat at 24/29 while every override worked when passed alone.
+  `argparse` with `nargs="*"` and the default `store` action *replaces* the list on each
+  occurrence rather than appending, so only the last flag survived. The consequence was
+  misleading rather than loud: the affected commands were reported as "UNVERIFIED
+  because the workload does not supply their input shape", which reads as a property of
+  the commands. `action="append"` fixes it, and the sweep now verifies **28 of 29**
+  declarations against live runs.
+
 - **The whole-genome claim is now checked by the reference checker, not just recorded.**
   `verification/check_rat_reference.py` verifies the 58-contig index's build record and
   both of its digests, that the alignment is bound to *that exact* index build (compared

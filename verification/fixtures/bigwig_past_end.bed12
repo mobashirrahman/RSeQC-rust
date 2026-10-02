@@ -1,0 +1,10 @@
+# A gene model that extends past the end of its chromosome in the BigWig.
+#
+# crates/formats/tests/fixtures/pybigwig_test.bw has chromosome "1" at 195,471,971 bp,
+# so this 100 bp single-exon transcript at 195,471,950-195,472,050 puts its sampled
+# percentile positions past the end. Upstream refuses such an input ("Invalid interval
+# bounds!"); the port must refuse it too rather than counting the uncovered tail as
+# zero coverage. Kept as a fixture so the refusal is a differential case and not only a
+# unit test, since it is a cross-implementation contract rather than an internal one.
+1	195471950	195472050	OUTOFRANGE	0	+	195471950	195472050	0	1	100,	0,
+1	1000	1200	INSIDE	0	+	1000	1200	0	1	200,	0,

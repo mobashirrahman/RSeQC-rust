@@ -942,3 +942,36 @@ divergences:
       allowed to be better than its source only where the difference cannot change
       an accepted invocation's outcome; here it would.
     status: accepted
+
+  - id: DIV-0027
+    command_or_api: geneBody_coverage2.py
+    description: >
+      ACCEPTED serialization difference, in the direction of a better diagnostic. On a
+      gene model that extends past the last base of a chromosome in the supplied BigWig,
+      BOTH implementations now refuse the input and exit 1. Upstream's message is
+      pyBigWig's, `Invalid interval bounds!`, which names neither the transcript, the
+      chromosome, the position nor the length. The port's names the sampled position, the
+      chromosome and its length: `gene model position 195471972 on 1 lies outside that
+      chromosome in the BigWig (195471971 bp)`.
+
+      Found 2026-10-02 by verification/verify_stream_declarations.py, which runs each
+      declared command once and compares its outcome against upstream's. This command
+      SUCCEEDED where upstream refused: the port's BigWig reader returns NaN for an
+      out-of-range interval instead of failing, and that NaN was being mapped to 0.0. A
+      gene model extending past a chromosome's last base therefore produced a confident
+      coverage curve in which the uncovered tail contributed nothing -- the audit's "no
+      silent metric loss and no successful corrupt output" failure, in a scientific
+      command, and the mirror image of the three declaration bugs the same tool found.
+
+      The port now refuses. Asserted by the differential case
+      geneBody_coverage2_model_past_chromosome_end (exit status on both sides) and by two
+      unit tests, one pinning the refusal and one pinning that a model inside the
+      chromosome is still accepted -- because a refusal that turns into a blanket failure
+      would be its own silent metric loss.
+    classification: permitted-serialization-difference
+    decision: >
+      Keep the clearer message and do not reproduce pyBigWig's text. Matching it exactly
+      would mean shipping a diagnostic that does not say what went wrong, in exchange for
+      byte parity on a string no caller parses. The exit status, which is the part
+      behaviour can depend on, matches.
+    status: accepted

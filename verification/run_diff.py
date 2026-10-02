@@ -2991,6 +2991,43 @@ CASES: list[Case] = [
         compare_files=("pe.tin.xls",),
     ),
     Case(
+        name="geneBody_coverage2_model_past_chromosome_end",
+        # Found by verification/verify_stream_declarations.py, which runs each declared
+        # command once and compares its outcome against upstream's. This one SUCCEEDED
+        # where upstream REFUSED -- the mirror image of the three declaration bugs that
+        # same tool found, and the reason it reports per-command outcomes at all.
+        #
+        # Upstream calls pyBigWig's values(chrom, pos-1, pos), which raises "Invalid
+        # interval bounds!" and exits 1 for a gene model extending past a chromosome's
+        # last base. The port's BigWig reader returns NaN there and NaN was mapped to
+        # 0.0, so the uncovered tail silently contributed nothing and the command
+        # produced a confident coverage curve -- the audit's "no successful corrupt
+        # output" failure, in a scientific command.
+        #
+        # The fixture's chromosome "1" is 195,471,971 bp, so a 100 bp single-exon
+        # transcript at the very end puts sampled positions past it. Both sides must
+        # fail, and the port's message must name the position and the length rather than
+        # reporting an os error.
+        ensure_fixture=ensure_synthetic_fixtures,
+        py_script="geneBody_coverage2.py",
+        rust_bin="geneBody_coverage2",
+        py_args=lambda d: ["-i", str(REPO_ROOT / "crates" / "formats" / "tests" / "fixtures" / "pybigwig_test.bw"),
+                           "-r", str(REPO_ROOT / "verification" / "fixtures" / "bigwig_past_end.bed12"),
+                           "-o", str(d / "gb2")],
+        rust_args=lambda d: ["-i", str(REPO_ROOT / "crates" / "formats" / "tests" / "fixtures" / "pybigwig_test.bw"),
+                             "-r", str(REPO_ROOT / "verification" / "fixtures" / "bigwig_past_end.bed12"),
+                             "-o", str(d / "gb2")],
+        # Only the EXIT STATUS is compared, not the message. Both refuse; upstream
+        # says "Invalid interval bounds!" and the port names the position, the
+        # chromosome and its length. Hand-matching upstream's text would mean shipping
+        # a worse diagnostic to achieve byte parity, which is the opposite of what this
+        # fix is for -- so the text difference is recorded (DIV-0027) and the exit
+        # status, which is what a caller can act on, is the assertion.
+        compare_stream="none",
+        py_expected_exit=1,
+        rust_expected_exit=1,
+    ),
+    Case(
         name="tin_missing_output_dir",
         # `tin`'s -o is an output DIRECTORY, and upstream validates it before reading
         # the alignment, exiting 2 through parser.error(). The port had the same check
