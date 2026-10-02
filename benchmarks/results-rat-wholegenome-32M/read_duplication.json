@@ -1,0 +1,455 @@
+{
+  "command": "read_duplication",
+  "upstream": "read_duplication.py",
+  "rust": "read_duplication",
+  "experiment_class": "compute",
+  "reps": 5,
+  "runs": {
+    "py": [
+      {
+        "wall_s": 89.54623614798766,
+        "user_s": 86.44,
+        "sys_s": 3.06,
+        "peak_rss_mb": 3607.03125,
+        "exit_code": 0,
+        "timed_out": false,
+        "rep": 0,
+        "order": 0,
+        "started_at": 1790969270.838352
+      },
+      {
+        "wall_s": 89.55070515797706,
+        "user_s": 86.41,
+        "sys_s": 3.07,
+        "peak_rss_mb": 3606.984375,
+        "exit_code": 0,
+        "timed_out": false,
+        "rep": 1,
+        "order": 3,
+        "started_at": 1790969464.7439573
+      },
+      {
+        "wall_s": 90.7000282779918,
+        "user_s": 87.52,
+        "sys_s": 3.13,
+        "peak_rss_mb": 3606.76171875,
+        "exit_code": 0,
+        "timed_out": false,
+        "rep": 2,
+        "order": 5,
+        "started_at": 1790969607.6525393
+      },
+      {
+        "wall_s": 90.04758650198346,
+        "user_s": 86.94,
+        "sys_s": 3.03,
+        "peak_rss_mb": 3606.84765625,
+        "exit_code": 0,
+        "timed_out": false,
+        "rep": 3,
+        "order": 6,
+        "started_at": 1790969697.7033288
+      },
+      {
+        "wall_s": 89.94694496196462,
+        "user_s": 86.89,
+        "sys_s": 3.01,
+        "peak_rss_mb": 3607.04296875,
+        "exit_code": 0,
+        "timed_out": false,
+        "rep": 4,
+        "order": 8,
+        "started_at": 1790969839.807211
+      }
+    ],
+    "rs": [
+      {
+        "wall_s": 52.147218901023734,
+        "user_s": 49.32,
+        "sys_s": 2.75,
+        "peak_rss_mb": 3074.8828125,
+        "exit_code": 0,
+        "timed_out": false,
+        "rep": 0,
+        "order": 1,
+        "started_at": 1790969322.990424
+      },
+      {
+        "wall_s": 52.19318937603384,
+        "user_s": 49.35,
+        "sys_s": 2.78,
+        "peak_rss_mb": 3074.9453125,
+        "exit_code": 0,
+        "timed_out": false,
+        "rep": 1,
+        "order": 2,
+        "started_at": 1790969375.1871595
+      },
+      {
+        "wall_s": 52.196356468019076,
+        "user_s": 49.45,
+        "sys_s": 2.7,
+        "peak_rss_mb": 3074.953125,
+        "exit_code": 0,
+        "timed_out": false,
+        "rep": 2,
+        "order": 4,
+        "started_at": 1790969516.9464252
+      },
+      {
+        "wall_s": 52.144742443051655,
+        "user_s": 49.43,
+        "sys_s": 2.67,
+        "peak_rss_mb": 3075.046875,
+        "exit_code": 0,
+        "timed_out": false,
+        "rep": 3,
+        "order": 7,
+        "started_at": 1790969749.854187
+      },
+      {
+        "wall_s": 52.26298139797291,
+        "user_s": 49.45,
+        "sys_s": 2.74,
+        "peak_rss_mb": 3075.1484375,
+        "exit_code": 0,
+        "timed_out": false,
+        "rep": 4,
+        "order": 9,
+        "started_at": 1790969892.0750566
+      }
+    ]
+  },
+  "failures": [],
+  "schedule": [
+    {
+      "rep": 0,
+      "arm": "py",
+      "order": 0
+    },
+    {
+      "rep": 0,
+      "arm": "rs",
+      "order": 1
+    },
+    {
+      "rep": 1,
+      "arm": "rs",
+      "order": 2
+    },
+    {
+      "rep": 1,
+      "arm": "py",
+      "order": 3
+    },
+    {
+      "rep": 2,
+      "arm": "rs",
+      "order": 4
+    },
+    {
+      "rep": 2,
+      "arm": "py",
+      "order": 5
+    },
+    {
+      "rep": 3,
+      "arm": "py",
+      "order": 6
+    },
+    {
+      "rep": 3,
+      "arm": "rs",
+      "order": 7
+    },
+    {
+      "rep": 4,
+      "arm": "py",
+      "order": 8
+    },
+    {
+      "rep": 4,
+      "arm": "rs",
+      "order": 9
+    }
+  ],
+  "output_validation": [
+    {
+      "arm": "py",
+      "rep": 0,
+      "errors": []
+    },
+    {
+      "arm": "rs",
+      "rep": 0,
+      "errors": []
+    },
+    {
+      "arm": "rs",
+      "rep": 1,
+      "errors": []
+    },
+    {
+      "arm": "py",
+      "rep": 1,
+      "errors": []
+    },
+    {
+      "arm": "rs",
+      "rep": 2,
+      "errors": []
+    },
+    {
+      "arm": "py",
+      "rep": 2,
+      "errors": []
+    },
+    {
+      "arm": "py",
+      "rep": 3,
+      "errors": []
+    },
+    {
+      "arm": "rs",
+      "rep": 3,
+      "errors": []
+    },
+    {
+      "arm": "py",
+      "rep": 4,
+      "errors": []
+    },
+    {
+      "arm": "rs",
+      "rep": 4,
+      "errors": []
+    }
+  ],
+  "comparator_version": 2,
+  "floor_s": {
+    "python": 0.11430091102374718,
+    "rust": 0.0037550299894064665
+  },
+  "wall_primary": {
+    "median_python": 89.83264405094087,
+    "median_rust": 52.189434346044436,
+    "ratio_median": 1.7212802778298268,
+    "median_python_e2e": 89.94694496196462,
+    "median_rust_e2e": 52.19318937603384,
+    "min_python": 89.54623614798766,
+    "min_rust": 52.144742443051655,
+    "n": 5,
+    "ratio_ci95": [
+      1.7136879402436351,
+      1.7356047575923967
+    ],
+    "logratio_ci95": [
+      1.7153156017008975,
+      1.7291196970373695
+    ]
+  },
+  "wall_e2e": {
+    "median_python": 89.83264405094087,
+    "median_rust": 52.189434346044436,
+    "ratio_median": 1.7212802778298268,
+    "median_python_e2e": 89.94694496196462,
+    "median_rust_e2e": 52.19318937603384,
+    "min_python": 89.54623614798766,
+    "min_rust": 52.144742443051655,
+    "n": 5,
+    "ratio_ci95": [
+      1.7136879402436351,
+      1.7356047575923967
+    ],
+    "logratio_ci95": [
+      1.7153156017008975,
+      1.7291196970373695
+    ]
+  },
+  "cpu": {
+    "median_python": 86.89,
+    "median_rust": 49.43,
+    "ratio_median": 1.7578393688043699,
+    "median_python_e2e": 86.89,
+    "median_rust_e2e": 49.43,
+    "min_python": 86.41,
+    "min_rust": 49.32,
+    "n": 5,
+    "ratio_ci95": [
+      1.7509625126646402,
+      1.7698685540950454
+    ],
+    "logratio_ci95": [
+      1.7528635720255583,
+      1.7642037909828456
+    ]
+  },
+  "system": {
+    "median_python": 3.06,
+    "median_rust": 2.74,
+    "ratio_median": 1.116788321167883,
+    "median_python_e2e": 3.06,
+    "median_rust_e2e": 2.74,
+    "min_python": 3.01,
+    "min_rust": 2.67,
+    "n": 5,
+    "ratio_ci95": [
+      1.0985401459854014,
+      1.1592592592592592
+    ],
+    "logratio_ci95": [
+      1.1036758799633732,
+      1.1431766189327361
+    ]
+  },
+  "estimator_note": "wall_primary is the primary estimator (raw invocation time, adjacent matched blocks). wall_e2e subtracts each arm's measured --help floor and is a sensitivity analysis, not a second measurement.",
+  "peak_rss_mb": {
+    "median_python": 3606.984375,
+    "median_rust": 3074.953125,
+    "max_python": 3607.04296875,
+    "max_rust": 3075.1484375,
+    "ratio": 1.1730209301971066,
+    "measure": "largest-single-child RSS (GNU time -v / RUSAGE_CHILDREN.ru_maxrss), not aggregate process-tree memory"
+  },
+  "equivalence": {
+    "pass": true,
+    "errors": [],
+    "mode": "exact",
+    "compared_stdout": {
+      "python": "",
+      "rust": "",
+      "rep": 4
+    },
+    "note": "",
+    "comparator_version": 2,
+    "compared_rep": 4
+  },
+  "workload": "/tmp/opencode/wl-rat-wg",
+  "provenance": {
+    "timestamp": 1790969892.8921819,
+    "timestamp_utc": "2026-10-02T19:38:12Z",
+    "git_commit": "578c334a4914216900790e0cfb07793be04e444b",
+    "git_dirty": true,
+    "binary_sha256": {
+      "bam_stat": "d98416529dd19779ceba1107d1871e363bd8f74a4e7be5d2ad9bbd68a72b4606",
+      "bam2fq": "8a5ed1a91daf25af5676ab0ee074ef1e7ad8fcf4c0551ff87543c0174210680d",
+      "infer_experiment": "c0963cb8737dcdb823b834d0a18f9efdade055d6fce3ad2849bf28f814a0a12b",
+      "read_distribution": "8604692ece850139c1098f74985dcefe7e910bf19e5bae4191656f4dafabbce5",
+      "inner_distance": "75049a00df3f4bfc2fd04fb31dc9870c2d19f524b0bd1e8b439608751a6cc4fb",
+      "RNA_fragment_size": "1c4de6d7dbd6410b6ad2f11e781bfa292f65f2a737b280b237a9382bad5faee1",
+      "tin": "ff7be2625de5acc400fdbad0de43c31451cb7f23edcdaceea7a1a5576c8235ed",
+      "FPKM_count": "7fe40b3b2165ef90ce9d6a5a230927d625d1546fe584aef6d6c93457618cd252",
+      "read_NVC": "cf6858fdf8c527f4cdbbc18fccebacdb7b3cc938dfe9aae027f3e00377c359c1",
+      "read_GC": "d16e9188895a9f358c1616ca4cb548f205a1192810be83a481673cf5a4be72b0",
+      "read_quality": "0ff4173be085957d6f012d2b4078ff3669fcb340d40e7d8c0771f51d9d41b513",
+      "read_duplication": "dac63f5a53fc7ce23e1d24d50e04500cb8bdf86c5561fbe54cb49fca49e61f89",
+      "clipping_profile": "a9167b451e5a2b81621036cf2e3cfaf86242983c449315c3c8aa897dea9e8e45",
+      "deletion_profile": "7f41fdcb4c70d33070ed04d094b556eab1defc200d46677fa0b4499c0329cd84",
+      "insertion_profile": "ddfa76d9316ccc748a79c2b9a52d822e856661ef7e2be9a35e240f8c5cf7247e",
+      "mismatch_profile": "d1a371654d59b0296bfba3cb3a156db16210bf8979ed2b19252fdafd0f12463e",
+      "geneBody_coverage": "d8ee2da36f345798ef9b943351909d445d1855dea87a0d54d3988ea8adf8c30f",
+      "junction_annotation": "f0f64cee37cac0eec459013c50d8adac64dee22466ed5776658e46c40a551499",
+      "junction_saturation": "c7174e6190e90668042aa522d431dcb120ee8ece4fe47d55870164e4fcf8253b",
+      "RPKM_saturation": "1c63c9425d08f3ac7642567e6d7c4a5b7365956c0310708944854a29711967d6",
+      "split_bam": "1ff2704723ea1169c4c005df25436ac244e7363c21f7d1b6c5efceb83960e0fa",
+      "split_paired_bam": "3c0af850dee8430a3acab2cfd35369103ddb292769610baadcde41fb38a96232",
+      "divide_bam": "169fa142880da0a2e1a676c9626f42248e3de34b614e464b4a2f0af4e6f1907a",
+      "bam2wig": "109959854b6f6b2f80e2daba4d8a5ef4b8ac6d21b2bc25f1c0c9d1532ce5feff",
+      "sc_seqQual": "906d2f380f8dda34cf246366b3c30d850b51f2d1af4be006d1a53aabc1a9c171",
+      "sc_seqLogo": "8af598fa2caedad3c11a0bae99282a652fab37bf2f21aaa49ef10d8ee0b6d15a",
+      "read_hexamer": "11ff26def7f5152414c200c0ed9c80cfb37cc531051ae4550b2a4539cb1157c6",
+      "geneBody_coverage2": "6a2463aa4acbd6ec26c56037fd0861fe73da1ff543c398cda34eb0e4363c5e94",
+      "normalize_bigwig": "7320aba1932036e5e309941d2686667633fc94c3da44a6c80528abf211272604",
+      "overlay_bigwig": "559b23d7711e380a3493fbe04d68a09af345573a807d27cdbdfce57d62a7d8a0"
+    },
+    "binaries_missing": [],
+    "oracle_lock_sha256": "0d0b7b07f82f755c8a1b738fe1b50601421e4002c5a28f1e7c2b608d1af14fb4",
+    "comparator_version": 2,
+    "inputs_sha256": {
+      "reads.bam": "5a88179ab7929ee471b33a024920efb13107336f6e99e2b1793b936f009af7f0",
+      "model.bed12": "82ab7f425ae5155ddb37912af46152121cfff168d04e2c5c2523b6e1ca5f2eea",
+      "chrom.sizes": "8dcf894f0363fa8a8e9743b753065c7afec59235a28d88e9ad42e60da7556955"
+    },
+    "command_line": [
+      "benchmarks/bench.py",
+      "--workload",
+      "/tmp/opencode/wl-rat-wg",
+      "--workload-for",
+      "read_hexamer=/tmp/opencode/wl-rat-fq",
+      "--commands",
+      "bam_stat",
+      "infer_experiment",
+      "read_distribution",
+      "read_NVC",
+      "read_GC",
+      "read_quality",
+      "junction_annotation",
+      "RNA_fragment_size",
+      "inner_distance",
+      "clipping_profile",
+      "insertion_profile",
+      "FPKM_count",
+      "geneBody_coverage",
+      "read_duplication",
+      "bam2wig",
+      "junction_saturation",
+      "tin",
+      "--reps",
+      "5",
+      "--warmup",
+      "1",
+      "--label",
+      "rat-wholegenome-32M",
+      "--seed",
+      "20260929",
+      "--output-dir",
+      "/scratch/mdra00001/RSeQC-rust/benchmarks/results-rat-wholegenome-32M"
+    ],
+    "toolchain": {
+      "rustc": "rustc 1.98.1 (48a229cea 2026-09-01)",
+      "cargo": "cargo 1.98.1 (797e8a9bc 2026-08-05)",
+      "rust_target": "x86_64-unknown-linux-gnu",
+      "gnu_time": "time (GNU Time) UNKNOWN\nCopyright (C) 2018 Free Software Foundation, Inc.\nLicense GPLv3+: GNU GPL version 3 or later <https://gnu.org/licenses/gpl.html>.\nThis is free software: you are free to change and redistribute it.\nThere is NO WARRANTY, to the extent permitted by law.\n\nWritten by David Keppel, David MacKenzie, and Assaf Gordon.",
+      "python_oracle": "Python 3.13.15",
+      "upstream_script_digests": {
+        "bam_stat.py": "afc8e19485330e25",
+        "bam2fq.py": "6c434f0dda7de37b",
+        "infer_experiment.py": "1965d54d6948056e",
+        "read_distribution.py": "0dbd6017eab7bc9e",
+        "inner_distance.py": "a3f86fccec129034",
+        "RNA_fragment_size.py": "68fed737f4c3d74a",
+        "tin.py": "a3bbc926e6e61398",
+        "FPKM_count.py": "0ceaa7a5d22cf0a2",
+        "read_NVC.py": "8e5f325d663e0262",
+        "read_GC.py": "97e8e394e37981bc",
+        "read_quality.py": "f7f434b25039312b",
+        "read_duplication.py": "3f5c422598da2140",
+        "clipping_profile.py": "5e1bf6a3833a3970",
+        "deletion_profile.py": "166e7e6d20625dba",
+        "insertion_profile.py": "66d06d62891850a6",
+        "mismatch_profile.py": "e04b4dd07189d190",
+        "geneBody_coverage.py": "4a6343833db05f7d",
+        "junction_annotation.py": "4b09bfb422a44c01",
+        "junction_saturation.py": "5391b87b93d3f8d4",
+        "RPKM_saturation.py": "7f52c05ce76e284a",
+        "split_bam.py": "1f4d84041cfbd919",
+        "split_paired_bam.py": "ff50c034c50f3dee",
+        "divide_bam.py": "b6397f080ac0da2f",
+        "bam2wig.py": "065e990f04d15dc9",
+        "sc_seqQual.py": "0b742c4e6cd78b3e",
+        "sc_seqLogo.py": "a869ad5e41a754c9",
+        "read_hexamer.py": "e521515e3614c49d",
+        "geneBody_coverage2.py": "2a27c31f9c695de8",
+        "normalize_bigwig.py": "996cae4d423d7393",
+        "overlay_bigwig.py": "a2ccd3f45c77ecee"
+      }
+    },
+    "pinned_env": {
+      "OPENBLAS_NUM_THREADS": "1",
+      "OMP_NUM_THREADS": "1",
+      "MKL_NUM_THREADS": "1",
+      "NUMEXPR_NUM_THREADS": "1",
+      "PYTHONHASHSEED": "0"
+    }
+  }
+}

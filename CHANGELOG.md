@@ -265,6 +265,19 @@ of a feature or a closed divergence, not every commit.
   differs, and only in the output directory it embeds in its own `pdf()` calls.
   Evidence and provenance: `datasets/heldout/endpoint_results/SRR1177982_wholegenome/`.
 
+- **A command too slow to finish destroyed the very evidence it produced.**
+  `geneBody_coverage` on the whole-genome rat alignment exceeds the 900 s default
+  timeout at every repetition — which is *precisely* the production-scale finding the
+  pilot exists to record — and the harness raised `KeyError: 'user_s'` computing the
+  end-to-end figures, because a run killed before GNU time writes its resource report
+  has no such key at all. The crash meant the row was never written: not as a
+  measurement, not as a timeout, nothing. A timeout is a result, and the harness must
+  survive to report it. Fixed by a missing-key-safe accessor used by both branches of
+  the estimator. The first attempt fixed only the branch I was looking at and left four
+  more direct subscripts in the normal branch, so a *single* killed repetition among
+  successful ones would have crashed the same way; a source-scanning test caught those,
+  and that test is a real negative control — reintroducing one subscript fails it.
+
 - **A scientific command silently produced a wrong answer where upstream refuses.**
   `verification/verify_stream_declarations.py` runs each declared command once and
   compares its outcome against upstream's, so it catches the *reverse* of what it was

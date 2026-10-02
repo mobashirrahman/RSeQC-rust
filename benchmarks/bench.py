@@ -1424,25 +1424,51 @@ def bench_command(name, workload: Path, outdir: Path, reps, warmup, timeout_s, s
         are the ones the interval describes, so the point estimate uses them too; the
         raw E2 medians are reported separately and labelled.
         """
+        def _agg(how, arm):
+            """Median or min over an arm's runs, skipping runs with no such measurement.
+
+            A run killed before GNU time wrote its resource report has no `key` at
+            all, so every direct subscript here is a potential KeyError on a single
+            killed repetition -- not only when ALL repetitions fail. Both branches use
+            this, because the normal branch was where the remaining copies hid.
+            """
+            vals = [r.get(key) for r in per[arm]]
+            vals = [v for v in vals if v is not None]
+            if not vals:
+                return None
+            return statistics.median(vals) if how == "median" else min(vals)
+
         pr = pairs_for(key)
         pyv = [a for a, _ in pr]
         rsv = [b for _, b in pr]
         if not pr:
+            # Every repetition failed. The e2e figures are read with .get and filtered,
+            # because a run that was KILLED before GNU time wrote its resource report has
+            # no `key` at all -- and `[r[key] for r in ...]` raised KeyError on it.
+            #
+            # That is not hypothetical and it lost evidence rather than merely
+            # misformatting: `geneBody_coverage` on the whole-genome rat alignment
+            # exceeds the 900 s default timeout at every repetition, which is exactly the
+            # production-scale finding the pilot exists to record, and the crash meant the
+            # row was never written at all -- not even as a recorded timeout. A timeout is
+            # a result; the harness must survive to report it.
             return {"n": 0, "median_python": None, "median_rust": None,
                     "ratio_median": None, "ratio_ci95": None,
-                    "logratio_ci95": None, "median_python_e2e":
-                        statistics.median([r[key] for r in per["py"]]),
-                    "median_rust_e2e":
-                        statistics.median([r[key] for r in per["rs"]])}
+                    "logratio_ci95": None,
+                    "median_python_e2e": _agg("median", "py"),
+                    "median_rust_e2e": _agg("median", "rs"),
+                    "min_python": _agg("min", "py"),
+                    "min_rust": _agg("min", "rs")}
+
         s = {
             "median_python": statistics.median(pyv),
             "median_rust": statistics.median(rsv),
             "ratio_median": (statistics.median(pyv) / statistics.median(rsv))
             if statistics.median(rsv) else None,
-            "median_python_e2e": statistics.median([r[key] for r in per["py"]]),
-            "median_rust_e2e": statistics.median([r[key] for r in per["rs"]]),
-            "min_python": min([r[key] for r in per["py"]]),
-            "min_rust": min([r[key] for r in per["rs"]]),
+            "median_python_e2e": _agg("median", "py"),
+            "median_rust_e2e": _agg("median", "rs"),
+            "min_python": _agg("min", "py"),
+            "min_rust": _agg("min", "rs"),
             "n": len(pr),
         }
         s["ratio_ci95"] = median_ratio_ci(pr)

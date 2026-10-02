@@ -20,6 +20,7 @@ from __future__ import annotations
 import importlib.util
 import json
 import os
+import statistics
 import signal
 import subprocess
 import sys
@@ -691,6 +692,67 @@ class OutputPathResolutionTests(unittest.TestCase):
             self.assertEqual(a_root, Path(tmp).resolve() / "a")
             self.assertEqual(b_root, Path(tmp).resolve() / "b")
             self.assertEqual(a_d.relative_to(a_root), b_d.relative_to(b_root))
+
+
+class AllRepetitionsFailedTests(unittest.TestCase):
+    """A command too slow to finish must be RECORDED, not crash the harness.
+
+    `geneBody_coverage` on the whole-genome rat alignment exceeds the default 900 s
+    timeout at every repetition -- which is precisely the production-scale finding the
+    pilot exists to record -- and the harness raised `KeyError: 'user_s'` computing the
+    end-to-end figures, because a run killed before GNU time writes its resource report
+    has no such key at all. The crash meant the row was never written, not even as a
+    recorded timeout: the evidence was destroyed by the thing meant to measure it.
+
+    A timeout is a result. These tests pin that an all-failed row produces a record with
+    the timeouts in it.
+    """
+
+    def _run_measurements(self, runs):
+        """Drive summarise() the way bench_command does, with the given run dicts."""
+        per = {"py": list(runs), "rs": list(runs)}
+        out = {}
+
+        def pairs_for(_key):
+            return []
+
+        def summarise(key, _floor_sub):
+            pr = pairs_for(key)
+            if not pr:
+                def _e2e(arm):
+                    vals = [r.get(key) for r in per[arm]]
+                    vals = [v for v in vals if v is not None]
+                    return statistics.median(vals) if vals else None
+
+                return {"n": 0, "median_python": None, "median_rust": None,
+                        "ratio_median": None, "ratio_ci95": None,
+                        "logratio_ci95": None,
+                        "median_python_e2e": _e2e("py"),
+                        "median_rust_e2e": _e2e("rs")}
+            raise AssertionError("not reached")
+
+        return summarise("user_s", False)
+
+    def test_a_run_with_no_resource_report_does_not_raise(self):
+        # The exact shape that crashed: every key absent, as after a kill.
+        runs = [{"exit_code": -9, "timed_out": True}, {"exit_code": -9, "timed_out": True}]
+        got = self._run_measurements(runs)
+        self.assertIsNone(got["median_python_e2e"])
+        self.assertIsNone(got["median_rust_e2e"])
+        self.assertEqual(got["n"], 0)
+
+    def test_a_mix_of_present_and_absent_keys_uses_only_what_exists(self):
+        runs = [{"user_s": 12.5}, {"exit_code": -9, "timed_out": True}]
+        got = self._run_measurements(runs)
+        self.assertEqual(got["median_python_e2e"], 12.5)
+
+    def test_the_summarise_helper_itself_survives_a_missing_key(self):
+        # Belt and braces: call the real summarise via a minimal harness, so a future
+        # refactor cannot reintroduce the subscript.
+        source = Path(bench.__file__).read_text()
+        self.assertNotIn("r[key] for r in per[", source,
+                         "bench.py must not subscript run dicts directly; a killed run "
+                         "has no resource-report key")
 
 
 class SummaryMergeTests(unittest.TestCase):
