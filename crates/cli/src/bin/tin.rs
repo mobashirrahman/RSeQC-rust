@@ -84,17 +84,21 @@ fn run(args: &Args) -> std::io::Result<()> {
     // file is created -- after minutes of work, with no message naming the directory
     // that was wrong. Found by the command-contract checks in
     // verification/check_command_contracts.py.
+    // Exit 2, as upstream's parser.error() does, not this port's usual 1 for a
+    // runtime error. This port already exits 2 for every other usage error because
+    // that is what clap does, so returning Err here made these two conditions the
+    // only usage errors in the tree with a different status.
     if !args.output_dir.exists() {
-        return Err(std::io::Error::other(format!(
-            "output directory does not exist: {}",
-            args.output_dir.display()
-        )));
+        rseqc_cli::usage_exit(
+            "tin.py",
+            &format!("output directory does not exist: {}", args.output_dir.display()),
+        );
     }
     if !args.output_dir.is_dir() {
-        return Err(std::io::Error::other(format!(
-            "output path is not a directory: {}",
-            args.output_dir.display()
-        )));
+        rseqc_cli::usage_exit(
+            "tin.py",
+            &format!("output path is not a directory: {}", args.output_dir.display()),
+        );
     }
     eprintln!("Get BAM file(s) ...");
     let mut bam_files = get_bam_files(&args.input_files);

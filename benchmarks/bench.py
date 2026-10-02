@@ -1588,6 +1588,11 @@ def main():
     ap.add_argument("--no-gate", action="store_true")
     ap.add_argument("--quick", action="store_true",
                     help="smoke test: 1 rep, tiny command list")
+    ap.add_argument("--summarise-only", action="store_true",
+                    help="rebuild results.json from the per-command records already "
+                         "in the output directory, measuring nothing. The recovery "
+                         "operation for a summary that lost rows, and the cheap way "
+                         "to re-render the report over an existing study")
     args = ap.parse_args()
 
     # Resolved once, here, because bench_command derives every arm's run directory
@@ -1596,6 +1601,9 @@ def main():
     # literal argument value, and a cwd change only makes the mistake permanent.
     args.output_dir = args.output_dir.resolve()
     args.workload = args.workload.resolve()
+
+    if args.summarise_only:
+        return summarise_only(args.output_dir)
 
     if args.quick:
         args.reps = 1
@@ -1670,9 +1678,16 @@ def main():
         ci = w.get("ratio_ci95")
         gate = "PASS" if r["equivalence"]["pass"] else "FAIL"
         ratio = w.get("ratio_median")
+        # A row whose every repetition failed has median_python/RATIO_median as None,
+        # and `{None:.3f}` raises TypeError. That aborted the run at the progress line,
+        # after the row's own JSON had been written -- so the evidence survived but the
+        # run reported nothing else and wrote no summary. A missing measurement prints
+        # as MISSING, which is what it is.
+        py_med, rs_med = w.get("median_python"), w.get("median_rust")
         print(
-            f"py {w.get('median_python', 0):.3f}s  rs {w.get('median_rust', 0):.4f}s  "
-            f"x{ratio:.2f}" if ratio else "no ratio",
+            (f"py {py_med:.3f}s  rs {rs_med:.4f}s  x{ratio:.2f}"
+             if (ratio is not None and py_med is not None and rs_med is not None)
+             else f"py MISSING  rs MISSING  no ratio"),
             end="  ",
         )
         print(f"CI[{ci[0]:.2f},{ci[1]:.2f}]" if ci else "CI n/a", end="  ")
@@ -1680,10 +1695,104 @@ def main():
         print(f"gate={gate}  failed_reps={nfail}  ({time.time()-t0:.0f}s)")
         (outdir / f"{name}.json").write_text(json.dumps(r, indent=2))
 
-    (outdir / "results.json").write_text(json.dumps(result, indent=2))
+    result = merge_summary(outdir, result)
+    summary_path = outdir / "results.json"
+    summary_path.write_text(json.dumps(result, indent=2))
     print()
-    print(f"results -> {outdir/'results.json'}")
-    report(outdir / "results.json")
+    print(f"results -> {summary_path}")
+    report(summary_path)
+
+
+def merge_summary(outdir: Path, result: dict) -> dict:
+    """Fold this invocation's rows into any summary already in `outdir`, in place.
+
+    Recollecting a subset of rows is a normal protocol operation -- protocol-v2
+    section 9 says to recollect affected rows only when code, methods or an
+    unresolved discrepancy justify it -- so writing the summary from this
+    invocation alone silently dropped the rows it did not re-measure, leaving a
+    study summary that read as if only the re-collected commands had been
+    benchmarked. The per-command records beside it survived, so no evidence was
+    lost, but the aggregate is what a reader opens first.
+
+    Rows measured here replace their earlier versions. Rows not re-measured are
+    carried forward and marked with the revision that produced them, so a merged
+    summary never presents old and new numbers as if they came from one run.
+    """
+    summary_path = outdir / "results.json"
+    merged_rows = {r["command"]: r for r in result["results"]}
+    carried, superseded = [], []
+    if summary_path.is_file():
+        try:
+            previous = json.loads(summary_path.read_text())
+        except json.JSONDecodeError:
+            previous = {}
+        for old_row in previous.get("results", []):
+            cmd = old_row.get("command")
+            if cmd is None or cmd in merged_rows:
+                continue
+            old_row = dict(old_row)
+            old_row["carried_forward_from_earlier_invocation"] = True
+            old_row["measured_at_revision"] = previous.get("provenance", {}).get("git_commit")
+            merged_rows[cmd] = old_row
+            carried.append(cmd)
+        if carried:
+            print(f"\ncarried forward {len(carried)} row(s) not re-measured in this "
+                  f"invocation: {', '.join(sorted(carried))}")
+            print("  they carry the revision that produced them; see "
+                  "measured_at_revision on each row.")
+    measured_now = {r["command"] for r in result["results"]}
+    order = [r["command"] for r in result["results"]]
+    order += [c for c in sorted(merged_rows) if c not in order]
+    result["results"] = [merged_rows[c] for c in order]
+    result["rows_measured_this_invocation"] = sorted(measured_now)
+    result["rows_carried_forward"] = sorted(carried)
+
+    return result
+
+
+def summarise_only(outdir: Path) -> int:
+    """Rebuild results.json from the per-command records in `outdir`.
+
+    Each command's full record -- raw timings, failures, schedule, provenance -- is
+    written to its own JSON as it completes, and results.json is an aggregate over
+    those. So the records are the evidence and the aggregate is derived: when the
+    aggregate loses rows, the records can rebuild it exactly and nothing has to be
+    re-measured to get it back.
+
+    Every row is marked as reconstructed, and the per-command file it came from is
+    named, so a reader can tell a rebuilt summary from a freshly measured one.
+    """
+    summary_path = outdir / "results.json"
+    rows, prov, excluded = [], None, {}
+    for path in sorted(outdir.glob("*.json")):
+        if path.name == "results.json":
+            continue
+        row = json.loads(path.read_text())
+        row["reconstructed_from"] = path.name
+        rows.append(row)
+        prov = prov or row.get("provenance")
+        excluded.update(row.get("excluded", {}))
+    if not rows:
+        print(f"no per-command records in {outdir}")
+        return 1
+    rows.sort(key=lambda r: r["command"])
+    result = {
+        "schema": rows[0].get("schema"),
+        "comparator_version": rows[0].get("comparator_version"),
+        "reconstructed": True,
+        "note": ("Rebuilt by --summarise-only from the per-command records in this "
+                 "directory. No command was measured to produce it; each row names "
+                 "the record it came from."),
+        "provenance": prov,
+        "excluded": excluded,
+        "results": rows,
+        "rows_measured_this_invocation": [],
+        "rows_carried_forward": sorted(r["command"] for r in rows),
+    }
+    summary_path.write_text(json.dumps(result, indent=2))
+    print(f"rebuilt {summary_path} from {len(rows)} per-command record(s)")
+    report(summary_path)
+    return 0
 
 
 def report(path: Path):

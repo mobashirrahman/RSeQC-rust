@@ -7,116 +7,116 @@
   "runs": {
     "py": [
       {
-        "wall_s": 168.69651045196224,
-        "user_s": 167.42,
-        "sys_s": 1.14,
-        "peak_rss_mb": 50.1875,
+        "wall_s": 168.45743309002137,
+        "user_s": 167.19,
+        "sys_s": 1.13,
+        "peak_rss_mb": 50.19921875,
         "exit_code": 0,
         "timed_out": false,
         "rep": 0,
         "order": 0,
-        "started_at": 1790931871.7900171
+        "started_at": 1790941486.9529004
       },
       {
-        "wall_s": 170.51193469797727,
-        "user_s": 168.63,
-        "sys_s": 1.7,
-        "peak_rss_mb": 50.16796875,
+        "wall_s": 169.26127996802097,
+        "user_s": 167.94,
+        "sys_s": 1.17,
+        "peak_rss_mb": 50.12890625,
         "exit_code": 0,
         "timed_out": false,
         "rep": 1,
         "order": 3,
-        "started_at": 1790932087.9418273
+        "started_at": 1790941699.144602
       },
       {
-        "wall_s": 285.6954943489982,
-        "user_s": 233.51,
-        "sys_s": 2.22,
-        "peak_rss_mb": 49.98046875,
+        "wall_s": 169.66404548101127,
+        "user_s": 168.31,
+        "sys_s": 1.19,
+        "peak_rss_mb": 49.58984375,
         "exit_code": 0,
         "timed_out": false,
         "rep": 2,
         "order": 5,
-        "started_at": 1790932397.1881278
+        "started_at": 1790941890.626986
       },
       {
-        "wall_s": 202.81097747699823,
-        "user_s": 189.78,
-        "sys_s": 1.51,
-        "peak_rss_mb": 50.13671875,
+        "wall_s": 170.06579103000695,
+        "user_s": 168.72,
+        "sys_s": 1.14,
+        "peak_rss_mb": 50.046875,
         "exit_code": 0,
         "timed_out": false,
         "rep": 3,
         "order": 6,
-        "started_at": 1790932600.07983
+        "started_at": 1790942060.7001107
       },
       {
-        "wall_s": 170.64293334202375,
-        "user_s": 169.27,
-        "sys_s": 1.18,
-        "peak_rss_mb": 50.5390625,
+        "wall_s": 168.9093419710407,
+        "user_s": 167.6,
+        "sys_s": 1.15,
+        "peak_rss_mb": 49.7265625,
         "exit_code": 0,
         "timed_out": false,
         "rep": 4,
         "order": 8,
-        "started_at": 1790932792.298134
+        "started_at": 1790942251.480233
       }
     ],
     "rs": [
       {
-        "wall_s": 22.054134437988978,
-        "user_s": 21.22,
-        "sys_s": 0.75,
-        "peak_rss_mb": 223.26953125,
+        "wall_s": 21.553871340991464,
+        "user_s": 20.77,
+        "sys_s": 0.74,
+        "peak_rss_mb": 223.07421875,
         "exit_code": 0,
         "timed_out": false,
         "rep": 0,
         "order": 1,
-        "started_at": 1790931893.8579597
+        "started_at": 1790941508.5131497
       },
       {
-        "wall_s": 23.5573783069849,
-        "user_s": 22.69,
-        "sys_s": 0.82,
-        "peak_rss_mb": 222.828125,
+        "wall_s": 21.353389477008022,
+        "user_s": 20.56,
+        "sys_s": 0.76,
+        "peak_rss_mb": 223.6015625,
         "exit_code": 0,
         "timed_out": false,
         "rep": 1,
         "order": 2,
-        "started_at": 1790931917.424439
+        "started_at": 1790941529.8756104
       },
       {
-        "wall_s": 23.50721087300917,
-        "user_s": 22.61,
-        "sys_s": 0.82,
-        "peak_rss_mb": 223.08984375,
+        "wall_s": 21.804237593023572,
+        "user_s": 20.97,
+        "sys_s": 0.79,
+        "peak_rss_mb": 223.484375,
         "exit_code": 0,
         "timed_out": false,
         "rep": 2,
         "order": 4,
-        "started_at": 1790932111.4562926
+        "started_at": 1790941720.9582136
       },
       {
-        "wall_s": 21.552206442982424,
-        "user_s": 20.81,
-        "sys_s": 0.68,
-        "peak_rss_mb": 223.1953125,
+        "wall_s": 21.854810295044445,
+        "user_s": 21.05,
+        "sys_s": 0.75,
+        "peak_rss_mb": 223.19921875,
         "exit_code": 0,
         "timed_out": false,
         "rep": 3,
         "order": 7,
-        "started_at": 1790932621.6436198
+        "started_at": 1790942082.5645862
       },
       {
-        "wall_s": 21.904766860010568,
-        "user_s": 21.06,
-        "sys_s": 0.79,
-        "peak_rss_mb": 223.40625,
+        "wall_s": 21.703702675993554,
+        "user_s": 20.89,
+        "sys_s": 0.76,
+        "peak_rss_mb": 223.453125,
         "exit_code": 0,
         "timed_out": false,
         "rep": 4,
         "order": 9,
-        "started_at": 1790932814.218948
+        "started_at": 1790942273.1937673
       }
     ]
   },
@@ -227,88 +227,88 @@
   ],
   "comparator_version": 2,
   "floor_s": {
-    "python": 0.11461574002169073,
-    "rust": 0.00394140399293974
+    "python": 0.11441334604751319,
+    "rust": 0.0036200779723003507
   },
   "wall_primary": {
-    "median_python": 170.52831760200206,
-    "median_rust": 22.050193033996038,
-    "ratio_median": 7.733642845624473,
-    "median_python_e2e": 170.64293334202375,
-    "median_rust_e2e": 22.054134437988978,
-    "min_python": 168.69651045196224,
-    "min_rust": 21.552206442982424,
+    "median_python": 169.14686662197346,
+    "median_rust": 21.700082598021254,
+    "ratio_median": 7.794756810621417,
+    "median_python_e2e": 169.26127996802097,
+    "median_rust_e2e": 21.703702675993554,
+    "min_python": 168.45743309002137,
+    "min_rust": 21.353389477008022,
     "n": 5,
     "ratio_ci95": [
-      7.234499137419314,
-      12.15068733247732
+      7.77728575889677,
+      7.922655437656067
     ],
     "logratio_ci95": [
-      7.505679338236535,
-      10.420787145575735
+      7.777690565112783,
+      7.871121702026281
     ]
   },
   "wall_e2e": {
-    "median_python": 170.52831760200206,
-    "median_rust": 22.050193033996038,
-    "ratio_median": 7.733642845624473,
-    "median_python_e2e": 170.64293334202375,
-    "median_rust_e2e": 22.054134437988978,
-    "min_python": 168.69651045196224,
-    "min_rust": 21.552206442982424,
+    "median_python": 169.14686662197346,
+    "median_rust": 21.700082598021254,
+    "ratio_median": 7.794756810621417,
+    "median_python_e2e": 169.26127996802097,
+    "median_rust_e2e": 21.703702675993554,
+    "min_python": 168.45743309002137,
+    "min_rust": 21.353389477008022,
     "n": 5,
     "ratio_ci95": [
-      7.234499137419314,
-      12.15068733247732
+      7.77728575889677,
+      7.922655437656067
     ],
     "logratio_ci95": [
-      7.505679338236535,
-      10.420787145575735
+      7.777690565112783,
+      7.871121702026281
     ]
   },
   "cpu": {
-    "median_python": 169.27,
-    "median_rust": 21.22,
-    "ratio_median": 7.976908576814327,
-    "median_python_e2e": 169.27,
-    "median_rust_e2e": 21.22,
-    "min_python": 167.42,
-    "min_rust": 20.81,
+    "median_python": 167.94,
+    "median_rust": 20.89,
+    "ratio_median": 8.039253231211106,
+    "median_python_e2e": 167.94,
+    "median_rust_e2e": 20.89,
+    "min_python": 167.19,
+    "min_rust": 20.56,
     "n": 5,
     "ratio_ci95": [
-      7.431908329660643,
-      10.327731092436975
+      8.01520190023753,
+      8.168287937743191
     ],
     "logratio_ci95": [
-      7.7319537281972215,
-      9.545771117597743
+      8.020516087364557,
+      8.113650133466052
     ]
   },
   "system": {
-    "median_python": 1.51,
-    "median_rust": 0.79,
-    "ratio_median": 1.9113924050632911,
-    "median_python_e2e": 1.51,
-    "median_rust_e2e": 0.79,
-    "min_python": 1.14,
-    "min_rust": 0.68,
+    "median_python": 1.15,
+    "median_rust": 0.76,
+    "ratio_median": 1.513157894736842,
+    "median_python_e2e": 1.15,
+    "median_rust_e2e": 0.76,
+    "min_python": 1.13,
+    "min_rust": 0.74,
     "n": 5,
     "ratio_ci95": [
-      1.4936708860759491,
-      2.707317073170732
+      1.5063291139240504,
+      1.539473684210526
     ],
     "logratio_ci95": [
-      1.6060771945268024,
-      2.37099084172829
+      1.5117861589058574,
+      1.5316853412960119
     ]
   },
   "estimator_note": "wall_primary is the primary estimator (raw invocation time, adjacent matched blocks). wall_e2e subtracts each arm's measured --help floor and is a sensitivity analysis, not a second measurement.",
   "peak_rss_mb": {
-    "median_python": 50.16796875,
-    "median_rust": 223.1953125,
-    "max_python": 50.5390625,
-    "max_rust": 223.40625,
-    "ratio": 0.22477160558647485,
+    "median_python": 50.046875,
+    "median_rust": 223.453125,
+    "max_python": 50.19921875,
+    "max_rust": 223.6015625,
+    "ratio": 0.22397035172365568,
     "measure": "largest-single-child RSS (GNU time -v / RUSAGE_CHILDREN.ru_maxrss), not aggregate process-tree memory"
   },
   "equivalence": {
@@ -329,9 +329,9 @@
   },
   "workload": "/tmp/opencode/wl-rat",
   "provenance": {
-    "timestamp": 1790932815.102199,
-    "timestamp_utc": "2026-10-02T09:20:15Z",
-    "git_commit": "b39ef0a0545b7e32f0249c5256e9bb0f8298bc41",
+    "timestamp": 1790942274.016011,
+    "timestamp_utc": "2026-10-02T11:57:54Z",
+    "git_commit": "4774ece1a87a825428875b5b230a924be0df7ad6",
     "git_dirty": true,
     "binary_sha256": {
       "bam_stat": "d98416529dd19779ceba1107d1871e363bd8f74a4e7be5d2ad9bbd68a72b4606",
@@ -340,7 +340,7 @@
       "read_distribution": "8604692ece850139c1098f74985dcefe7e910bf19e5bae4191656f4dafabbce5",
       "inner_distance": "75049a00df3f4bfc2fd04fb31dc9870c2d19f524b0bd1e8b439608751a6cc4fb",
       "RNA_fragment_size": "1c4de6d7dbd6410b6ad2f11e781bfa292f65f2a737b280b237a9382bad5faee1",
-      "tin": "9fe7be5a2678892efce81cdb3b53069d84a5fe1b58464e7880d647dfaccdb217",
+      "tin": "ff7be2625de5acc400fdbad0de43c31451cb7f23edcdaceea7a1a5576c8235ed",
       "FPKM_count": "7fe40b3b2165ef90ce9d6a5a230927d625d1546fe584aef6d6c93457618cd252",
       "read_NVC": "cf6858fdf8c527f4cdbbc18fccebacdb7b3cc938dfe9aae027f3e00377c359c1",
       "read_GC": "d16e9188895a9f358c1616ca4cb548f205a1192810be83a481673cf5a4be72b0",
@@ -360,7 +360,7 @@
       "bam2wig": "109959854b6f6b2f80e2daba4d8a5ef4b8ac6d21b2bc25f1c0c9d1532ce5feff",
       "sc_seqQual": "906d2f380f8dda34cf246366b3c30d850b51f2d1af4be006d1a53aabc1a9c171",
       "sc_seqLogo": "8af598fa2caedad3c11a0bae99282a652fab37bf2f21aaa49ef10d8ee0b6d15a",
-      "read_hexamer": "f84f918862e3d3ad06178904a4ad4be4f69859accb2a2d073bd166699074654e",
+      "read_hexamer": "11ff26def7f5152414c200c0ed9c80cfb37cc531051ae4550b2a4539cb1157c6",
       "geneBody_coverage2": "6a2463aa4acbd6ec26c56037fd0861fe73da1ff543c398cda34eb0e4363c5e94",
       "normalize_bigwig": "7320aba1932036e5e309941d2686667633fc94c3da44a6c80528abf211272604",
       "overlay_bigwig": "559b23d7711e380a3493fbe04d68a09af345573a807d27cdbdfce57d62a7d8a0"
@@ -380,30 +380,15 @@
       "--workload-for",
       "read_hexamer=/tmp/opencode/wl-rat-fq",
       "--commands",
-      "bam_stat",
-      "infer_experiment",
-      "read_distribution",
-      "read_NVC",
-      "read_GC",
-      "read_quality",
       "junction_annotation",
-      "read_hexamer",
-      "RNA_fragment_size",
-      "inner_distance",
-      "clipping_profile",
-      "insertion_profile",
-      "FPKM_count",
-      "geneBody_coverage",
-      "read_duplication",
-      "bam2wig",
-      "junction_saturation",
       "tin",
+      "read_hexamer",
       "--reps",
       "5",
       "--warmup",
       "1",
       "--label",
-      "rat-real-8M",
+      "rat-real-8M-recollect",
       "--seed",
       "20260929",
       "--output-dir",

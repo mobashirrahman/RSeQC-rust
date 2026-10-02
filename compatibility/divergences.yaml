@@ -811,7 +811,7 @@ divergences:
     status: accepted
 
   - id: DIV-0024
-    command_or_api: geneBody_coverage.py
+    command_or_api: geneBody_coverage.py, tin.py
     description: >
       OPEN, found 2026-10-02 by the benchmark gate on real data, not by the
       differential suite. On the 8.2M-record rat alignment (SRR1177982, re-aligned
@@ -840,6 +840,18 @@ divergences:
       differing bin, by 1..20 reads: it loses the clean reads that upstream counts,
       because the is_del pileups ahead of them consume the port's per-position budget
       while upstream's buffer budget does not run out.
+
+      SCOPE CORRECTION, 2026-10-02: this is TWO commands, not one. The 18-row
+      real-data study also failed `tin`, on the SAME transcript --
+      chr1:256806475-256813678, NM_013162, TIN 93.75219481388487 upstream against
+      93.85965648789987 in the port, with the sample summary inheriting the
+      difference. Both commands reach this behaviour through the same shared
+      primitive, `tin::genebody_coverage_with_visited`, so one cause, two commands.
+      Confirmed on the synthetic depth_cap fixture with no real-data confound: TIN
+      39.570534359417486 upstream against 39.2610946473031 in the port, a difference of
+      0.309, reproducible with a single 100-base transcript and 8,100 reads. An earlier
+      draft of this entry named only geneBody_coverage, and the disclosure that follows
+      it (archive manifest, README, CHANGELOG) had to be corrected with it.
 
       So the difference is in pysam/htslib max_depth semantics, which the port
       reimplements at crates/commands/src/tin.rs:274-296 as a per-position budget over
@@ -872,10 +884,13 @@ divergences:
       verification/fixtures/check_gene_body_divergence.sh re-checks that the defect
       is STILL present on every CI run and inverts its own exit status so it goes
       green when the divergence is fixed, at which point this entry and that CI step
-      must change together. Fourth, the differential suite needs a deep-coverage
-      deletion fixture, because its existing geneBody_coverage fixture is too shallow
-      to expose any of this; run_diff.py passes 90/90 while this is wrong, so its
-      greenness says nothing about this command on real data.
+      must change together. Fourth, the differential suite has a deep-coverage
+      deletion fixture that binds the cap -- synthetic_data.py emits 8,100 copies of
+      one 20M20D20M read -- and two cases assert this divergence WITH A FLOOR rather
+      than tolerating it (genebody_coverage_depth_cap_divergence,
+      tin_depth_cap_divergence), so a fix trips them and names this entry to retire.
+      Before that fixture existed, run_diff.py passed 90/90 while both commands were
+      wrong on real data, so its greenness said nothing about either of them.
     status: open
   - id: DIV-0025
     command_or_api: all commands with an --out-prefix

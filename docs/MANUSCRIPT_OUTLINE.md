@@ -76,9 +76,14 @@ performance numbers has an obligation to report: they are properties of how the
 measurements were taken, they change reported magnitudes, and in two cases they changed
 a verdict from fail to pass.
 
-**One scientific command is not qualified, and the paper must say so in the methods,
-not a footnote.** `geneBody_coverage` does not reproduce upstream's gene-body coverage
-curve on real data. The cause was isolated by construction rather than inference: a
+**Two scientific commands are not qualified, and the paper must say so in the methods,
+not a footnote.** `geneBody_coverage` and `tin` do not reproduce upstream's output on
+real data, from one shared cause: they reach it through the same pileup primitive, and
+the port budgets `max_depth` per position over visited pileups where upstream budgets
+over the pileup buffer. `tin` is the more consequential of the two to disclose, because
+transcript integrity number is a widely used QC metric, so a reader who trusts a `tin`
+figure from this port is trusting a number that is wrong in the fourth significant
+figure on a deep transcript. The cause was isolated by construction rather than inference: a
 transcript was built in which each base range exercises exactly one pileup mechanism,
 and all nine -- quality threshold, duplicate flag, overlap rewriting, orphan handling,
 deletion skipping, secondary and supplementary flags -- agree exactly. The divergence is
@@ -101,8 +106,14 @@ command is excluded from every speedup claim.
   one stratum — `junction_annotation` on the rat panel, byte-identical between
   upstream and port (`datasets/heldout/endpoint_results/SRR1177982_same_input/`).
   It is not a whole-stratum validation, and the sample is exposed.
-- Primary end-to-end/runtime and memory results: [pending repaired and qualified
-  study under `benchmarks/protocol-v2.md`].
+- Primary end-to-end/runtime and memory results: **available for 18 command rows on
+  real data** ([`benchmarks/results-rat-real-8M/results.json`](../benchmarks/results-rat-real-8M/results.json)),
+  5 matched blocks each, 16 of 18 gates PASS. The two failures are `geneBody_coverage`
+  and `tin`, which share the disclosed `max_depth` defect, so no speedup is claimed for
+  either. The gate caught three separate declaration defects during this study that
+  would otherwise have appeared as command failures. What it is NOT: whole-genome
+  alignment (3 of 58 annotated contigs carry reads), a second session, or a second
+  dataset — protocol-v2 section 6 requires those before a generalisable claim.
 - Memory cost drivers: measured on the 8.2M-record rat alignment over a 174x record
   range, with repeats and a rule that refuses to report a slope from failed runs,
   negative costs, or signal below 3x the repeat noise

@@ -233,6 +233,34 @@ of a feature or a closed divergence, not every commit.
   --locked` with the reason, and `scripts/check_release_metadata.py` compares every
   command's recorded hash against the binary actually staged in the archive — a check
   that already earned its place by catching exactly this.
+- **A partial re-collection silently shrank the study summary from 18 rows to 3.**
+  Recollecting a subset of rows is a normal protocol operation — protocol-v2 says to
+  recollect affected rows only when code, methods or an unresolved discrepancy justify
+  it — and `results.json` was written from the current invocation alone, so re-measuring
+  three rows left a summary that read as if only three commands had ever been
+  benchmarked. The per-command records beside it survived, so no measurement was lost,
+  but the aggregate is what a reader opens first. `merge_summary` now folds the new
+  rows into any existing summary, carrying un-remeasured rows forward **with the
+  revision that produced them** so a merged summary never presents old and new numbers
+  as one run, and `--summarise-only` rebuilds the aggregate from the per-command records
+  without re-measuring anything. Seven tests cover the merge and the rebuild, including
+  that a corrupt summary is not fatal and that a re-measured row replaces its earlier
+  version.
+
+- **The gene-body divergence is two commands, not one, and the disclosure was wrong
+  because of it.** The 18-row real-data study also failed `tin` — on the *same*
+  transcript, `chr1:256806475-256813678`, `NM_013162`, TIN `93.75219481388487`
+  upstream against `93.85965648789987` in the port, with the sample summary inheriting
+  the difference. Both commands reach that behaviour through the same shared primitive,
+  `tin::genebody_coverage_with_visited`, so it is one cause and two commands; confirmed
+  on the synthetic `depth_cap` fixture with no real-data confound at all (TIN
+  `39.570534359417486` against `39.2610946473031`). DIV-0024, the archive manifest's
+  `known_limitations`, the README and this changelog all named only
+  `geneBody_coverage`, and all four are corrected. Neither command is claimed. This is
+  also the lesson worth keeping: a defect recorded against the first command it was
+  observed in will silently under-report the second, so the differential suite now pins
+  both with floor-asserted cases rather than one.
+
 - **`geneBody_coverage.py` does not reproduce upstream's curve on real data, and that
   was previously unknown.** Running the repaired benchmark harness against the
   8.2M-record rat alignment produced a gate failure the 90-case differential suite could

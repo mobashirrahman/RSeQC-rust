@@ -2991,6 +2991,71 @@ CASES: list[Case] = [
         compare_files=("pe.tin.xls",),
     ),
     Case(
+        name="tin_missing_output_dir",
+        # `tin`'s -o is an output DIRECTORY, and upstream validates it before reading
+        # the alignment, exiting 2 through parser.error(). The port had the same check
+        # with the same message but returned an io::Error, so it exited 1: the only
+        # usage error in the tree whose status differed, and a caller branching on `$?`
+        # would read a usage error as a runtime failure.
+        ensure_fixture=ensure_synthetic_fixtures,
+        py_script="tin.py",
+        rust_bin="tin",
+        py_args=lambda d: ["-i", _synthetic("pe.bam"), "-r", _synthetic("model.bed12"),
+                           "-o", str(d / "absent_dir"), "-c", "2"],
+        rust_args=lambda d: ["-i", _synthetic("pe.bam"), "-r", _synthetic("model.bed12"),
+                             "-o", str(d / "absent_dir"), "-c", "2"],
+        compare_stream="stderr",
+        stream_format="error_line",
+        normalize_paths=True,
+        py_expected_exit=2,
+        rust_expected_exit=2,
+    ),
+    Case(
+        name="tin_output_path_is_a_file",
+        # The second of upstream's two output-path checks, and the one a pipeline is
+        # more likely to hit: a path that exists but is a regular file. A port that
+        # only checks existence would pass this case and then fail minutes later, after
+        # scoring the whole alignment.
+        ensure_fixture=ensure_synthetic_fixtures,
+        py_script="tin.py",
+        rust_bin="tin",
+        py_args=lambda d: ["-i", _synthetic("pe.bam"), "-r", _synthetic("model.bed12"),
+                           "-o", str(_synthetic("pe.bam")), "-c", "2"],
+        rust_args=lambda d: ["-i", _synthetic("pe.bam"), "-r", _synthetic("model.bed12"),
+                             "-o", str(_synthetic("pe.bam")), "-c", "2"],
+        compare_stream="stderr",
+        stream_format="error_line",
+        normalize_paths=True,
+        py_expected_exit=2,
+        rust_expected_exit=2,
+    ),
+    Case(
+        name="tin_depth_cap_divergence",
+        # DIV-0024 covers TWO commands, not one. The 18-row real-data study failed
+        # `tin` on the same transcript that `geneBody_coverage` fails on --
+        # chr1:256806475-256813678, NM_013162, TIN 93.75219481388487 upstream against
+        # 93.85965648789987 in the port, and the sample's summary inherits it -- and
+        # both commands reach that behaviour through the SAME shared primitive,
+        # tin::genebody_coverage_with_visited, whose max_depth budget is per-position
+        # over the visited set rather than over the pileup buffer.
+        #
+        # This case exists so that "one command has a disclosed divergence" cannot
+        # quietly become the recorded state when a second command shares the cause.
+        # On this fixture, which is 8,100 copies of one 20M20D20M read and therefore
+        # binds the cap with no real-data confound at all, the arms differ by
+        # 0.309 TIN. The floor of 0.05 sits between "identical" and that value, so a
+        # fix trips the case and ordinary numeric drift does not.
+        ensure_fixture=ensure_synthetic_fixtures,
+        py_script="tin.py",
+        rust_bin="tin",
+        py_args=lambda d: ["-i", _synthetic("depth_cap.bam"), "-r", _synthetic("depth_cap.bed12"),
+                           "-o", str(d), "-c", "2"],
+        rust_args=lambda d: ["-i", _synthetic("depth_cap.bam"), "-r", _synthetic("depth_cap.bed12"),
+                             "-o", str(d), "-c", "2"],
+        compare_stream="none",
+        divergent_files=(("depth_cap.tin.xls", 0.05),),
+    ),
+    Case(
         name="genebody_coverage_synthetic_skewness",
         # Found by verification/synthetic_sweep.py: the per-sample skewness
         # printed to stderr (geneBody_coverage.py:68-77) uses np.std(ddof=1)

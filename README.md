@@ -243,16 +243,24 @@ this table, is the authoritative compatibility record.
   [`scripts/test_release_metadata.py`](scripts/test_release_metadata.py),
   [`verification/check_command_contracts.py`](verification/check_command_contracts.py)
   and [`verification/check_interop.py`](verification/check_interop.py).
-- **One command's real-data equivalence is unproven, and the release says so.**
-  `geneBody_coverage.py` does **not** currently reproduce upstream's gene-body
-  coverage curve on real data: on the 8.2M-record rat alignment, 76 of 100 bins
-  differ, by up to 839 reads, in both directions. It is bisected to a single
-  904-base transcript (`compatibility/divergences.yaml` DIV-0024, open) and is in the
-  archive manifest's `known_limitations`. The 90-case differential suite passes while
-  this is wrong, because its `geneBody_coverage` fixture is too shallow to expose it;
-  the benchmark harness's structural gate is what caught it. **No speedup or
-  scientific claim is made for this command**, and `verification/fixtures/check_gene_body_divergence.sh`
-  re-checks that the defect is still present so the ledger entry cannot go stale.
+- **Two commands' real-data equivalence is unproven, and the release says so.**
+  `geneBody_coverage.py` and `tin.py` do **not** currently reproduce upstream's output on
+  real data, from **one shared cause**: they both reach it through the same pileup
+  primitive, and the port budgets `max_depth` per position over *visited* pileups where
+  upstream budgets over the pileup *buffer* — so `is_del` pileups consume budget that
+  upstream's does not. `geneBody_coverage`'s 100-bin curve has 76 of 100 bins differing
+  on the 8.2M-record rat alignment, by up to 839 reads in both directions; `tin`'s TIN
+  on transcript `NM_013162` is `93.75219481388487` upstream against `93.85965648789987`
+  here, and the sample summary inherits it. Identified cause, not yet fixed
+  (`compatibility/divergences.yaml` DIV-0024, open), and both are in the archive
+  manifest's `known_limitations`. Every other pileup filter has been verified equivalent
+  one mechanism at a time. The 90-case differential suite passed while both were wrong,
+  because its fixtures are two orders of magnitude too shallow to bind a cap of 8000 —
+  the benchmark harness's structural gate is what caught it. **No speedup or scientific
+  claim is made for either command.** Two differential cases now assert this divergence
+  *with a floor*, so a fix trips them rather than silently retiring the disclosure, and
+  `verification/fixtures/check_gene_body_divergence.sh` re-checks on CI that the defect
+  is still present.
 - **Every shipped command has a measured capability record, not a prose claim.**
   [`verification/capability_matrix.py`](verification/capability_matrix.py) produces
   [`benchmarks/capability-matrix.json`](benchmarks/capability-matrix.json) by

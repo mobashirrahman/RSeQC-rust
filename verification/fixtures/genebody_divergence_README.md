@@ -47,8 +47,13 @@ bins. The port reimplements the cap as a per-position budget over the visited se
 `is_del` pileups consume budget that upstream's buffer budget does not.
 
 A synthetic version of that case is committed by `verification/synthetic_data.py` as
-`depth_cap.bam` (8,100 `20M20D20M` reads) and asserted by the differential case
-`genebody_coverage_depth_cap_divergence`.
+`depth_cap.bam` (8,100 `20M20D20M` reads) and asserted by two differential cases,
+`genebody_coverage_depth_cap_divergence` and `tin_depth_cap_divergence`.
+
+**It is two commands.** `tin.py` fails the same way on this same transcript, because it
+reaches the behaviour through the same shared primitive. The fixture README is named for
+`geneBody_coverage` because that is where the defect was first observed, not because it
+is the only command affected.
 
 ## Why the differential suite does not see this
 

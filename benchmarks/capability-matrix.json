@@ -184,12 +184,12 @@
         "sam": {
           "status": "REJECTED",
           "exit": 1,
-          "detail": "Splitting /scratch/mdra00001/tmp/tmp03m40gku/tiny.sam\nerror: invalid BGZF header"
+          "detail": "Splitting /scratch/mdra00001/tmp/tmpslousrsm/tiny.sam\nerror: invalid BGZF header"
         },
         "cram": {
           "status": "REJECTED",
           "exit": 1,
-          "detail": "Splitting /scratch/mdra00001/tmp/tmp03m40gku/tiny.cram\nerror: invalid BGZF header"
+          "detail": "Splitting /scratch/mdra00001/tmp/tmpslousrsm/tiny.cram\nerror: invalid BGZF header"
         }
       },
       "helper_dependency": {
@@ -565,7 +565,7 @@
     },
     "read_hexamer": {
       "binary": "read_hexamer",
-      "binary_sha256": "f84f918862e3d3ad06178904a4ad4be4f69859accb2a2d073bd166699074654e",
+      "binary_sha256": "11ff26def7f5152414c200c0ed9c80cfb37cc531051ae4550b2a4539cb1157c6",
       "input_formats": {
         "applies": false,
         "primary_input_kind": "fastq",
@@ -844,7 +844,7 @@
     },
     "tin": {
       "binary": "tin",
-      "binary_sha256": "9fe7be5a2678892efce81cdb3b53069d84a5fe1b58464e7880d647dfaccdb217",
+      "binary_sha256": "ff7be2625de5acc400fdbad0de43c31451cb7f23edcdaceea7a1a5576c8235ed",
       "input_formats": {
         "applies": true,
         "primary_input_kind": "alignment",
@@ -1214,7 +1214,7 @@
         "reports_missing_helper": true,
         "helper": "Rscript",
         "requires_rscript": true,
-        "detail": " out.CB_edits_count.csv\n2026-10-02 08:53:46 [INFO] Created out.UMI_edits_count.csv\nRscript executable not found: Rscript"
+        "detail": " out.CB_edits_count.csv\n2026-10-02 13:36:08 [INFO] Created out.UMI_edits_count.csv\nRscript executable not found: Rscript"
       },
       "skip_plot_contract": {
         "has_skip_plot": false,
@@ -1240,7 +1240,7 @@
         "reports_missing_helper": true,
         "helper": "Rscript",
         "requires_rscript": true,
-        "detail": " out.qual_count.csv\n2026-10-02 08:53:46 [INFO] Created out.qual_percent.csv\nerror: Rscript executable not found: Rscript"
+        "detail": " out.qual_count.csv\n2026-10-02 13:36:09 [INFO] Created out.qual_percent.csv\nerror: Rscript executable not found: Rscript"
       },
       "skip_plot_contract": {
         "has_skip_plot": false,

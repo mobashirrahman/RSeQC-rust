@@ -693,6 +693,145 @@ class OutputPathResolutionTests(unittest.TestCase):
             self.assertEqual(a_d.relative_to(a_root), b_d.relative_to(b_root))
 
 
+class SummaryMergeTests(unittest.TestCase):
+    """A partial re-collection must not shrink the study summary.
+
+    Recollecting a subset of rows is a normal protocol operation. It happened here:
+    three rows were re-collected after a declaration fix, and writing results.json
+    from that invocation alone left a summary of three rows where there had been
+    eighteen -- reading as if only three commands had ever been benchmarked. The
+    per-command records survived, so no measurement was lost, but the aggregate is
+    the first thing anyone opens.
+    """
+
+    @staticmethod
+    def _quiet(fn, *args):
+        import contextlib
+        import io
+        buffer = io.StringIO()
+        with contextlib.redirect_stdout(buffer):
+            out = fn(*args)
+        return out, buffer.getvalue()
+
+    def _summary(self, commands, revision="revA"):
+        return {
+            "provenance": {"git_commit": revision},
+            "results": [{"command": c, "equivalence": {"pass": True}} for c in commands],
+        }
+
+    def test_rows_not_remeasured_are_carried_forward(self):
+        import tempfile
+        with tempfile.TemporaryDirectory() as tmp:
+            outdir = Path(tmp)
+            (outdir / "results.json").write_text(json.dumps(self._summary(
+                ["bam_stat", "read_GC", "tin"])))
+            fresh = {"provenance": {"git_commit": "revB"},
+                     "results": [{"command": "tin", "equivalence": {"pass": False}}]}
+            merged, _ = self._quiet(bench.merge_summary, outdir, fresh)
+            got = {r["command"] for r in merged["results"]}
+            self.assertEqual(got, {"bam_stat", "read_GC", "tin"},
+                             "a partial re-collection must not drop rows")
+            self.assertEqual(merged["rows_measured_this_invocation"], ["tin"])
+            self.assertEqual(merged["rows_carried_forward"], ["bam_stat", "read_GC"])
+
+    def test_a_remeasured_row_replaces_its_earlier_version(self):
+        import tempfile
+        with tempfile.TemporaryDirectory() as tmp:
+            outdir = Path(tmp)
+            (outdir / "results.json").write_text(json.dumps(self._summary(["tin"])))
+            fresh = {"provenance": {"git_commit": "revB"},
+                     "results": [{"command": "tin", "equivalence": {"pass": False},
+                                  "marker": "new"}]}
+            merged, _ = self._quiet(bench.merge_summary, outdir, fresh)
+            self.assertEqual(len(merged["results"]), 1)
+            self.assertEqual(merged["results"][0].get("marker"), "new",
+                             "the fresh row must win over the carried-forward one")
+            self.assertFalse(merged["results"][0].get(
+                "carried_forward_from_earlier_invocation", False))
+
+    def test_a_carried_row_records_the_revision_that_produced_it(self):
+        import tempfile
+        with tempfile.TemporaryDirectory() as tmp:
+            outdir = Path(tmp)
+            (outdir / "results.json").write_text(json.dumps(self._summary(["bam_stat"])))
+            merged, _ = self._quiet(bench.merge_summary, outdir, {
+                "provenance": {"git_commit": "revB"},
+                "results": [{"command": "tin"}]})
+            carried = [r for r in merged["results"]
+                       if r.get("carried_forward_from_earlier_invocation")]
+            self.assertEqual(len(carried), 1)
+            self.assertEqual(carried[0]["measured_at_revision"], "revA",
+                             "a carried row must not be attributed to the new revision")
+
+    def test_a_first_run_with_no_existing_summary_is_unchanged(self):
+        import tempfile
+        with tempfile.TemporaryDirectory() as tmp:
+            outdir = Path(tmp)
+            merged, _ = self._quiet(bench.merge_summary, outdir, {
+                "provenance": {"git_commit": "revA"},
+                "results": [{"command": "bam_stat"}, {"command": "tin"}]})
+            self.assertEqual([r["command"] for r in merged["results"]],
+                             ["bam_stat", "tin"])
+            self.assertEqual(merged["rows_carried_forward"], [])
+
+    def test_a_corrupt_existing_summary_is_not_fatal(self):
+        # A truncated results.json from an interrupted run must not stop the next
+        # measurement from being recorded.
+        import tempfile
+        with tempfile.TemporaryDirectory() as tmp:
+            outdir = Path(tmp)
+            (outdir / "results.json").write_text('{"results": [{"comm')
+            merged, _ = self._quiet(bench.merge_summary, outdir, {
+                "provenance": {"git_commit": "revB"},
+                "results": [{"command": "tin"}]})
+            self.assertEqual([r["command"] for r in merged["results"]], ["tin"])
+
+
+class SummariseOnlyTests(unittest.TestCase):
+    """--summarise-only rebuilds the aggregate from the per-command records."""
+
+    def _write_records(self, outdir, commands):
+        for c in commands:
+            (outdir / f"{c}.json").write_text(json.dumps({
+                "command": c, "schema": "rseqc-bench/2",
+                "comparator_version": 2,
+                "provenance": {"git_commit": "revA", "binary_sha256": {c: "h"}},
+                "equivalence": {"pass": True},
+                "wall_primary": {"median_python": 1.0, "median_rust": 0.5,
+                                 "ratio_median": 2.0, "ratio_ci95": [1.9, 2.1], "n": 5},
+            }))
+
+    def test_records_are_reassembled_and_marked_as_reconstructed(self):
+        import contextlib
+        import io
+        import tempfile
+        with tempfile.TemporaryDirectory() as tmp:
+            outdir = Path(tmp)
+            self._write_records(outdir, ["bam_stat", "tin"])
+            with contextlib.redirect_stdout(io.StringIO()):
+                rc = bench.summarise_only(outdir)
+            self.assertEqual(rc, 0)
+            summary = json.loads((outdir / "results.json").read_text())
+            self.assertTrue(summary["reconstructed"])
+            self.assertEqual({r["command"] for r in summary["results"]},
+                             {"bam_stat", "tin"})
+            for row in summary["results"]:
+                self.assertEqual(row["reconstructed_from"], f"{row['command']}.json")
+                self.assertEqual(row["rows_carried_forward"]
+                                 if "rows_carried_forward" in row else [],
+                                 [])
+
+    def test_an_empty_directory_is_reported_not_silently_written(self):
+        import contextlib
+        import io
+        import tempfile
+        with tempfile.TemporaryDirectory() as tmp:
+            outdir = Path(tmp)
+            with contextlib.redirect_stdout(io.StringIO()):
+                self.assertEqual(bench.summarise_only(outdir), 1)
+            self.assertFalse((outdir / "results.json").exists())
+
+
 class CommandMatrixTests(unittest.TestCase):
     def test_thirty_three_commands_have_a_rust_binary(self):
         self.assertGreaterEqual(len(bench.COMMANDS), 29)

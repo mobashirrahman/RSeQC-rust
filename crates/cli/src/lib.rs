@@ -45,6 +45,19 @@ pub fn require_existing_output_parent(output_prefix: &Path) -> io::Result<()> {
     }
 }
 
+/// Report a usage error the way upstream's `parser.error()` does, and exit.
+///
+/// Upstream raises every "you passed a path that cannot work" condition from argparse,
+/// which writes `prog: error: <message>` to stderr and exits **2**. This port exits 2
+/// for ordinary usage errors only because that is what `clap` does, so any such
+/// condition returned as an `io::Error` became the one usage error in the tree with a
+/// different exit status -- and a caller that checks `$?` sees a runtime failure where
+/// upstream reports a usage error.
+pub fn usage_exit(program: &str, message: &str) -> ! {
+    eprintln!("{program}: error: {message}");
+    std::process::exit(2);
+}
+
 /// [`require_existing_output_parent`], exiting the way upstream's `parser.error()`
 /// does when the check fails.
 ///

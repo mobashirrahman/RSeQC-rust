@@ -46,9 +46,9 @@ fn compressed_format(path: &Path) -> Option<&'static str> {
     file.read_exact(&mut head).ok()?;
     if head[0] == 0x1f && head[1] == 0x8b {
         Some("gzip")
-    } else if &head[..4] == [0x28, 0xb5, 0x2f, 0xfd] {
+    } else if head[..4] == [0x28, 0xb5, 0x2f, 0xfd] {
         Some("zstd")
-    } else if &head[..3] == [0x42, 0x5a, 0x68] {
+    } else if head[..3] == [0x42, 0x5a, 0x68] {
         Some("bzip2")
     } else {
         None
@@ -183,7 +183,11 @@ fn run(args: &Args) -> io::Result<()> {
             None => Path::new("."),
         };
         if !output_parent.is_dir() {
-            return Err(io::Error::new(io::ErrorKind::NotFound, format!("output directory does not exist: {}", output_parent.display())));
+            // Exit 2 as upstream's parser.error() does; see rseqc_cli::usage_exit.
+            rseqc_cli::usage_exit(
+                "read_hexamer.py",
+                &format!("output directory does not exist: {}", output_parent.display()),
+            );
         }
         File::create(output_path)?.write_all(report.as_bytes())?;
         eprintln!("Created: {}", output_path.display());
@@ -194,48 +198,52 @@ fn run(args: &Args) -> io::Result<()> {
     Ok(())
 }
 
-    #[test]
-    fn compressed_format_detects_magic_bytes_not_extensions() {
-        // The failure this exists for: a `.fastq` symlink pointing at a `.fastq.gz`
-        // is gzipped, and the extension says otherwise. Reading it as text then
-        // produces a Unicode error naming neither the format nor the fix.
-        let dir = std::env::temp_dir();
-        let gz_path = dir.join("rseqc-hexamer-sniff.fastq");
-        std::fs::write(&gz_path, [0x1f, 0x8b, 0x08, 0x00]).unwrap();
-        assert_eq!(compressed_format(&gz_path), Some("gzip"));
-
-        let bz2_path = dir.join("rseqc-hexamer-sniff-bz2.fastq");
-        std::fs::write(&bz2_path, [0x42, 0x5a, 0x68, 0x39]).unwrap();
-        assert_eq!(compressed_format(&bz2_path), Some("bzip2"));
-
-        let zs_path = dir.join("rseqc-hexamer-sniff-zstd.fastq");
-        std::fs::write(&zs_path, [0x28, 0xb5, 0x2f, 0xfd]).unwrap();
-        assert_eq!(compressed_format(&zs_path), Some("zstd"));
-
-        let plain_path = dir.join("rseqc-hexamer-sniff-plain.fastq");
-        std::fs::write(&plain_path, b"@r1\nACGT\n+\nIIII\n").unwrap();
-        assert_eq!(compressed_format(&plain_path), None);
-
-        for p in [&gz_path, &bz2_path, &zs_path, &plain_path] {
-            let _ = std::fs::remove_file(p);
-        }
-    }
-
-    #[test]
-    fn a_compressed_input_is_refused_before_any_work() {
-        // Both implementations refuse a gzipped input and exit 1, so no outcome
-        // depends on this; the test is that the refusal happens immediately and
-        // names the format and the fix, instead of after a Unicode error mid-file.
-        let dir = std::env::temp_dir();
-        let path = dir.join("rseqc-hexamer-refuse.fastq");
-        std::fs::write(&path, [0x1f, 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00]).unwrap();
-        let format = compressed_format(&path);
-        assert_eq!(format, Some("gzip"));
-        let _ = std::fs::remove_file(&path);
-    }
-
+#[cfg(test)]
 mod tests {
     use super::*;
+
+
+#[test]
+fn compressed_format_detects_magic_bytes_not_extensions() {
+    // The failure this exists for: a `.fastq` symlink pointing at a `.fastq.gz`
+    // is gzipped, and the extension says otherwise. Reading it as text then
+    // produces a Unicode error naming neither the format nor the fix.
+    let dir = std::env::temp_dir();
+    let gz_path = dir.join("rseqc-hexamer-sniff.fastq");
+    std::fs::write(&gz_path, [0x1f, 0x8b, 0x08, 0x00]).unwrap();
+    assert_eq!(compressed_format(&gz_path), Some("gzip"));
+
+    let bz2_path = dir.join("rseqc-hexamer-sniff-bz2.fastq");
+    std::fs::write(&bz2_path, [0x42, 0x5a, 0x68, 0x39]).unwrap();
+    assert_eq!(compressed_format(&bz2_path), Some("bzip2"));
+
+    let zs_path = dir.join("rseqc-hexamer-sniff-zstd.fastq");
+    std::fs::write(&zs_path, [0x28, 0xb5, 0x2f, 0xfd]).unwrap();
+    assert_eq!(compressed_format(&zs_path), Some("zstd"));
+
+    let plain_path = dir.join("rseqc-hexamer-sniff-plain.fastq");
+    std::fs::write(&plain_path, b"@r1\nACGT\n+\nIIII\n").unwrap();
+    assert_eq!(compressed_format(&plain_path), None);
+
+    for p in [&gz_path, &bz2_path, &zs_path, &plain_path] {
+        let _ = std::fs::remove_file(p);
+    }
+}
+
+#[test]
+fn a_compressed_input_is_refused_before_any_work() {
+    // Both implementations refuse a gzipped input and exit 1, so no outcome
+    // depends on this; the test is that the refusal happens immediately and
+    // names the format and the fix, instead of after a Unicode error mid-file.
+    let dir = std::env::temp_dir();
+    let path = dir.join("rseqc-hexamer-refuse.fastq");
+    std::fs::write(&path, [0x1f, 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00]).unwrap();
+    let format = compressed_format(&path);
+    assert_eq!(format, Some("gzip"));
+    let _ = std::fs::remove_file(&path);
+}
+
+
 
     #[test]
     fn parse_read_files_valid() {

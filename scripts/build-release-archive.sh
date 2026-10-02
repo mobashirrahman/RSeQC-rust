@@ -363,14 +363,18 @@ manifest = {
         "Build provenance is bound to the git commit above. A dirty tree is flagged, "
         "not rejected, so a locally built archive from uncommitted changes is "
         "distinguishable from a clean one.",
-        "geneBody_coverage.py does NOT currently reproduce upstream's gene-body "
-        "coverage curve on real data (compatibility/divergences.yaml DIV-0024, open): "
-        "on an 8.2M-record rat alignment 76 of 100 bins differ, by up to 839 reads, "
-        "in both directions, bisected to a single 904-base transcript. Identified "
-        "cause: pysam/htslib max_depth semantics -- every other pileup filter has been "
-        "verified equivalent, one mechanism at a time, on a fixture built so that each "
-        "base range exercises exactly one. The fix is not yet written. No speedup or "
-        "scientific claim is made for this command.",
+        "geneBody_coverage.py AND tin.py do NOT currently reproduce upstream's output "
+        "on real data (compatibility/divergences.yaml DIV-0024, open). One cause, two "
+        "commands: they share the pileup primitive. geneBody_coverage's 100-bin curve "
+        "has 76 of 100 bins differing on an 8.2M-record rat alignment, by up to 839 "
+        "reads in both directions; tin's TIN on transcript NM_013162 is 93.75219481388487 "
+        "upstream against 93.85965648789987 here, and the sample summary inherits it. "
+        "Identified cause: pysam/htslib max_depth semantics -- the port budgets per "
+        "position over VISITED pileups where upstream budgets over the pileup BUFFER, "
+        "so is_del pileups consume budget upstream's does not. Every other pileup filter "
+        "has been verified equivalent, one mechanism at a time, on a fixture built so "
+        "that each base range exercises exactly one. The fix is not yet written. NO "
+        "SPEEDUP OR SCIENTIFIC CLAIM IS MADE FOR EITHER COMMAND.",
         "The permanent repository URL is a maintainer decision and is not yet set "
         "(release Stage A). An archive built before that decision is a local test "
         "artefact, not a publication; the release workflow refuses to publish one.",
