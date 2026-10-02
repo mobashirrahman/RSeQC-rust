@@ -246,6 +246,25 @@ of a feature or a closed divergence, not every commit.
   `--print-index-key` first sat *above* the variables it printed, so `set -u` made it
   exit 1 — caught only because the test invokes it rather than trusting it.
 
+- **The whole-genome rat pilot now exists, and it shows the old panel was a heavily
+  biased 20% of the library.** A 58-contig rn6 STAR index (150,217 annotated junctions,
+  `genomeSAindexNbases` 11) aligned the same 17,168,681 input reads to
+  **13,849,121 uniquely mapped (80.67%)** with **11,388,194 splices** — against
+  **3,487,314 (20.31%)** and **2,255,750** on the three-contig panel. Roughly 80% of rat
+  reads fall outside `chr1`/`chr2`/`chr10`, so every endpoint computed on that panel was
+  a subset selected by where the reads happened to land, and "8.2M records" was never a
+  record count for this library: it was the part that mapped at all. The whole-genome BAM
+  holds **32,626,178 measured records = 8,584,340 read pairs**, reported as the two
+  separate quantities protocol-v2 section 3 requires rather than as either alone.
+
+  On that substrate `junction_annotation` is **byte-identical** between upstream and the
+  port on all three data artifacts — `junction.xls` (5.9 MB), `junction.bed` (12.1 MB)
+  and `junction.Interact.bed` (29.0 MB) — across 152,476 transcript rows. Both arms
+  report `total = 11388194`, exactly STAR's own spliced-junction count, so neither is
+  inventing or dropping junctions relative to the aligner. Only the generated R script
+  differs, and only in the output directory it embeds in its own `pdf()` calls.
+  Evidence and provenance: `datasets/heldout/endpoint_results/SRR1177982_wholegenome/`.
+
 - **The study is now 18 rows on real data, and the README says which of them may be
   quoted.** 16 of 18 gates pass; the two failures are `geneBody_coverage` and `tin`,
   sharing the disclosed DIV-0024 defect, and their speedups are recorded and explicitly
