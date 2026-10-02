@@ -30,7 +30,7 @@ BUILD_INDEX = REPO_ROOT / "datasets" / "build_star_index.sh"
 NAME_MAX = 255
 
 
-def index_key(contigs: str, genome: str = "rn6.fa.gz", gtf: str = "rn6.gtf") -> str:
+def _printed(contigs: str, genome: str = "rn6.fa.gz", gtf: str = "rn6.gtf") -> dict:
     proc = subprocess.run(
         ["bash", str(BUILD_INDEX), "--print-index-key"],
         capture_output=True, text=True, timeout=120,
@@ -39,7 +39,20 @@ def index_key(contigs: str, genome: str = "rn6.fa.gz", gtf: str = "rn6.gtf") -> 
     )
     if proc.returncode != 0:
         raise AssertionError(f"--print-index-key failed for {contigs!r}: {proc.stderr}")
-    return proc.stdout.strip()
+    out = {}
+    for line in proc.stdout.splitlines():
+        if "=" in line:
+            k, _, v = line.partition("=")
+            out[k.strip()] = v.strip()
+    return out
+
+
+def index_key(contigs: str, genome: str = "rn6.fa.gz", gtf: str = "rn6.gtf") -> str:
+    return _printed(contigs, genome, gtf)["index_key"]
+
+
+def stamp_name(contigs: str, genome: str = "rn6.fa.gz", gtf: str = "rn6.gtf") -> str:
+    return _printed(contigs, genome, gtf)["stamp_name"]
 
 
 class IndexKeyNaming(unittest.TestCase):
@@ -82,6 +95,24 @@ class IndexKeyNaming(unittest.TestCase):
     def test_the_same_contig_set_gets_the_same_key(self):
         contigs = " ".join(f"chrUn_KL5684{i:02d}v1" for i in range(100, 160))
         self.assertEqual(index_key(contigs), index_key(contigs))
+
+    def test_the_marker_filename_is_bounded_too(self):
+        """The marker name embeds the same contig list, and it overflowed as well.
+
+        This was not hypothetical: the first whole-genome build finished STAR's index
+        successfully and then failed writing `.built-...-<all 58 contigs>`, leaving a
+        29 GB index on disk with no record of what built it -- exactly the state this
+        marker exists to prevent. A test that only checks the directory name passes
+        while the second overflow stands.
+        """
+        contigs = " ".join(f"chrUn_KL5684{i:02d}v1" for i in range(100, 160))
+        marker = stamp_name(contigs)
+        self.assertLessEqual(
+            len(marker.encode()), NAME_MAX,
+            f"marker name is {len(marker)} bytes, over NAME_MAX")
+        # And it must be the bounded form, not a lucky short one: spelled out this set
+        # is well over the limit, so a passing assertion means the slug was applied.
+        self.assertIn("plus60more-", marker)
 
     def test_assembly_and_overhang_still_separate_keys(self):
         contigs = "chr1 chr2 chr10"

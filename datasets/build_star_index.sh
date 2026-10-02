@@ -68,11 +68,6 @@ INDEX_KEY="$INDEX_KEY-o$SJDB_OVERHANG-$contig_slug"
 # limit, and that only shows up as "File name too long" after STAR has been located and
 # the genome unpacked -- 90 seconds into a 45-minute build. The rule also has to stay
 # readable and collision-free, which is a judgement no filesystem error will make for us.
-if [ "${1:-}" = "--print-index-key" ]; then
-  echo "$INDEX_KEY"
-  exit 0
-fi
-
 IDX_DIR="${IDX_DIR:-$HERE/star_index/$INDEX_KEY}"
 MAMBA_ROOT_PREFIX="${MAMBA_ROOT_PREFIX:-/scratch/mdra00001/tmp/mamba}"
 ENV_NAME="${ENV_NAME:-t4star}"
@@ -142,6 +137,12 @@ LIMIT_RAM_BYTES="${LIMIT_RAM_BYTES:-16000000000}"
 # same BAM.
 SA_INDEX_NBASES="${SA_INDEX_NBASES:-11}"
 
+if [ "${1:-}" = "--print-index-key" ]; then
+  echo "index_key=$INDEX_KEY"
+  echo "stamp_name=.built-${SA_INDEX_NBASES}-${LIMIT_RAM_BYTES}-${SJDB_OVERHANG}-${contig_slug}"
+  exit 0
+fi
+
 THREADS="${THREADS:-$(nproc)}"
 
 for f in "$GENOME" "$GTF"; do
@@ -154,7 +155,13 @@ mkdir -p "$IDX_DIR"
 # after the unpack and subset steps below have established that genome.fa and
 # annotation.gtf match their sources. Checking it earlier would compare a digest
 # of a stale file and accept a stale index.
-STAMP="$IDX_DIR/.built-${SA_INDEX_NBASES}-${LIMIT_RAM_BYTES}-${SJDB_OVERHANG}-${CONTIGS// /_}"
+# The marker name gets the SAME bounded slug as the directory, and for the same reason:
+# a whole-genome contig list overflowed NAME_MAX here too, after STAR had already spent
+# 25 minutes building the index. The index itself was fine and on disk; only the record
+# of what built it was missing, which is precisely the state this marker exists to
+# prevent -- an index nobody can prove what produced it. The marker's CONTENTS still
+# carry the complete contig list, so abbreviating the name loses nothing.
+STAMP="$IDX_DIR/.built-${SA_INDEX_NBASES}-${LIMIT_RAM_BYTES}-${SJDB_OVERHANG}-${contig_slug}"
 
 MM="${MICROMAMBA:-/scratch/mdra00001/tmp/bin/micromamba}"
 # Export the root prefix here rather than relying on the caller: micromamba

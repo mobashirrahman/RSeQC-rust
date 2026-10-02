@@ -233,6 +233,19 @@ of a feature or a closed divergence, not every commit.
   --locked` with the reason, and `scripts/check_release_metadata.py` compares every
   command's recorded hash against the binary actually staged in the archive — a check
   that already earned its place by catching exactly this.
+- **The whole-genome index built successfully, and then the script failed writing the
+  record of what built it — for the same reason it had failed before, one line over.**
+  `build_star_index.sh` put the contig set into both the index directory name *and* the
+  `.built-…` marker name inside it. Bounding only the directory let STAR finish a 29 GB
+  whole-genome rat index and then fail on `mkdir` of the marker, which left an index on
+  disk with no record of its parameters — precisely the state the marker exists to
+  prevent, and the same class of damage as the human rat index this project already
+  suffered. Both names now take the bounded slug, whose contents still record the
+  complete contig list. The test covers both names and is a real negative control:
+  reverting just the marker line fails exactly the marker test. Separately,
+  `--print-index-key` first sat *above* the variables it printed, so `set -u` made it
+  exit 1 — caught only because the test invokes it rather than trusting it.
+
 - **The study is now 18 rows on real data, and the README says which of them may be
   quoted.** 16 of 18 gates pass; the two failures are `geneBody_coverage` and `tin`,
   sharing the disclosed DIV-0024 defect, and their speedups are recorded and explicitly
