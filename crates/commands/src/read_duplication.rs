@@ -12,7 +12,9 @@
 //! unaffected (already generic over
 //! `IntoIterator<Item = io::Result<bam::Record>>`).
 
+use std::collections::hash_map::DefaultHasher;
 use std::collections::HashMap;
+use std::hash::{Hash, Hasher};
 use std::io;
 
 use noodles_sam as sam;
@@ -26,6 +28,32 @@ pub struct DuplicationHistograms {
     pub pos_occurrence_counts: Vec<(u64, u64)>, // (occurrence, distinct_position_count), sorted by occurrence
 }
 
+/// 128-bit fingerprint of a duplication key's bytes (B1 memory envelope).
+///
+/// Only the occurrence histograms are ever output, never the keys, so the maps
+/// below are keyed by this fingerprint instead of the full key string (the
+/// sequence itself, ~101 bytes on real data, or the
+/// `"chrom:start:exon_boundary"` string). `DefaultHasher::new()` uses fixed
+/// keys, so the fingerprint is deterministic across runs of this binary; two
+/// passes with distinct domain separators give 128 bits, making an accidental
+/// collision (which would merge two distinct keys into one occurrence bucket)
+/// negligible. No new dependency: no hash crate in `Cargo.lock` fits, so this
+/// uses two `DefaultHasher` passes as the card prescribes.
+fn fingerprint128(domain: &str, bytes: &[u8]) -> u128 {
+    let mut lo = DefaultHasher::new();
+    domain.hash(&mut lo);
+    bytes.hash(&mut lo);
+    let lo = lo.finish();
+    let mut hi = DefaultHasher::new();
+    // Distinct second pass over the same bytes (domain tag inverted) so the
+    // two 64-bit halves are independent fingerprints, not one repeated value.
+    let flipped: Vec<u8> = domain.bytes().map(|b| b ^ 0xFF).collect();
+    flipped.hash(&mut hi);
+    bytes.hash(&mut hi);
+    let hi = hi.finish();
+    ((hi as u128) << 64) | (lo as u128)
+}
+
 /// Computes sequence-based and position-based duplication histograms for a sequence of BAM records,
 /// matching the upstream algorithm exactly.
 /// Pure computation: no I/O, no printing.
@@ -37,8 +65,10 @@ pub fn compute_duplication<I>(
 where
     I: IntoIterator<Item = io::Result<noodles_bam::Record>>,
 {
-    let mut seq_dup = HashMap::new(); // exact uppercase sequence string -> occurrence count
-    let mut pos_dup = HashMap::new(); // "chrom:start:exon_boundary_string" -> occurrence count
+    // Keyed by 128-bit fingerprints of the key bytes (see `fingerprint128`),
+    // not by the key strings themselves: only occurrence counts are output.
+    let mut seq_dup: HashMap<u128, u64> = HashMap::new(); // fingerprint(exact uppercase sequence) -> occurrence count
+    let mut pos_dup: HashMap<u128, u64> = HashMap::new(); // fingerprint("chrom:start:exon_boundary_string") -> occurrence count
 
     for result in records {
         let record = result?;
@@ -62,7 +92,11 @@ where
         // Get uppercase sequence
         let sequence = record.sequence();
         let rna_read: String = sequence.iter().map(|b| b as char).collect();
-        seq_dup.insert(rna_read.clone(), seq_dup.get(&rna_read).unwrap_or(&0) + 1);
+        let seq_key = fingerprint128(
+            "rseqc-rust:read_duplication:seq:v1",
+            rna_read.as_bytes(),
+        );
+        seq_dup.insert(seq_key, seq_dup.get(&seq_key).unwrap_or(&0) + 1);
 
         // Get reference sequence name
         let ref_id = record.reference_sequence_id().transpose()?;
@@ -96,7 +130,11 @@ where
 
         // Create position duplication key
         let key = format!("{}:{}:{}", chrom, start, exon_boundary);
-        pos_dup.insert(key.clone(), pos_dup.get(&key).unwrap_or(&0) + 1);
+        let pos_key = fingerprint128(
+            "rseqc-rust:read_duplication:pos:v1",
+            key.as_bytes(),
+        );
+        pos_dup.insert(pos_key, pos_dup.get(&pos_key).unwrap_or(&0) + 1);
     }
 
     // Convert seq_dup to occurrence counts: occurrence -> distinct_sequence_count
@@ -280,6 +318,27 @@ mod tests {
         let mut reader = noodles_bam::io::Reader::new(buf.as_slice());
         reader.read_header().unwrap();
         reader.records().map(|r| r.unwrap()).collect()
+    }
+
+    #[test]
+    fn fingerprint128_is_deterministic_and_discriminating() {
+        // Equal keys hash equally within and across domains being equal per
+        // domain: the same bytes under the same domain must give the same
+        // fingerprint (determinism, fixed hasher keys).
+        assert_eq!(
+            fingerprint128("rseqc-rust:read_duplication:seq:v1", b"ATCG"),
+            fingerprint128("rseqc-rust:read_duplication:seq:v1", b"ATCG")
+        );
+        // Different keys produce different fingerprints (no silent merging of
+        // distinct sequences or positions into one occurrence bucket).
+        assert_ne!(
+            fingerprint128("rseqc-rust:read_duplication:seq:v1", b"ATCG"),
+            fingerprint128("rseqc-rust:read_duplication:seq:v1", b"GCTA")
+        );
+        assert_ne!(
+            fingerprint128("rseqc-rust:read_duplication:pos:v1", b"chr1:0:0-4:"),
+            fingerprint128("rseqc-rust:read_duplication:pos:v1", b"chr1:9:9-13:")
+        );
     }
 
     #[test]
