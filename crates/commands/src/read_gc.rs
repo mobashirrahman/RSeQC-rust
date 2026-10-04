@@ -13,9 +13,36 @@
 //! `IntoIterator<Item = io::Result<bam::Record>>`).
 
 use std::collections::HashMap;
+use std::fs::File;
 use std::io;
+use std::io::Write as _;
+use std::process::{Command, Stdio};
 
 use noodles_bam as bam;
+
+use crate::exec_resolve;
+
+/// Refuses an output prefix whose parent directory does not exist, before
+/// any work. Mirrors `rseqc_cli::require_existing_output_parent` exactly
+/// (same `Path::parent` mapping, same message); kept local because the
+/// commands crate cannot depend on the CLI crate.
+fn require_output_parent(output_prefix: &str) -> io::Result<()> {
+    use std::path::Path;
+    let prefix = Path::new(output_prefix);
+    let parent = match prefix.parent() {
+        Some(p) if p.as_os_str().is_empty() => Path::new("."),
+        Some(p) => p,
+        None => Path::new("."),
+    };
+    if parent.is_dir() {
+        Ok(())
+    } else {
+        Err(io::Error::new(
+            io::ErrorKind::NotFound,
+            format!("output directory does not exist: {}", parent.display()),
+        ))
+    }
+}
 
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
 pub struct GcHistogram {
@@ -108,6 +135,89 @@ pub fn render_gc_r_script(hist: &GcHistogram, output_prefix: &str) -> String {
         gc_values.join(","),
         count_values.join(","),
     )
+}
+
+/// Runs the `read_GC.py` CLI body over an already-opened record stream
+/// (C1 multi-driver pattern).
+///
+/// This is exactly what the standalone binary's `run()` does -- same
+/// progress lines, same files with the same bytes, same Rscript contract,
+/// same error propagation -- except the record source is a
+/// caller-supplied iterator and stdout/stderr are caller-supplied sinks.
+/// The standalone binary delegates to this (passing the process streams);
+/// `rseqc_multi` passes one record broadcast plus per-command stream
+/// files. `compute_gc` and both renderers are untouched.
+///
+/// Two deliberate transport notes for the multi driver. First, the output
+/// parent check uses the `Result` form (`require_existing_output_parent`)
+/// rather than the binary's `_or_exit` form: the binary keeps its own
+/// `_or_exit` call first (so standalone exit 2 is unchanged) while the
+/// multi worker maps this `Err` to the same `prog: error:` line in its
+/// stream file. Second, the Rscript child is spawned piped (not
+/// inherited) and its captured stdout/stderr are copied to these sinks:
+/// per-stream bytes are identical to inheritance (the parent emits nothing
+/// between spawn and wait), and piping is what lets a multi worker
+/// attribute the child's output to its own stream files.
+pub fn run_read_gc<I>(
+    records: I,
+    q_cut: u8,
+    out_prefix: &str,
+    skip_plot: bool,
+    rscript: &str,
+    stdout: &mut dyn io::Write,
+    stderr: &mut dyn io::Write,
+) -> io::Result<()>
+where
+    I: IntoIterator<Item = io::Result<bam::Record>>,
+{
+    // Same rule as the binary's `require_existing_output_parent_or_exit`
+    // (and upstream's `validate_args`), in `Result` form so a multi worker
+    // can attribute the failure to its own stream file instead of exiting
+    // the whole driver process. Message text matches exactly.
+    require_output_parent(out_prefix)?;
+
+    // Upstream: `if self.bam_format: print("Read BAM file ... ", end=' ')
+    // else: print("Read SAM file ... ", end=' ')` -- `self.bam_format`
+    // comes from `pysam.Samfile(path, 'rb')` succeeding, which it does
+    // even for genuine plain-text SAM content (htslib auto-detects,
+    // ignoring the 'b' mode hint; confirmed via a live diff for
+    // bam_stat.py/read_NVC.py, same underlying pysam.Samfile call here).
+    // The "Read SAM file" branch is practically dead code for any valid
+    // input. The literal's own trailing space plus `end=' '` gives two
+    // spaces before "Done".
+    write!(stderr, "Read BAM file ...  ")?;
+    let hist = compute_gc(records, q_cut)?;
+    writeln!(stderr, "Done")?;
+
+    writeln!(stderr, "writing GC content ...")?;
+    let xls_path = format!("{out_prefix}.GC.xls");
+    File::create(&xls_path)?.write_all(render_gc_table(&hist).as_bytes())?;
+
+    writeln!(stderr, "writing R script ...")?;
+    let r_path = format!("{out_prefix}.GC_plot.r");
+    File::create(&r_path)?.write_all(render_gc_r_script(&hist, out_prefix).as_bytes())?;
+
+    if !skip_plot {
+        let rscript_path = exec_resolve::which(rscript).ok_or_else(|| {
+            io::Error::new(
+                io::ErrorKind::NotFound,
+                format!("Rscript executable not found: {rscript}"),
+            )
+        })?;
+        let out = Command::new(&rscript_path)
+            .arg(&r_path)
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()?
+            .wait_with_output()?;
+        stdout.write_all(&out.stdout)?;
+        stderr.write_all(&out.stderr)?;
+        if !out.status.success() {
+            return Err(io::Error::other(format!("R plotting failed for {r_path}")));
+        }
+    }
+
+    Ok(())
 }
 
 #[cfg(test)]

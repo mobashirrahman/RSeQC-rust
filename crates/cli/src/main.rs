@@ -8,7 +8,7 @@ use rseqc_cli as _;
 use std::path::PathBuf;
 
 use clap::Parser;
-use rseqc_commands::bam_stat::{BamStatCounts, compute_stats};
+use rseqc_commands::bam_stat::run_bam_stat;
 
 #[derive(Parser)]
 #[command(
@@ -38,51 +38,14 @@ fn main() -> std::process::ExitCode {
 }
 
 fn run(args: &Args) -> std::io::Result<()> {
-    // Upstream: `if self.bam_format: print("Load BAM file ... ",
-    // end=' ') else: print("Load SAM file ... ", end=' ')` --
-    // `self.bam_format` comes from trying `pysam.Samfile(path, 'rb')`
-    // FIRST and only falling back to `'r'` (bam_format=False) if that
-    // raises. Confirmed via a live diff against real upstream: htslib's
-    // `'rb'` open is lenient about actual content and succeeds for a
-    // genuine plain-text SAM file too (it auto-detects format,
-    // effectively ignoring the 'b' mode hint) -- so `bam_format` is
-    // `True`, and "Load BAM file" prints, EVEN for `.sam` input. The
-    // "Load SAM file" branch is practically dead code for any valid
-    // input, not something this port needs a format check to trigger.
-    // The literal's own trailing space plus `end=' '` gives two spaces
-    // before "Done".
-    eprint!("Load BAM file ...  ");
+    // C1: the CLI body lives in `rseqc_commands::bam_stat::run_bam_stat`
+    // (same bytes, same order) so `rseqc_multi` can drive it over a record
+    // broadcast with per-command stream files.
     let (_header, records) = rseqc_formats::open_alignments(&args.input_file)?;
-    let counts = compute_stats(records, args.mapq)?;
-    eprintln!("Done");
-    print_report(&counts);
-    Ok(())
-}
-
-fn print_report(c: &BamStatCounts) {
-    println!();
-    println!("#==================================================");
-    println!("#All numbers are READ count");
-    println!("#==================================================");
-    println!();
-    println!("{:<40}{}", "Total records:", c.total);
-    println!();
-    println!("{:<40}{}", "QC failed:", c.qc_fail);
-    println!("{:<40}{}", "Optical/PCR duplicate:", c.duplicate);
-    println!("{:<40}{}", "Non primary hits", c.non_primary);
-    println!("{:<40}{}", "Unmapped reads:", c.unmapped);
-    println!("{:<40}{}", "mapq < mapq_cut (non-unique):", c.multi_hit);
-    println!();
-    println!("{:<40}{}", "mapq >= mapq_cut (unique):", c.uniq_hit);
-    println!("{:<40}{}", "Read-1:", c.read1);
-    println!("{:<40}{}", "Read-2:", c.read2);
-    println!("{:<40}{}", "Reads map to '+':", c.forward);
-    println!("{:<40}{}", "Reads map to '-':", c.reverse);
-    println!("{:<40}{}", "Non-splice reads:", c.non_splice);
-    println!("{:<40}{}", "Splice reads:", c.splice);
-    println!("{:<40}{}", "Reads mapped in proper pairs:", c.proper_pair);
-    println!(
-        "{:<40}{}",
-        "Proper-paired reads map to different chrom:", c.proper_pair_diff_chrom
-    );
+    run_bam_stat(
+        records,
+        args.mapq,
+        &mut std::io::stdout(),
+        &mut std::io::stderr(),
+    )
 }
