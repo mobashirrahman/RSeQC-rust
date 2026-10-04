@@ -2,6 +2,9 @@
 //! script (see Cargo.toml [[bin]] name) so PATH invocation matches upstream
 //! once the packaging step (PORTING_PLAN Step 10) adds the `.py` alias.
 
+// B4: link `rseqc_cli` so its `#[global_allocator]` (actionable
+// out-of-memory message) applies to this binary too.
+use rseqc_cli as _;
 use std::path::PathBuf;
 
 use clap::Parser;

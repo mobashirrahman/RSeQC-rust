@@ -13,6 +13,9 @@
 //! *decompressed* content is guaranteed to match. SAM-text input
 //! (DIV-0002/0004) is supported via `rseqc_formats::open_alignments`.
 
+// B4: link `rseqc_cli` so its `#[global_allocator]` (actionable
+// out-of-memory message) applies to this binary too.
+use rseqc_cli as _;
 use std::fs::File;
 use std::io::{BufWriter, Read as _, Write as _};
 use std::path::{Path, PathBuf};

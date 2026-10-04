@@ -2,6 +2,9 @@
 //! contain '.' (see crates/cli/Cargo.toml); packaging (PORTING_PLAN Step
 //! 10) adds the `.py`-suffixed PATH alias.
 
+// B4: link `rseqc_cli` so its `#[global_allocator]` (actionable
+// out-of-memory message) applies to this binary too.
+use rseqc_cli as _;
 use std::fs::File;
 use std::io::BufReader;
 use std::path::PathBuf;

@@ -7,6 +7,9 @@
 //! sc_bamstat.rs module docs: the per-chromosome fetch loop is
 //! replicated as one sequential BAM scan.
 
+// B4: link `rseqc_cli` so its `#[global_allocator]` (actionable
+// out-of-memory message) applies to this binary too.
+use rseqc_cli as _;
 use std::path::PathBuf;
 
 use clap::Parser;
