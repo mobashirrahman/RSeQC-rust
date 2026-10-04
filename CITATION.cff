@@ -9,12 +9,9 @@ version: 0.1.0
 date-released: "2026-09-17"
 authors:
   - name: Md Mobashir Rahman
-# NOTE: this repository has not yet been published under a public URL -- see
-# compatibility/divergences.yaml's DIV-0003 for why this project's own release license (and, by
-# extension, a permanent citable URL) is still pending a decision. Update `repository-code` and
-# `url` below once that happens; Cargo.toml's own `repository` field uses the same placeholder.
-repository-code: "https://github.com/TBD/rseqc-rust"
-url: "https://github.com/TBD/rseqc-rust"
+# NOTE: repository URL set 2026-10-04 (release Stage A decision made).
+repository-code: "https://github.com/mobashirrahman/RSeQC-rust"
+url: "https://github.com/mobashirrahman/RSeQC-rust"
 license: GPL-3.0-or-later
 references:
   - type: software

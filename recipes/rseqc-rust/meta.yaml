@@ -8,24 +8,13 @@ package:
 # ---------------------------------------------------------------------------
 # SOURCE
 #
-# The repository URL is UNRESOLVED and is the reason this recipe cannot be
-# submitted yet. `scripts/check_release_metadata.py` treats the same placeholder
-# in Cargo.toml and CITATION.cff as a release blocker; a recipe pointing at
-# `github.com/TBD/...` would resolve to somebody else's page the moment it was
-# indexed, so it is left visibly unset rather than guessed.
-#
-# When the permanent URL is decided, replace the source block below with:
-#
-#   source:
-#     url: https://github.com/<org>/<repo>/archive/v{{ version }}.tar.gz
-#     sha256: <digest of that exact tarball>
-#
-# and delete this paragraph. `sha256` is not optional in Bioconda, and neither is
-# a digest taken from the build rather than from the release tarball: an
-# archive of a moving branch is not a versioned source.
+# The repository URL was set 2026-10-04 (release Stage A decision made). What
+# still blocks submission is `sha256` below: it must be the digest of the exact
+# release tarball, not of a build and not of a moving branch. Fill it when the
+# release is cut, then delete this paragraph.
 # ---------------------------------------------------------------------------
 source:
-  url: https://github.com/TBD/rseqc-rust/archive/v{{ version }}.tar.gz
+  url: https://github.com/mobashirrahman/RSeQC-rust/archive/v{{ version }}.tar.gz
   sha256: TBD
 
 build:
@@ -94,7 +83,7 @@ test:
     - read_NVC -i {{ environ.get('RSEQC_TEST_BAM', 'tests/data/tiny.bam') }} -o /nonexistent-dir/out --skip-plot
 
 about:
-  home: https://github.com/TBD/rseqc-rust
+  home: https://github.com/mobashirrahman/RSeQC-rust
   license: GPL-3.0-or-later
   license_family: GPL
   license_file: LICENSE
@@ -113,8 +102,8 @@ about:
     limitation stated in the archive manifest. See README.md and the project's
     compatibility ledger before relying on it for a published result.
 
-  doc_url: https://github.com/TBD/rseqc-rust#readme
-  dev_url: https://github.com/TBD/rseqc-rust
+  doc_url: https://github.com/mobashirrahman/RSeQC-rust#readme
+  dev_url: https://github.com/mobashirrahman/RSeQC-rust
 
 extra:
   # What a user should know that `about` has no field for.
@@ -127,4 +116,4 @@ extra:
     (compatibility/divergences.yaml DIV-0024, open). Do not use it for a
     published biological conclusion.
   recipe-maintainers:
-    - TBD
+    - mobashirrahman

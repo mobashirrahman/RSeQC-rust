@@ -8,6 +8,26 @@ Prepared 2026-10-01. This is an outline for a future qualified software release;
 
 The proposed contribution is preservation of specified RSeQC CLI quantities with measured runtime/memory and deployment benefits on realistic workflows. Define the command/mode/input profile before writing the abstract. The original full native-plot/Python target remains a later milestone; scope the first paper to actually qualified capabilities.
 
+## Scope decisions (2026-10-04, maintainer)
+
+- **The claim is parity plus performance, not scientific validity on held-out
+  data.** What is proven and therefore claimable: the port produces the same
+  numbers as RSeQC 5.0.5 (byte-identical on 24/24 runnable commands against a
+  held-out human library, 90/90 and 100/100 differential cases) and runs faster
+  while using less memory (median 3.7x wall speedup, no command slower, no
+  command more memory-hungry after the 2026-10-04 fixes). The held-out
+  scientific-endpoint validation the manifest calls for is a different claim
+  about biological interpretation, and its incompleteness does not block a paper
+  whose contribution is preserved quantities plus measured cost.
+- **DIV-0024 is scoped, not fixed.** `geneBody_coverage` and `tin` are claimed
+  identical to upstream **except in regions deeper than pysam's `max_depth`
+  of 8000 reads per position**, where the two implementations' pileup-cap
+  semantics differ by construction (DIV-0024, open). The divergence is bounded
+  (1 of 5359 rat transcripts, TIN off by 0.107; synthetic off by 0.309),
+  disclosed, and pinned by a dedicated fixture so a fix would trip the test. No
+  code change; the scope statement above is what makes the identity claim
+  complete and honest.
+
 ## Statement of need and related work
 
 Explain why existing RNA-seq QC is useful, and which installation, runtime or memory constraints a native implementation addresses. Identify target users and a concrete bulk-QC workflow. Compare with upstream RSeQC as the direct compatibility baseline; discuss other QC tools as related capabilities rather than treating different metrics as interchangeable speed comparisons.

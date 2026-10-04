@@ -13,13 +13,10 @@ members = [
 version = "0.1.0"
 edition = "2021"
 license = "GPL-3.0-or-later"
-# UNRESOLVED PLACEHOLDER. The permanent repository URL is a maintainer decision
-# (release Stage A) and is deliberately left as TBD rather than guessed: a wrong
-# URL in published package metadata is worse than an obviously incomplete one,
-# because it resolves to somebody else's page. `scripts/check_release_metadata.py`
-# fails a release build while this is still TBD, so the placeholder cannot ship
-# unnoticed.
-repository = "https://github.com/TBD/rseqc-rust"
+# Repository URL set 2026-10-04 (release Stage A decision made): the project now
+# lives at the address below. `scripts/check_release_metadata.py` still guards
+# this field, so a regression to a placeholder fails the release build.
+repository = "https://github.com/mobashirrahman/RSeQC-rust"
 
 [profile.release]
 lto = true
