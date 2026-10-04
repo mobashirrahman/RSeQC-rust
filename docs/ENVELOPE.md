@@ -127,6 +127,27 @@ generator.
 (18,317,951 covered bases over 3,985,238 records). It is the driver that bounds the
 envelope. On the *full* 8.2M-record alignment it peaks at **1.69 GB** and takes 51 s.
 
+### Re-measurement after cards B1/B2 (2026-10-04)
+
+B1 re-keyed `read_duplication`'s maps by 128-bit hash and B2 replaced
+`bam2wig`'s per-position map with sparse/dense chunks plus streamed
+drain rendering. Single-point peaks on the same full 8.2M-record rat
+alignment, same instrument (`/usr/bin/time -v`, `Maximum resident`):
+
+| Command | Peak RSS before | Peak RSS after | Wall before | Wall after |
+|---|---|---|---|---|
+| `read_duplication` | 1,085,832 KB (1060 MB) | 543,472 KB (531 MB) | 15.1 s | 12.3 s |
+| `bam2wig` | 1,725,856 KB (1685 MB) | 759,376 KB (741 MB) | 46.5 s | 42.6–43.1 s |
+
+Outputs byte-identical before/after on both (both `.xls` files for
+`read_duplication`, the 498 MB `.wig` for `bam2wig`, each `cmp`-clean over
+three post-change runs for `bam2wig`). The per-record slopes above
+(130.5, 207.5 B/record) were fitted on the old implementations and are
+**stale until the sweep is re-run**; only the peaks in this section are
+re-measured. The per-job maxima quoted elsewhere in this document
+(1.69 GB for `bam2wig`, 1.06 GB for `read_duplication`, e.g. in the
+concurrency section) are likewise pre-B1/B2 figures.
+
 ## What happens past the limit
 
 A cost is half of a published limit. The other half is the behaviour when memory
@@ -148,16 +169,21 @@ alignment ([`benchmarks/memory-failure-rat-8M.json`](../benchmarks/memory-failur
 consumer can read a truncated result as a complete one, and neither modifies its
 input. Each failure prints something on stderr, so the run is not silent.
 
-**The diagnostic is not acceptable as it stands.** What a user sees is Rust's
-`memory allocation of N bytes failed` followed by a `note: run with RUST_BACKTRACE=1`
-hint — an internal abort, not a message naming the command, the input and the reason.
-At one limit `bam2wig` produced a worse artefact: a panic inside `zlib-rs`'s inflate
-(`assertion left == right failed, left: MemError, right: Ok`) at exit 101, which
-points at a compression routine rather than at memory. **This is a known gap, not a
-closed one**: a command that needs more memory than it has should say so, and
-catching allocation failure portably in Rust is not something this project has
-solved. What is established is that the failure is *contained* — no partial output,
-no input damage, non-zero status — and the disclosure belongs in the release notes.
+**The diagnostic is fixed for the allocator-abort path (B4, 2026-10-04).**
+A `#[global_allocator]` in `crates/cli/src/lib.rs` (linked into all 33
+binaries, verified via the message string in each) writes
+`rseqc-rust: out of memory; see docs/ENVELOPE.md for per-command memory
+costs` to stderr without allocating, then returns null so the normal
+abort follows with the same exit status as before. Re-ran
+`verification/check_memory_failure.py` on the rat alignment: zero output
+files at every limit, exits unchanged (134 at 80/40/20% for
+`read_duplication`; 134 at 80% for `bam2wig`), and the new message now
+precedes the runtime's `memory allocation of N bytes failed` line. Two
+caveats stay open: at 40% and 20% `bam2wig` still dies inside `zlib-rs`'s
+inflate (`assertion left == right failed, left: MemError, right: Ok`,
+exit 101) before any Rust allocation fails, so no actionable message can
+appear there; and `bam_stat` wall time is unchanged (4.12/4.09/4.16 s
+before, 4.12/4.18/4.12 s after, three runs each).
 
 ## Per-transcript drivers: a sweep that produced nothing, and why
 
