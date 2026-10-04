@@ -179,6 +179,12 @@ path = "src/bin/sc_seqqual.rs"
 name = "sc_seqLogo"
 path = "src/bin/sc_seqlogo.rs"
 
+[[bin]]
+# Single-pass multi-command driver (card C1). No `.py` alias: this is a new
+# binary with no upstream counterpart, so it keeps its own name.
+name = "rseqc_multi"
+path = "src/bin/rseqc_multi.rs"
+
 [dependencies]
 rseqc-core = { path = "../core" }
 rseqc-formats = { path = "../formats" }

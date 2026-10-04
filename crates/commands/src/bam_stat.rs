@@ -115,6 +115,75 @@ where
     Ok(counts)
 }
 
+/// Runs the `bam_stat.py` CLI body over an already-opened record stream
+/// (C1 multi-driver pattern).
+///
+/// This is exactly what the standalone binary's `run()` does -- same
+/// progress lines, same report bytes in the same order, same error
+/// propagation -- except the record source is a caller-supplied iterator
+/// and stdout/stderr are caller-supplied sinks instead of the process
+/// globals. The standalone binary delegates to this (passing the process
+/// streams); `rseqc_multi` passes one record broadcast plus per-command
+/// stream files. `compute_stats` itself is untouched.
+pub fn run_bam_stat<I>(
+    records: I,
+    q_cut: u8,
+    stdout: &mut dyn io::Write,
+    stderr: &mut dyn io::Write,
+) -> io::Result<()>
+where
+    I: IntoIterator<Item = io::Result<bam::Record>>,
+{
+    // Upstream: `if self.bam_format: print("Load BAM file ... ",
+    // end=' ') else: print("Load SAM file ... ", end=' ')` --
+    // `self.bam_format` comes from trying `pysam.Samfile(path, 'rb')`
+    // FIRST and only falling back to `'r'` (bam_format=False) if that
+    // raises. Confirmed via a live diff against real upstream: htslib's
+    // `'rb'` open is lenient about actual content and succeeds for a
+    // genuine plain-text SAM file too (it auto-detects format,
+    // effectively ignoring the 'b' mode hint) -- so `bam_format` is
+    // `True`, and "Load BAM file" prints, EVEN for `.sam` input. The
+    // "Load SAM file" branch is practically dead code for any valid
+    // input, not something this port needs a format check to trigger.
+    // The literal's own trailing space plus `end=' '` gives two spaces
+    // before "Done".
+    write!(stderr, "Load BAM file ...  ")?;
+    let counts = compute_stats(records, q_cut)?;
+    writeln!(stderr, "Done")?;
+    print_report(&counts, stdout);
+    Ok(())
+}
+
+fn print_report(c: &BamStatCounts, out: &mut dyn io::Write) {
+    writeln!(out).unwrap();
+    writeln!(out, "#==================================================").unwrap();
+    writeln!(out, "#All numbers are READ count").unwrap();
+    writeln!(out, "#==================================================").unwrap();
+    writeln!(out).unwrap();
+    writeln!(out, "{:<40}{}", "Total records:", c.total).unwrap();
+    writeln!(out).unwrap();
+    writeln!(out, "{:<40}{}", "QC failed:", c.qc_fail).unwrap();
+    writeln!(out, "{:<40}{}", "Optical/PCR duplicate:", c.duplicate).unwrap();
+    writeln!(out, "{:<40}{}", "Non primary hits", c.non_primary).unwrap();
+    writeln!(out, "{:<40}{}", "Unmapped reads:", c.unmapped).unwrap();
+    writeln!(out, "{:<40}{}", "mapq < mapq_cut (non-unique):", c.multi_hit).unwrap();
+    writeln!(out).unwrap();
+    writeln!(out, "{:<40}{}", "mapq >= mapq_cut (unique):", c.uniq_hit).unwrap();
+    writeln!(out, "{:<40}{}", "Read-1:", c.read1).unwrap();
+    writeln!(out, "{:<40}{}", "Read-2:", c.read2).unwrap();
+    writeln!(out, "{:<40}{}", "Reads map to '+':", c.forward).unwrap();
+    writeln!(out, "{:<40}{}", "Reads map to '-':", c.reverse).unwrap();
+    writeln!(out, "{:<40}{}", "Non-splice reads:", c.non_splice).unwrap();
+    writeln!(out, "{:<40}{}", "Splice reads:", c.splice).unwrap();
+    writeln!(out, "{:<40}{}", "Reads mapped in proper pairs:", c.proper_pair).unwrap();
+    writeln!(
+        out,
+        "{:<40}{}",
+        "Proper-paired reads map to different chrom:", c.proper_pair_diff_chrom
+    )
+    .unwrap();
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
