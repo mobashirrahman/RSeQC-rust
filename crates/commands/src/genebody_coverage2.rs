@@ -317,6 +317,7 @@ mod tests {
         assert_eq!(coverage.len(), 100);
     }
 
+    #[test]
     fn coverage_gene_body_bigwig_returns_empty_for_no_matching_chrom() {
         // Exercise the actual function with a real (fixture) BigWig
         // reader for the "no BED lines match any BigWig chromosome"

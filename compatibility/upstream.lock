@@ -21,8 +21,28 @@ source:
   commit_date: "2026-07-27T10:04:43-05:00"
   package_version_declared: "5.0.5"  # from pyproject.toml; not independently verified against published PyPI sdist yet
   checkout_path_in_repo: oracle/upstream-src/   # gitignored working copy of scripts/ + src/, for investigator/coder reads
-  source_tree_sha256_scripts_and_src: c13af649e85e5599ab9c9c17546353fe29cb390f76b8b74911db96a2463834f5
-    # sha256 of `tar -cf - -C oracle/upstream-src .` on this host; recompute and compare after any refresh
+  source_tree_sha256_scripts_and_src: d12281166d4611317eb652e55dd720b11adfcdce98c1cace31ae49d11a27813f
+    # RE-PINNED 2026-10-04. The previous value (c13af649...) was recorded as the
+    # sha256 of `tar -cf - -C oracle/upstream-src .`, which is not reproducible:
+    # that tarball sweeps up `__pycache__/`, `*.pyc` and the `qcmodule.egg-info`
+    # that `pip install -e` generates, so the digest is a function of this host's
+    # build state rather than of upstream's source, and changed the first time
+    # anything was imported. Nothing verified the field either, so it drifted
+    # silently.
+    #
+    # The value now recorded is over TRACKED SOURCE ONLY, computed by
+    #     python3 verification/check_oracle_source_digest.py
+    # which hashes `scripts/` and `src/` relative to `oracle/upstream-src`,
+    # excluding `__pycache__/`, `*.pyc`, `*.pyo` and `*.egg-info/`, LC_ALL=C
+    # sorted, per-file sha256 then sha256 of the `<digest>  <path>` listing
+    # (55 files). The same command verifies it and exits 1 on drift; it is the
+    # checker of record for this field, not this comment.
+    #
+    # INDEPENDENTLY CONFIRMED 2026-10-04: this tree is byte-identical to
+    # `git archive` of the commit named above -- `scripts/` and `src/` diff
+    # clean against a fresh download of 59a24c5, the only extra path being the
+    # generated `src/qcmodule.egg-info`. So the source identity is genuine; only
+    # the recorded digest for it was wrong.
 
 primary_baseline: github   # decision per PORTING_PLAN.md Step 1.3; PyPI 5.0.5 sdist cross-check not yet performed
 

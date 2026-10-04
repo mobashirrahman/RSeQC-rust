@@ -893,6 +893,10 @@ where
             last_start = i64::MIN;
         }
 
+        // Drop what the PREVIOUS sample left behind before pulling, so the window
+        // only ever holds reads this sample can still use.
+        window.retain(|r| r.end > s.tx_start);
+
         // Pull every record that starts before this transcript ends. Records
         // for a LATER reference sequence are left unconsumed for their own
         // sample to pick up.
@@ -960,15 +964,25 @@ where
             let read = to_indexed_read(next)?;
             records.next();
             if let Some(read) = read {
-                window.push(read);
+                // Discard at push time rather than accumulating and pruning
+                // after the loop. A read ending at or before this sample's start
+                // can reach neither it nor any later sample (samples are visited
+                // in coordinate order, so their starts are non-decreasing), so
+                // the post-loop `retain` removed exactly these -- dropping them
+                // here yields the identical window in the identical order.
+                //
+                // This is the whole bound on the driver's memory. The pull loop
+                // walks forward to this sample's last position, and the
+                // chromosome's first sample can sit far from position 0, so
+                // buffering the walk and trimming afterwards made peak RSS track
+                // the distance from the chromosome start rather than the local
+                // depth: measured at 331 MB on a 2.05M-read alignment against
+                // pysam's 42 MB, despite this driver already existing.
+                if read.end > s.tx_start {
+                    window.push(read);
+                }
             }
         }
-
-        // Retire reads that can no longer reach this or any later transcript.
-        // Safe by the `end <= tx_start` argument in the doc comment; the
-        // retained reads stay sorted by start, which `reads_starting_in`'s
-        // `partition_point` requires.
-        window.retain(|r| r.end > s.tx_start);
 
         if window_ref.is_some() {
             scores[si] = score_sample(s, &window, min_cov, exon_ranges);

@@ -51,6 +51,16 @@ jobs:
       - name: Differential runner failure-closed semantics
         run: python verification/test_run_diff.py
 
+      # The frozen-baseline digest in compatibility/upstream.lock was recorded
+      # as a `tar` of the whole checkout, so it included __pycache__ and the
+      # editable-install egg-info: unreproducible, and unchecked, so it drifted
+      # silently. This verifies the tracked-source digest instead, and SKIPS
+      # when there is no oracle checkout (it is a gitignored working copy, so a
+      # fresh CI runner has none). The step earns its place on any host that
+      # does have the tree -- which is every host that runs a differential.
+      - name: Frozen upstream source digest
+        run: python verification/check_oracle_source_digest.py
+
       # The publication gate itself needs a test suite. The first version of
       # check_release_metadata.py matched only TOML's `key = "value"`, so it
       # silently exempted CITATION.cff -- the file citation tooling reads -- and

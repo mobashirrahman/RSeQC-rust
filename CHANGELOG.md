@@ -525,6 +525,153 @@ of a feature or a closed divergence, not every commit.
 
 ### Fixed
 
+- **`RNA_fragment_size.py` was slower than the Python it replaces, and is now
+  faster than it by 3-7x.** This is the only command measured *slower* than
+  upstream. `IndexedReads::fetch` filtered every read on the chromosome for
+  every BED record, so a run cost O(reads x transcripts), where pysam answers
+  the same query from the BAI in O(log R + hits). Measured on a 2.27M-read
+  alignment with a 3000-transcript model: **3.54 s against upstream's 2.41 s --
+  0.67x, i.e. a regression**; on the 8.2M-record rat alignment, 16.49 s against
+  27.49 s (1.67x). The mechanism was confirmed by scaling rather than inferred:
+  at a fixed 1000 transcripts, 4x the reads cost this port 5.9x more time but
+  cost upstream only 2.0x more. `ChromReads` now keeps entries in BAM file
+  order (which is what decides the printed mean/std, since `numpy_mean`/
+  `numpy_std`'s pairwise summation is order-sensitive in its last bits) and a
+  parallel `by_start` array of indices sorted by `ref_start`, bounding each
+  query to `[start - max_span, end)`. Both bounds are exact, not heuristic:
+  `ref_end <= ref_start + max_span`, so no entry outside the window can satisfy
+  the overlap predicate. After the fix, 0.76 s against upstream's 2.47 s
+  (**3.25x**) on the human workload and 4.16 s against 28.49 s (**6.85x**) on the
+  rat one, with byte-identical output on both. Four tests were added: the
+  indexed query is compared against the literal full-scan predicate it replaced
+  over ~1400 window positions, file order is asserted to survive the position
+  sort on deliberately unsorted input, a left-of-everything window must return
+  empty rather than panic, and the window must stay bounded by the query rather
+  than the chromosome (the invariant that fails loudly if this ever degenerates
+  back into a scan).
+- **`geneBody_coverage.py`'s sliding window did not bound memory, and peak RSS
+  tracked the whole BAM instead of local depth: 373 MB -> 14 MB.** The driver
+  buffered reads first and trimmed afterwards, so the pull loop crossing an
+  inter-transcript gap had to hold the entire gap before the `retain` could
+  discard it. On a 2.27M-read alignment with a 3000-transcript model that is
+  the whole file, and it is why the command measured **6.6x MORE memory than
+  pysam** (373 MB against 55 MB) despite already having a windowed driver.
+  Discarding at push time -- a read ending at or before the transcript's first
+  sampled position overlaps neither it nor any later transcript -- yields the
+  identical window in the identical order, so this is not an approximation.
+  After the fix: 14.2 MB against pysam's 55 MB, i.e. **3.9x less rather than
+  6.6x more**, and 26x less than before, at unchanged output and slightly less
+  wall time. On the rat alignment the same run still peaks at ~216 MB against
+  pysam's ~51 MB. That residue is the genuine ultra-deep region described under
+  the `tin` entry below -- one 4 kb transcript is overlapped by 275,288 reads
+  (68 reads per base), and the window holds it in full because pysam caps depth
+  at 8000 per column as it iterates where this port must emulate that cap
+  afterwards (DIV-0024). It is not a window defect. (An earlier draft of this
+  entry blamed a degenerate gene model; that was wrong, see the correction
+  below.)
+  This extends the `tin`/`geneBody_coverage` window work noted under the
+  alignment-reader streaming fix below.
+- **`FPKM_count.py` no longer materialises the whole BAM, and it was the last
+  command that used materially more memory than upstream.** Upstream splits its
+  work: `count_total_fragments` streams the file once, but `count_transcript`
+  re-queries the BAI with `samfile.fetch(chrom, tx_start, tx_end)` **once per
+  transcript**, so pysam never holds more than one region's reads and pays for
+  that in seeks. This port had instead loaded the file once and scanned a
+  start-sorted prefix per transcript -- the mirror image, 3.68x faster and
+  memory-hungry. Two changes close it. First, `IndexedRead` was four `i64`s and
+  five `bool`s (40 bytes after padding) for every read in the file, so the struct
+  layout *was* the resident cost; coordinates are now `i32` and the flags
+  bit-packed, 20 bytes, which is exact rather than a narrowing because POS,
+  endpos and PNEXT are int32 on the wire in a BAM, and the conversion is checked
+  so a malformed record is loud instead of silently mispositioned. Second,
+  `compute_fpkm_rows_windowed` walks transcripts in coordinate order and streams
+  the BAM once, discarding a read at push time as soon as it can no longer reach
+  the current or any later transcript -- the mistake that cost `geneBody_coverage`
+  373 MB, avoided here from the start. `count_transcript` is unchanged: the
+  driver hands it exactly the reads the whole-file prefix scan would have.
+  `count_total_fragments_streaming` computes the same totals without the index;
+  its terms are 0/0.5/1, all exact in binary floating point, so the HashMap
+  iteration order the whole-file path relies on was never load-bearing, and
+  streaming makes the order deterministic instead of leaving it to the hasher.
+  Five tests assert the windowed driver reproduces the whole-file rows byte for
+  byte: rows in input order rather than coordinate order, a transcript on a
+  chromosome the BAM lacks (which still yields an all-zero row -- it is NOT
+  dropped), and the out-of-order start that routes to the whole-file fallback.
+  Measured: on the 8.2M-record rat alignment **153 MB -> 17 MB, now 2.9x LESS
+  than pysam's 49 MB** and 4.75x faster; on the 2.05M-read human alignment 6.2 MB
+  against pysam's 42.9 MB and 4.4x faster. Output byte-identical to upstream on
+  both.
+  Coordinate order is established by the streaming totals pass rather than by
+  the window driver's own `start < last_start` probe, and that distinction is a
+  bug this change fixed rather than a design preference. The probe is a false
+  negative: it only fires for a record the pull loop actually reaches, and a
+  record past the current transcript's `tx_end` makes the loop `break` before
+  comparing. On a shuffled copy of the 2.05M-read alignment the driver therefore
+  returned `Computed` with **1729 of 3000 rows silently scored as zero** instead
+  of reporting `NotCoordinateSorted`. The totals pass visits every record, so it
+  detects the disorder for free and routes to the whole-file path; the shuffled
+  input now prints the fallback notice and produces output byte-identical to the
+  sorted run. `tin` and `geneBody_coverage` do not share the exposure -- both
+  require a `.bai` sidecar, which cannot be built for an unsorted BAM, so they
+  skip such input before the window driver runs. `FPKM_count` deliberately does
+  not require the index (DIV-0002), which is exactly why it had to be covered.
+- **`tin`'s sliding window buffered the inter-transcript gap and trimmed
+  afterwards, so peak RSS tracked the distance from the chromosome start rather
+  than the local depth: 331 MB -> 11 MB.** This is the same defect that was just
+  fixed in `geneBody_coverage`, in a driver whose own doc comment already claimed
+  a 174x resident reduction -- a reduction that had been measured on a workload
+  whose first transcript sits near position 0. On the 2.05M-read human alignment,
+  whose first chr1 transcript starts at 114 Mb, the initial pull buffered 114 Mb
+  of reads before the trim could discard them, measuring **331 MB against pysam's
+  42.7 MB (7.9x worse)**. Discarding at push time -- safe because samples are
+  visited in coordinate order, so a read ending at or before the current sample's
+  start can reach neither it nor any later one -- yields the identical window in
+  the identical order: **11.2 MB, 3.8x BETTER than pysam**, 28x faster, with
+  `tin.xls` byte-identical. On the rat alignment the same run still peaks at
+  219 MB against pysam's 51 MB, and that residue is measured rather than assumed:
+  one 4 kb transcript at chr1:80,612,893 is overlapped by **275,288 reads (68
+  reads per base)**, and the window holds that region in full because the reads
+  the later depth-cap emulation needs (DIV-0024) cannot be known in advance,
+  where pysam's `pileup` caps depth at 8000 per column as it iterates. Shrinking
+  it further means making `tin`'s much heavier per-read record -- a `String` name
+  plus three heap `Vec`s, roughly 600 bytes -- cheaper, which is a separate
+  change.
+- **Correction: an earlier draft of these entries attributed several `tin` and
+  `geneBody_coverage` memory numbers to a degenerate gene model whose
+  "transcripts" spanned whole chromosomes (5346 of 5359 over 1 Mb, mean 126 Mb).
+  That was false.** It came from an `awk '$3-$1'` on a BED whose first column is
+  a chromosome NAME: awk read the name as 0, so every span came out as the
+  transcript's absolute start coordinate. The models are ordinary -- mean spans
+  33 kb (human) and 38 kb (rat), maxima 394 kb and 2.1 Mb. The measured memory
+  numbers were real; only the explanation was wrong. The real causes are the two
+  buffering defects above and, for the rat residue, a genuine 68-reads-per-base
+  region.
+- **The frozen-baseline digest in `compatibility/upstream.lock` was
+  unreproducible and unchecked, so it had drifted silently.** It was recorded as
+  the sha256 of `tar -cf - -C oracle/upstream-src .`, which sweeps up
+  `__pycache__/`, `*.pyc` and the `qcmodule.egg-info` that `pip install -e`
+  generates -- so the digest was a function of this host's build state rather
+  than of upstream's source, and changed the first time anything was imported.
+  No code read the field, which is why nothing noticed. It is now taken over
+  tracked source only (`scripts/` + `src/`, build artifacts excluded, `LC_ALL=C`
+  sorted, per-file sha256 then sha256 of the listing; 55 files), and
+  `verification/check_oracle_source_digest.py` verifies it, exits 1 on drift,
+  prints the value for re-pinning, and SKIPs when there is no checkout (the tree
+  is a gitignored working copy, so a fresh CI runner has none). Wired into the
+  release-validation workflow. The re-pinned value was independently confirmed:
+  `oracle/upstream-src/{scripts,src}` is byte-identical to `git archive` of the
+  pinned commit `59a24c5`, the only extra path being the generated egg-info, so
+  the source identity was always genuine -- only the digest recorded for it was
+  wrong.
+- **A `geneBody_coverage2` test had no `#[test]` attribute, so it had never run
+  and `cargo clippy --all-targets -- -D warnings` could not pass.** The function
+  `coverage_gene_body_bigwig_returns_empty_for_no_matching_chrom` has been
+  missing the attribute since the command was first ported (91f0db9); clippy
+  reports it as dead code in a `#[cfg(test)]` module, which the CI invocation
+  turns into an error. Adding the attribute is the whole fix, and the test
+  passes. Found while checking that this change had not added clippy warnings of
+  its own; `cargo clippy --workspace --all-targets -- -D warnings` is clean
+  again.
 - **The UCSC refGene -> BED12/GTF conversion was wrong in both outputs, and is now
   corrected against the genome rather than against documentation.** The converter
   treated refGene as 1-based inclusive; it is half-open **0-based**, with `txStart` and

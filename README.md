@@ -185,6 +185,53 @@ this table, is the authoritative compatibility record.
   alignment reader decoded whole files up front, extrapolating to ~23 GB for a
   50M-read-pair BAM -- since fixed for BAM/SAM by streaming, with `tin`'s and
   `geneBody_coverage`'s own indexes replaced by a sliding window.
+- **`FPKM_count.py` no longer materialises the whole BAM, and this was the last
+  command that used materially more memory than upstream.** Upstream splits its
+  work: `count_total_fragments` streams the file once, but `count_transcript`
+  re-queries the BAI with `samfile.fetch(chrom, tx_start, tx_end)` **once per
+  transcript**, so pysam never holds more than one region's reads and pays for it
+  in seeks. This port had loaded the file once and then scanned a start-sorted
+  prefix per transcript -- the mirror image, 3.68x faster and memory-hungry.
+  `compute_fpkm_rows_windowed` now walks transcripts in coordinate order and
+  streams the BAM once, discarding a read at push time as soon as it can no
+  longer reach the current or any later transcript. `count_transcript` is
+  unchanged -- the driver hands it exactly the reads the whole-file prefix scan
+  would have -- and five tests assert the windowed driver reproduces the
+  whole-file rows byte for byte, including input row order, an absent chromosome
+  (which still yields a zero row), and the out-of-order detection that routes to
+  the whole-file fallback. On the 8.2M-record rat alignment: **153 MB -> 17 MB,
+  now 2.9x LESS than pysam's 49 MB** and 4.75x faster, byte-identical. On the
+  2.05M-read human alignment: 6.2 MB against pysam's 42.9 MB and 4.4x faster,
+  byte-identical. The per-read record was also halved, from four `i64`s and five
+  `bool`s (40 bytes padded) to `i32` coordinates and bit-packed flags (20 bytes);
+  the `i32` is exact, not a narrowing, because POS/endpos/PNEXT are int32 on the
+  wire in a BAM.
+- **`tin`'s sliding window had the same defect `geneBody_coverage`'s did: it
+  buffered the inter-transcript gap and trimmed afterwards, so peak RSS tracked
+  the distance from the chromosome start rather than the local depth.** The
+  window driver already existed and its own doc comment claimed a 174x resident
+  reduction, but the reduction was measured on a workload whose first transcript
+  sits near position 0. On the 2.05M-read human alignment, whose first chr1
+  transcript starts at 114 Mb, the initial pull buffered 114 Mb of reads before
+  the trim ran: **331 MB against pysam's 42.7 MB (7.9x worse)**, deteriorating to
+  **11.2 MB (3.8x BETTER than pysam)** once reads are discarded at push time,
+  with `tin.xls` byte-identical and 28x faster. The same fix was applied to
+  `geneBody_coverage` (373 MB -> 14 MB). Neither change alters which reads the
+  scoring functions see, only when unreachable ones are dropped.
+- **What remains of `tin`'s memory is a real ultra-deep region, not a window
+  bug.** On the rat alignment `tin` still peaks at 219 MB against pysam's 51 MB,
+  and the cause is measured rather than assumed: one 4 kb transcript at
+  chr1:80,612,893 is overlapped by **275,288 reads (68 reads per base)**, and the
+  window holds that region in full. `pysam`'s `pileup` caps depth at 8000 per
+  column during iteration, so it never sees the rest; this port must keep them
+  because the depth-cap behaviour itself is emulated later (DIV-0024) and the
+  reads it needs cannot be known in advance. A correction to an earlier draft of
+  this note: it attributed several `tin`/`geneBody_coverage` memory numbers to a
+  degenerate gene model with chromosome-scale transcripts. That was wrong -- it
+  came from an `awk '$3-$1'` on a BED whose first column is a chromosome NAME,
+  which awk read as 0 and which inflated every span by the transcript's start
+  coordinate. The models are ordinary (mean spans 33 kb and 38 kb, max 2.1 Mb).
+  The measured numbers were real; only the explanation was mistaken.
 - **The rat endpoint figure is confirmed, and a third reference-preparation defect
   was found while confirming it.** The corrected annotation and a rebuilt index were
   both on disk and every digest matched — but the rat BAM had been aligned hours

@@ -13,8 +13,9 @@ use std::path::PathBuf;
 use clap::Parser;
 use rseqc_commands::python_fmt::python_str_float;
 use rseqc_commands::fpkm_count::{
-    build_global_exon_ranges, build_read_index, compute_fpkm_rows, count_total_fragments, parse_strand_rule,
-    render_fpkm_xls,
+    build_global_exon_ranges, build_read_index, compute_fpkm_rows, compute_fpkm_rows_windowed,
+    count_total_fragments_streaming, parse_strand_rule, render_fpkm_xls,
+    WindowedFpkm,
 };
 
 #[derive(Parser)]
@@ -80,13 +81,24 @@ fn run(args: &Args) -> std::io::Result<()> {
     eprintln!("Extract exon regions from {}...", args.refgene_bed.display());
     let global_exon_ranges = build_global_exon_ranges(BufReader::new(File::open(&args.refgene_bed)?))?;
 
+    // Streaming totals: same arithmetic on the same retained reads as
+    // `count_total_fragments`, without building the whole-file index first. The
+    // sums are over 0/0.5/1 -- exact in binary floating point -- so the river
+    // order this makes deterministic was never load-bearing.
     let (mut reader, header) = rseqc_formats::open_bam(&args.input_file)?;
-    let reads_by_chrom = build_read_index(reader.records(), &header, args.skip_multi, args.map_qual)?;
 
     // Upstream: print("Counting total fragment ... ", end=" ") ... print("Done")
     eprint!("Counting total fragment ...  ");
-    let (total_frags, exonic_frags) = count_total_fragments(&reads_by_chrom, &global_exon_ranges, args.single_read);
+    let totals = count_total_fragments_streaming(
+        reader.records(),
+        &header,
+        &global_exon_ranges,
+        args.single_read,
+        args.skip_multi,
+        args.map_qual,
+    )?;
     eprintln!("Done");
+    let (total_frags, exonic_frags) = (totals.total_frags, totals.exonic_frags);
     // Both totals are Python floats (initialised to 0.0), formatted `:<20`.
     eprintln!("Total fragment = {:<20}", python_str_float(total_frags));
     eprintln!("Total exonic fragment = {:<20}", python_str_float(exonic_frags));
@@ -99,15 +111,62 @@ fn run(args: &Args) -> std::io::Result<()> {
     }
     let denominator = if args.only_exon { exonic_frags } else { total_frags };
 
-    let rows = compute_fpkm_rows(
-        BufReader::new(File::open(&args.refgene_bed)?),
-        &reads_by_chrom,
-        args.strand_rule.is_some(),
-        &strand_map,
-        args.single_read,
-        denominator,
-        |n| eprint!("\r{n} transcripts finished"),
-    )?;
+    // The whole-file path, used whenever the sliding-window driver cannot run.
+    // This is the reference implementation: every recorded differential result
+    // was produced with it, so falling back can only ever be slower, never wrong.
+    let whole_file = || -> std::io::Result<Vec<rseqc_commands::fpkm_count::FpkmRow>> {
+        let (mut reader, header) = rseqc_formats::open_bam(&args.input_file)?;
+        let reads_by_chrom =
+            build_read_index(reader.records(), &header, args.skip_multi, args.map_qual)?;
+        // `denominator` is reused rather than recomputed: the streaming totals run
+        // the same `add_total_fragment` arithmetic on the same filtered reads, and
+        // the terms are exact, so the two are equal by construction.
+        compute_fpkm_rows(
+            BufReader::new(File::open(&args.refgene_bed)?),
+            &reads_by_chrom,
+            args.strand_rule.is_some(),
+            &strand_map,
+            args.single_read,
+            denominator,
+            |n| eprint!("\r{n} transcripts finished"),
+        )
+    };
+
+    // Sliding-window driver: same rows, but only the reads that can still reach
+    // an unscored transcript stay resident. Exact rather than approximate --
+    // transcripts are visited in coordinate order, so a read ending at or before
+    // the current transcript's start cannot overlap it or any later one, and
+    // every read the whole-file path would select is still in the window.
+    //
+    // Coordinate order is established up front by the totals pass rather than
+    // inferred from the window driver's own probe, which misses disorder it
+    // never pulls far enough to see.
+    let rows = if !totals.coordinate_sorted {
+        eprintln!("BAM is not coordinate-sorted; falling back to whole-file read index (higher memory use)");
+        whole_file()?
+    } else {
+        let (mut reader, header) = rseqc_formats::open_bam(&args.input_file)?;
+        match compute_fpkm_rows_windowed(
+            reader.records(),
+            &header,
+            BufReader::new(File::open(&args.refgene_bed)?),
+            args.strand_rule.is_some(),
+            &strand_map,
+            args.single_read,
+            denominator,
+            args.skip_multi,
+            args.map_qual,
+            |n| eprint!("\r{n} transcripts finished"),
+        )? {
+            WindowedFpkm::Computed(rows) => rows,
+            WindowedFpkm::NotCoordinateSorted => {
+                eprintln!(
+                    "BAM is not coordinate-sorted; falling back to whole-file read index (higher memory use)"
+                );
+                whole_file()?
+            }
+        }
+    };
     eprintln!();
 
     let output_path = format!("{}.FPKM.xls", args.out_prefix.to_string_lossy());

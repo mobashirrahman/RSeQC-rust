@@ -18,11 +18,18 @@
 //! which normally uses a `.bai` index. No BAI parsing exists yet, so this
 //! builds an in-memory per-chromosome index from a full sequential BAM
 //! scan instead -- behaviorally equivalent (same overlap semantics as
-//! indexed fetch: `read.reference_start < end && start < read.reference_end`),
-//! just without the index's algorithmic speedup. A genuinely large BAM
-//! will use more memory and time than upstream here; that's a disclosed
-//! performance characteristic, not a correctness gap, and is a natural
-//! target for the optimization pass (PORTING_PLAN Step 9), not now.
+//! indexed fetch: `read.reference_start < end && start < read.reference_end`).
+//!
+//! The query side is NOT a full scan per BED line. An earlier version of this
+//! file filtered every read on the chromosome for every transcript, which made
+//! a run cost O(reads x transcripts); measured against upstream on a 2.2M-read
+//! alignment with a 3000-transcript model it came out 1.47x SLOWER than the
+//! Python it replaces, because pysam answers the same query from the BAI in
+//! O(log R + hits). `ChromReads` below restores that shape: entries stay in BAM
+//! file order (which is what determines the output's last bits -- see
+//! `mean_median_std`), and a parallel `by_start` array of indices sorted by
+//! `ref_start` narrows each query to the only window that can contain a hit.
+//! Memory cost is 4 bytes per retained read.
 
 use std::collections::HashMap;
 use std::io;
@@ -41,10 +48,41 @@ struct ReadEntry {
     mapq: u8,
 }
 
+/// One chromosome's reads, in BAM file order, plus a position-sorted index
+/// over them.
+///
+/// `entries` MUST stay in file order: `mean_median_std` sums in insertion
+/// order, and `numpy_mean`/`numpy_std`'s pairwise summation is order-sensitive
+/// in its last bits, so reordering reads changes the printed mean and std.
+/// `by_start` therefore holds *indices* into `entries`, not entries.
+struct ChromReads {
+    entries: Vec<ReadEntry>,
+    /// `entries` indices, ascending by `entries[i].ref_start`.
+    by_start: Vec<u32>,
+    /// Largest `ref_end - ref_start` in `entries`. Bounds how far left of
+    /// `start` a hit can begin, which is what makes the lower window bound
+    /// exact rather than a guess.
+    max_span: i64,
+}
+
+impl ChromReads {
+    /// Half-open `[lo, hi)` range into `by_start` holding every entry that
+    /// could possibly satisfy the overlap predicate for `[start, end)`.
+    ///
+    /// `lo >= hi` is a legitimate answer (an empty or left-of-everything
+    /// query) and callers must not slice with it unchecked.
+    fn window(&self, start: i64, end: i64) -> (usize, usize) {
+        let lo_bound = start - self.max_span;
+        let lo = self.by_start.partition_point(|&i| self.entries[i as usize].ref_start <= lo_bound);
+        let hi = self.by_start.partition_point(|&i| self.entries[i as usize].ref_start < end);
+        (lo, hi)
+    }
+}
+
 /// In-memory stand-in for pysam's indexed `fetch()`, built once from a
-/// full sequential scan and queried per BED line.
+/// full sequential BAM scan and queried per BED line.
 pub struct IndexedReads {
-    by_chrom: HashMap<String, Vec<ReadEntry>>,
+    by_chrom: HashMap<String, ChromReads>,
 }
 
 impl IndexedReads {
@@ -118,15 +156,46 @@ impl IndexedReads {
             });
         }
 
+        let by_chrom = by_chrom
+            .into_iter()
+            .map(|(chrom, entries)| {
+                let max_span =
+                    entries.iter().map(|e| e.ref_end - e.ref_start).max().unwrap_or(1).max(1);
+                let mut by_start: Vec<u32> = (0..entries.len() as u32).collect();
+                by_start.sort_unstable_by_key(|&i| entries[i as usize].ref_start);
+                (chrom, ChromReads { entries, by_start, max_span })
+            })
+            .collect();
+
         Ok(Self { by_chrom })
     }
 
-    fn fetch(&self, chrom: &str, start: i64, end: i64) -> impl Iterator<Item = &ReadEntry> {
-        self.by_chrom
-            .get(chrom)
+    /// Reads overlapping `[start, end)`, in BAM file order.
+    ///
+    /// A hit must satisfy `ref_start < end` and `ref_end > start`. Since
+    /// `ref_end <= ref_start + max_span`, the second implies
+    /// `ref_start > start - max_span`, so both bounds are exact: no entry
+    /// outside the window can satisfy the predicate. `max_span` is the
+    /// longest read on the chromosome, typically a few hundred bases, so the
+    /// window is the transcript plus a short left margin rather than the whole
+    /// chromosome.
+    fn fetch(&self, chrom: &str, start: i64, end: i64) -> Vec<&ReadEntry> {
+        let Some(c) = self.by_chrom.get(chrom) else {
+            return Vec::new();
+        };
+        let (lo, hi) = c.window(start, end);
+        if lo >= hi {
+            return Vec::new();
+        }
+        let mut window: Vec<u32> = c.by_start[lo..hi].to_vec();
+        // Restore file order so the caller's accumulation order -- and
+        // therefore the printed mean/std -- matches the unindexed scan.
+        window.sort_unstable();
+        window
             .into_iter()
-            .flatten()
-            .filter(move |r| r.ref_start < end && start < r.ref_end)
+            .map(|i| &c.entries[i as usize])
+            .filter(|r| r.ref_start < end && start < r.ref_end)
+            .collect()
     }
 }
 
@@ -473,6 +542,159 @@ mod tests {
             std.to_bits(),
             naive_std.to_bits(),
             "expected pairwise and naive summation to differ in the last bit for this input"
+        );
+    }
+
+    /// The literal predicate `fetch` replaced: every read on the chromosome,
+    /// in file order. Kept as the oracle for the indexed query below.
+    fn brute_force_fetch<'a>(
+        reads: &'a IndexedReads,
+        chrom: &str,
+        start: i64,
+        end: i64,
+    ) -> Vec<&'a ReadEntry> {
+        reads
+            .by_chrom
+            .get(chrom)
+            .into_iter()
+            .flat_map(|c| c.entries.iter())
+            .filter(move |r| r.ref_start < end && start < r.ref_end)
+            .collect()
+    }
+
+    /// Build reads scattered over `chrom` with pseudo-random positions and
+    /// spans, deliberately NOT in coordinate order, so the indexed query is
+    /// tested against input it cannot shortcut by assuming sortedness.
+    fn scattered_reads(header: &sam::Header, n: usize, seed: u64) -> IndexedReads {
+        let mut state = seed;
+        let mut next = move || {
+            // xorshift64*, so the fixture is reproducible without a dependency
+            state ^= state << 13;
+            state ^= state >> 7;
+            state ^= state << 17;
+            state
+        };
+        let records: Vec<RecordBuf> = (0..n)
+            .map(|_| {
+                let pos = (next() % 9_000) as usize + 1;
+                let span = (next() % 300) as usize + 1;
+                RecordBuf::builder()
+                    .set_flags(Flags::SEGMENTED | Flags::FIRST_SEGMENT)
+                    .set_reference_sequence_id(0)
+                    .set_alignment_start(Position::new(pos).unwrap())
+                    .set_mate_alignment_start(Position::new(pos + 1).unwrap())
+                    .set_mapping_quality(MappingQuality::new(40).unwrap())
+                    .set_cigar(Cigar::from(vec![Op::new(Kind::Match, span)]))
+                    .set_sequence(noodles_sam::alignment::record_buf::Sequence::from(vec![
+                        b'A';
+                        span
+                    ]))
+                    .build()
+            })
+            .collect();
+        let bam_records = to_bam_records(header, &records);
+        IndexedReads::build(bam_records.into_iter().map(Ok), header).unwrap()
+    }
+
+    #[test]
+    fn indexed_fetch_matches_the_full_scan_it_replaced() {
+        // The window bounds in `fetch` are derived from `max_span`, so they are
+        // only correct if no hit can start further left than `start - max_span`.
+        // Sweep query windows across the whole chromosome, including ones that
+        // start mid-read and ones entirely inside a read's span, and require
+        // identical results -- same entries, same order -- every time.
+        let header = test_header();
+        let reads = scattered_reads(&header, 2_000, 0x5eed_1234);
+
+        for start in (0..9_000).step_by(37) {
+            for width in [1, 2, 17, 250, 1_000, 9_000] {
+                let end = start + width;
+                let indexed: Vec<_> =
+                    reads.fetch("chr1", start, end).into_iter().map(|r| (r.ref_start, r.ref_end)).collect();
+                let brute: Vec<_> =
+                    brute_force_fetch(&reads, "chr1", start, end).into_iter().map(|r| (r.ref_start, r.ref_end)).collect();
+                assert_eq!(
+                    indexed, brute,
+                    "indexed fetch disagreed with the full scan for [{start}, {end})"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn indexed_fetch_preserves_file_order_for_unsorted_positions() {
+        // `numpy_mean`/`numpy_std` sum in insertion order and their pairwise
+        // kernel is order-sensitive in the last bits, so `fetch` must return
+        // reads in BAM file order even though it searches a position-sorted
+        // index. Built unsorted on purpose: a stable result here cannot be an
+        // accident of coordinate-sorted input.
+        let header = test_header();
+        let reads = scattered_reads(&header, 2_000, 0xabcd_0001);
+
+        let indexed: Vec<i64> = reads.fetch("chr1", 0, 9_000).iter().map(|r| r.ref_start).collect();
+        let brute: Vec<i64> = brute_force_fetch(&reads, "chr1", 0, 9_000).iter().map(|r| r.ref_start).collect();
+
+        assert_eq!(indexed, brute, "file order must be preserved");
+        assert!(
+            indexed.windows(2).any(|w| w[0] > w[1]),
+            "fixture must actually be unsorted, or this test proves nothing"
+        );
+    }
+
+    #[test]
+    fn indexed_fetch_handles_a_window_left_of_every_read() {
+        let header = test_header();
+        let reads = scattered_reads(&header, 500, 0x1111_2222);
+        // `lo >= hi` must return empty rather than panic on the slice range.
+        assert!(reads.fetch("chr1", -500, -400).is_empty());
+        assert!(reads.fetch("chrMissing", 0, 9_000).is_empty());
+    }
+
+    #[test]
+    fn query_window_is_bounded_by_the_query_not_the_chromosome() {
+        // Guards the defect this index was added to fix. `fetch` used to filter
+        // every read on the chromosome for every transcript, making a run cost
+        // O(reads x transcripts); measured against upstream on a 2.2M-read
+        // alignment with a 3000-transcript model that came out 1.47x SLOWER
+        // than the Python it replaces, because pysam answers the same query
+        // from the BAI in O(log R + hits).
+        //
+        // The invariant is that the window handed to the overlap filter is
+        // sized by the QUERY, not by chromosome depth. A full scan scores
+        // depth/width of the chromosome -- 1.0 here -- so the bound below
+        // fails loudly if the window ever degenerates back to a scan. Work is
+        // counted rather than timed, so this cannot flake on a loaded machine.
+        let header = test_header();
+        let queries: Vec<(i64, i64)> = (0..9_000).step_by(900).map(|s| (s, s + 400)).collect();
+
+        for depth in [500_usize, 4_000, 32_000] {
+            let reads = scattered_reads(&header, depth, 0x9999_0001);
+            let c = &reads.by_chrom["chr1"];
+            let per_query: usize =
+                queries.iter().map(|&(s, e)| { let (lo, hi) = c.window(s, e); hi - lo }).sum();
+            let fraction = per_query as f64 / (queries.len() * depth) as f64;
+            assert!(
+                fraction < 0.25,
+                "at depth {depth} the window covered {fraction:.3} of the chromosome \
+                 per query; a full scan would be 100%"
+            );
+        }
+
+        // And the fraction must not creep up as the chromosome deepens, which
+        // is what would happen if the lower bound were a guess rather than
+        // derived from `max_span`.
+        let fraction_at = |depth: usize| -> f64 {
+            let reads = scattered_reads(&header, depth, 0x9999_0001);
+            let c = &reads.by_chrom["chr1"];
+            let per_query: usize =
+                queries.iter().map(|&(s, e)| { let (lo, hi) = c.window(s, e); hi - lo }).sum();
+            per_query as f64 / (queries.len() * depth) as f64
+        };
+        let (shallow, deep) = (fraction_at(500), fraction_at(8_000));
+        assert!(
+            deep <= shallow * 1.5,
+            "window/chromosome fraction grew with depth: {shallow:.3} at 500 reads -> \
+             {deep:.3} at 8000 reads"
         );
     }
 }
