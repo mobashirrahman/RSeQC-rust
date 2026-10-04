@@ -1,0 +1,29 @@
+name: upstream-drift
+
+on:
+  schedule:
+    - cron: "0 6 * * 1"
+  workflow_dispatch:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Fail if upstream HEAD moved past the pinned lock
+        run: |
+          PINNED="$(grep -oE 'commit: [0-9a-f]{40}' compatibility/upstream.lock | head -n 1 | awk '{print $2}')"
+          if [ -z "$PINNED" ]; then
+            echo "Could not read pinned commit from compatibility/upstream.lock"
+            exit 1
+          fi
+          REMOTE="$(git ls-remote https://github.com/liguowang/RSeQC.git HEAD | awk '{print $1}')"
+          if [ -z "$REMOTE" ]; then
+            echo "Could not resolve upstream HEAD via git ls-remote"
+            exit 1
+          fi
+          if [ "$PINNED" != "$REMOTE" ]; then
+            echo "Upstream drift: pinned commit $PINNED != upstream HEAD $REMOTE"
+            exit 1
+          fi
+          echo "Upstream matches pinned commit $PINNED"

@@ -34,6 +34,16 @@ Explain why existing RNA-seq QC is useful, and which installation, runtime or me
 
 Cite Wang, Wang and Li (2012), **RSeQC: quality control of RNA-seq experiments**, Bioinformatics 28(16):2184–2185, DOI [10.1093/bioinformatics/bts356](https://doi.org/10.1093/bioinformatics/bts356). Attribute biological algorithms to their original sources.
 
+### Related tool: RustQC
+
+RustQC (Seqera, Bioconda package `rustqc`, nf-core module `rustqc`) reimplements 15 RNA-seq QC tools in one single-pass binary, including eight RSeQC tools: `bam_stat`, `infer_experiment`, `read_duplication`, `read_distribution`, `junction_annotation`, `junction_saturation`, `inner_distance`, and TIN. It describes its outputs as format-compatible with upstream and MultiQC ([announcement](https://seqera.io/blog/rustqc/)). This project covers all 33 RSeQC commands under their original names with byte-identical output against the pinned upstream (see `compatibility/upstream.lock`).
+
+| Tool | Scope | Output compatibility | Speed comparison |
+|---|---|---|---|
+| Upstream RSeQC 5.0.5 | 33 commands | baseline | to be measured (card E1) |
+| RustQC | 15 tools in one binary, including 8 RSeQC equivalents | format-compatible with upstream and MultiQC, per its own description | to be measured (card E1) |
+| This project | all 33 RSeQC commands under their original names | byte-identical against the pinned upstream | to be measured (card E1) |
+
 ## Design and implementation
 
 Describe the shared Rust command implementation, binary/alias surface, streaming BAM/SAM paths, interval indexing and sliding-window changes. Explain trade-offs, retained upstream quirks, stochastic policies, native/helper-dependent outputs, and the whole-file CRAM limitation if it remains in the release.
