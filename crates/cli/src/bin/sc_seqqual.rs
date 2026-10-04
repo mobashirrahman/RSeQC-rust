@@ -6,6 +6,9 @@
 //! `rseqc_formats::open_text_input`, matching upstream's
 //! `qcmodule.ireader.nopen` extension dispatch.
 
+// B4: link `rseqc_cli` so its `#[global_allocator]` (actionable
+// out-of-memory message) applies to this binary too.
+use rseqc_cli as _;
 use std::fs::File;
 use std::io::Write as _;
 use std::path::PathBuf;

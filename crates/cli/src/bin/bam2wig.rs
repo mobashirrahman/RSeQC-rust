@@ -13,6 +13,9 @@
 //! `/bin/sh -c`, preceded (unstranded mode only) by upstream's
 //! "Run wigToBigWig ..." stdout line; see `try_wig_to_bigwig`.
 
+// B4: link `rseqc_cli` so its `#[global_allocator]` (actionable
+// out-of-memory message) applies to this binary too.
+use rseqc_cli as _;
 use std::collections::HashSet;
 use std::fs::File;
 use std::io::{BufReader, Write as _};

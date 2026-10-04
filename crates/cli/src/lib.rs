@@ -4,8 +4,72 @@
 //! binary and missed in twenty-two others, which is the shape of bug this file
 //! removes: a rule that lives in a caller is a rule that a new caller forgets.
 
+use std::alloc::{GlobalAlloc, Layout, System};
 use std::io;
 use std::path::Path;
+
+/// Out-of-memory diagnostic (B4).
+///
+/// Past the memory limit every command died with the allocator's internal
+/// abort (`memory allocation of N bytes failed`) and no explanation naming
+/// the situation (`docs/ENVELOPE.md`, "What happens past the limit"). This
+/// `#[global_allocator]` wraps `System`: when the inner allocation returns
+/// null it writes a fixed message to file descriptor 2 and returns null, so
+/// the normal abort (and today's exit status) follows unchanged.
+///
+/// Allocation-failure discipline, because this runs on the allocation hot
+/// path: the message is a static byte string written with a raw `write(2)`
+/// syscall (declared via `extern "C"`, no `libc` dependency added); nothing
+/// here allocates, takes a lock, or touches thread-locals, so it is safe to
+/// run with the allocator in a failed state. Every `GlobalAlloc` entry
+/// point delegates directly to `System` (no default-method chaining), so a
+/// failure through any of them reports exactly once.
+const OOM_MESSAGE: &[u8] =
+    b"rseqc-rust: out of memory; see docs/ENVELOPE.md for per-command memory costs\n";
+
+extern "C" {
+    fn write(fd: i32, buf: *const u8, count: usize) -> isize;
+}
+
+struct OomReportingAlloc;
+
+unsafe impl GlobalAlloc for OomReportingAlloc {
+    unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
+        let ptr = unsafe { System.alloc(layout) };
+        if ptr.is_null() {
+            unsafe { write(2, OOM_MESSAGE.as_ptr(), OOM_MESSAGE.len()) };
+        }
+        ptr
+    }
+
+    unsafe fn dealloc(&self, ptr: *mut u8, layout: Layout) {
+        unsafe { System.dealloc(ptr, layout) };
+    }
+
+    unsafe fn alloc_zeroed(&self, layout: Layout) -> *mut u8 {
+        let ptr = unsafe { System.alloc_zeroed(layout) };
+        if ptr.is_null() {
+            unsafe { write(2, OOM_MESSAGE.as_ptr(), OOM_MESSAGE.len()) };
+        }
+        ptr
+    }
+
+    unsafe fn realloc(
+        &self,
+        ptr: *mut u8,
+        layout: Layout,
+        new_size: usize,
+    ) -> *mut u8 {
+        let out = unsafe { System.realloc(ptr, layout, new_size) };
+        if out.is_null() {
+            unsafe { write(2, OOM_MESSAGE.as_ptr(), OOM_MESSAGE.len()) };
+        }
+        out
+    }
+}
+
+#[global_allocator]
+static GLOBAL_ALLOC: OomReportingAlloc = OomReportingAlloc;
 
 /// Refuse an output prefix whose parent directory does not exist, before any work.
 ///
