@@ -14,9 +14,14 @@
 //! `IntoIterator<Item = io::Result<bam::Record>>`).
 
 use std::collections::HashMap;
+use std::fs::File;
 use std::io;
+use std::io::Write as _;
+use std::process::{Command, Stdio};
 
 use noodles_bam as bam;
+
+use crate::exec_resolve;
 
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
 pub struct NvcTable {
@@ -198,6 +203,107 @@ pub fn render_nvc_r_script(table: &NvcTable, out_prefix: &str, nx: bool) -> Stri
     }
 
     out
+}
+
+/// Refuses an output prefix whose parent directory does not exist, before
+/// any work. Mirrors `rseqc_cli::require_existing_output_parent` exactly
+/// (same `Path::parent` mapping, same message); kept local because the
+/// commands crate cannot depend on the CLI crate.
+fn require_output_parent(output_prefix: &str) -> io::Result<()> {
+    use std::path::Path;
+    let prefix = Path::new(output_prefix);
+    let parent = match prefix.parent() {
+        Some(p) if p.as_os_str().is_empty() => Path::new("."),
+        Some(p) => p,
+        None => Path::new("."),
+    };
+    if parent.is_dir() {
+        Ok(())
+    } else {
+        Err(io::Error::new(
+            io::ErrorKind::NotFound,
+            format!("output directory does not exist: {}", parent.display()),
+        ))
+    }
+}
+
+/// Runs the `read_NVC.py` CLI body over an already-opened record stream
+/// (C1 multi-driver pattern).
+///
+/// This is exactly what the standalone binary's `run()` does -- same
+/// progress lines, same files with the same bytes, same Rscript contract,
+/// same error propagation -- except the record source is a
+/// caller-supplied iterator and stdout/stderr are caller-supplied sinks.
+/// The standalone binary delegates to this (passing the process streams);
+/// `rseqc_multi` passes one record broadcast plus per-command stream
+/// files. `compute_nvc` and both renderers are untouched. See
+/// `run_read_gc` for the transport notes (parent-check `Result` form,
+/// piped Rscript child), which apply here unchanged.
+///
+/// The argument list is long on purpose and carries a targeted lint
+/// allowance: this is the C1 multi-driver pattern (one callable per
+/// command carrying its full CLI surface plus the two sinks), and
+/// bundling the flags into a struct would only hide them from the C2
+/// cards that copy this signature command by command.
+#[allow(clippy::too_many_arguments)]
+pub fn run_read_nvc<I>(
+    records: I,
+    q_cut: u8,
+    out_prefix: &str,
+    nx: bool,
+    skip_plot: bool,
+    rscript: &str,
+    stdout: &mut dyn io::Write,
+    stderr: &mut dyn io::Write,
+) -> io::Result<()>
+where
+    I: IntoIterator<Item = io::Result<bam::Record>>,
+{
+    // Same rule as the binary's `require_existing_output_parent_or_exit`
+    // (and upstream's `validate_args`), in `Result` form; see above.
+    require_output_parent(out_prefix)?;
+
+    // Upstream: `if self.bam_format: print("Read BAM file ... ", end=' ')`
+    // -- always the BAM branch in practice (htslib's `'rb'` open is
+    // lenient about actual content and succeeds for genuine plain-text
+    // SAM too; the "Read SAM file" branch is practically dead code for
+    // any valid input). The literal's own trailing space plus `end=' '`
+    // gives two spaces before "Done".
+    write!(stderr, "Read BAM file ...  ")?;
+    let table = compute_nvc(records, q_cut)?;
+    writeln!(stderr, "Done")?;
+
+    writeln!(stderr, "generating data matrix ...")?;
+    let nvc_path = format!("{out_prefix}.NVC.xls");
+    File::create(&nvc_path)?.write_all(render_nvc_table(&table).as_bytes())?;
+
+    // Upstream: `print("generating R script  ...", ...)` -- literal has
+    // two spaces between "script" and "...".
+    writeln!(stderr, "generating R script  ...")?;
+    let r_path = format!("{out_prefix}.NVC_plot.r");
+    File::create(&r_path)?.write_all(render_nvc_r_script(&table, out_prefix, nx).as_bytes())?;
+
+    if !skip_plot {
+        let rscript_path = exec_resolve::which(rscript).ok_or_else(|| {
+            io::Error::new(
+                io::ErrorKind::NotFound,
+                format!("Rscript executable not found: {rscript}"),
+            )
+        })?;
+        let out = Command::new(&rscript_path)
+            .arg(&r_path)
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()?
+            .wait_with_output()?;
+        stdout.write_all(&out.stdout)?;
+        stderr.write_all(&out.stderr)?;
+        if !out.status.success() {
+            return Err(io::Error::other(format!("R plotting failed for {r_path}")));
+        }
+    }
+
+    Ok(())
 }
 
 #[cfg(test)]

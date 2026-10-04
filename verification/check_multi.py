@@ -23,7 +23,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-COMMANDS = ("bam_stat", "read_GC")
+COMMANDS = ("bam_stat", "read_GC", "read_NVC")
 
 
 def build_fixture(path: Path, n_reads: int = 300, seed: int = 7) -> None:
@@ -121,6 +121,15 @@ def main() -> int:
     if rc != 0:
         failures.append("solo read_GC exit code")
 
+    # Standalone read_NVC (files + streams).
+    rc, solo_nvc_out, solo_nvc_err = run(
+        [str(bin_dir / "read_NVC"), "-i", str(bam), "-o", "out", "-q", q, "--skip-plot"],
+        solo_dir,
+    )
+    print(f"solo read_NVC exit={rc}")
+    if rc != 0:
+        failures.append("solo read_NVC exit code")
+
     # Through the driver, same flags, same relative prefix.
     rc, multi_own_out, multi_own_err = run(
         [
@@ -140,50 +149,76 @@ def main() -> int:
         failures.append("multi own streams (expected silence on success)")
         print(f"multi own stdout={multi_own_out!r} stderr={multi_own_err!r}")
 
-    # Streams, byte for byte.
-    check_equal(
-        "bam_stat.stdout",
-        solo_bs_out,
-        (multi_dir / "out.bam_stat.stdout").read_bytes()
-        if (multi_dir / "out.bam_stat.stdout").exists()
-        else b"<MISSING>",
-        failures,
-    )
-    if not (multi_dir / "out.bam_stat.stdout").exists():
-        failures.append("multi out.bam_stat.stdout missing")
-    check_equal(
-        "bam_stat.stderr",
-        solo_bs_err,
-        (multi_dir / "out.bam_stat.stderr").read_bytes()
-        if (multi_dir / "out.bam_stat.stderr").exists()
-        else b"<MISSING>",
-        failures,
-    )
-    if not (multi_dir / "out.bam_stat.stderr").exists():
-        failures.append("multi out.bam_stat.stderr missing")
-    check_equal(
-        "read_GC.stdout",
-        solo_gc_out,
-        (multi_dir / "out.read_GC.stdout").read_bytes()
-        if (multi_dir / "out.read_GC.stdout").exists()
-        else b"<MISSING>",
-        failures,
-    )
-    if not (multi_dir / "out.read_GC.stdout").exists():
-        failures.append("multi out.read_GC.stdout missing")
-    check_equal(
-        "read_GC.stderr",
-        solo_gc_err,
-        (multi_dir / "out.read_GC.stderr").read_bytes()
-        if (multi_dir / "out.read_GC.stderr").exists()
-        else b"<MISSING>",
-        failures,
-    )
-    if not (multi_dir / "out.read_GC.stderr").exists():
-        failures.append("multi out.read_GC.stderr missing")
+    # Streams, byte for byte: (label, solo bytes, multi stream file).
+    for label, solo_bytes, stream_name in (
+        ("bam_stat.stdout", solo_bs_out, "out.bam_stat.stdout"),
+        ("bam_stat.stderr", solo_bs_err, "out.bam_stat.stderr"),
+        ("read_GC.stdout", solo_gc_out, "out.read_GC.stdout"),
+        ("read_GC.stderr", solo_gc_err, "out.read_GC.stderr"),
+        ("read_NVC.stdout", solo_nvc_out, "out.read_NVC.stdout"),
+        ("read_NVC.stderr", solo_nvc_err, "out.read_NVC.stderr"),
+    ):
+        stream_file = multi_dir / stream_name
+        if not stream_file.exists():
+            failures.append(f"multi {stream_name} missing")
+            print(f"MISSING on multi side: {stream_name}")
+            continue
+        check_equal(label, solo_bytes, stream_file.read_bytes(), failures)
 
     # Data files, byte for byte, missing on either side is a failure.
-    check_files("files", solo_dir, multi_dir, ["out.GC.xls", "out.GC_plot.r"], failures)
+    check_files(
+        "files",
+        solo_dir,
+        multi_dir,
+        ["out.GC.xls", "out.GC_plot.r", "out.NVC.xls", "out.NVC_plot.r"],
+        failures,
+    )
+
+    # --nx forwarding: solo -x vs multi --nx, same relative prefix.
+    nx_solo_dir = work / "nx_solo"
+    nx_multi_dir = work / "nx_multi"
+    nx_solo_dir.mkdir()
+    nx_multi_dir.mkdir()
+    rc, nx_solo_out, nx_solo_err = run(
+        [str(bin_dir / "read_NVC"), "-i", str(bam), "-o", "outnx", "-q", q, "-x", "--skip-plot"],
+        nx_solo_dir,
+    )
+    if rc != 0:
+        failures.append("nx solo read_NVC -x exit code")
+    rc, _, _ = run(
+        [str(bin_dir / "rseqc_multi"), "-i", str(bam), "-o", "outnx",
+         "--run", "read_NVC", "-q", q, "--nx", "--skip-plot"],
+        nx_multi_dir,
+    )
+    if rc != 0:
+        failures.append("nx multi --nx exit code")
+    check_equal(
+        "nx read_NVC.stdout",
+        nx_solo_out,
+        (nx_multi_dir / "outnx.read_NVC.stdout").read_bytes()
+        if (nx_multi_dir / "outnx.read_NVC.stdout").exists()
+        else b"<MISSING>",
+        failures,
+    )
+    if not (nx_multi_dir / "outnx.read_NVC.stdout").exists():
+        failures.append("nx multi outnx.read_NVC.stdout missing")
+    check_equal(
+        "nx read_NVC.stderr",
+        nx_solo_err,
+        (nx_multi_dir / "outnx.read_NVC.stderr").read_bytes()
+        if (nx_multi_dir / "outnx.read_NVC.stderr").exists()
+        else b"<MISSING>",
+        failures,
+    )
+    if not (nx_multi_dir / "outnx.read_NVC.stderr").exists():
+        failures.append("nx multi outnx.read_NVC.stderr missing")
+    check_files(
+        "nx files",
+        nx_solo_dir,
+        nx_multi_dir,
+        ["outnx.NVC.xls", "outnx.NVC_plot.r"],
+        failures,
+    )
 
     # Subset selection: --run bam_stat alone produces only bam_stat streams.
     sub_dir = work / "subset"

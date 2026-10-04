@@ -13,7 +13,10 @@
 //! 2. Each command's CLI `run` logic is refactored (not duplicated) into a
 //!    `run_<command>(records, <its args>, stdout, stderr)` function in its
 //!    commands module, taking a record iterator plus `&mut dyn io::Write`
-//!    sinks instead of using the process-global print macros. The
+//!    sinks instead of using the process-global print macros. Commands
+//!    whose CLI surface exceeds clippy's 7-argument threshold carry
+//!    `#[allow(clippy::too_many_arguments)]` with this reason (bundling
+//!    would only hide the flags from later cards). The
 //!    standalone binary delegates to it with the process streams (so its
 //!    bytes are unchanged -- proven by that command's `run_diff.py`
 //!    cases); a multi worker calls it with per-command stream files.
@@ -60,6 +63,7 @@ use noodles_bam as bam;
 
 use crate::bam_stat::run_bam_stat;
 use crate::read_gc::run_read_gc;
+use crate::read_nvc::run_read_nvc;
 
 /// Records per reader batch (C1). Small enough to keep worker latency low,
 /// large enough that channel traffic is irrelevant next to decode cost.
@@ -116,9 +120,12 @@ pub struct MultiArgs {
     pub skip_plot: bool,
     /// Rscript executable (`--rscript`), forwarded to plotting commands.
     pub rscript: String,
+    /// Include ambiguous nucleotides N and X in the NVC plot (`--nx`),
+    /// forwarded to `read_NVC` only.
+    pub nx: bool,
 }
 
-/// The pilot registry: `bam_stat` and `read_GC`. C2 appends here.
+/// The pilot registry: `bam_stat`, `read_GC`, `read_NVC`. C2 appends here.
 pub const COMMANDS: &[CommandEntry] = &[
     CommandEntry {
         name: "bam_stat",
@@ -131,6 +138,34 @@ pub const COMMANDS: &[CommandEntry] = &[
                       stdout: &mut dyn io::Write,
                       stderr: &mut dyn io::Write| {
                     run_bam_stat(records, mapq, stdout, stderr)
+                },
+            )
+        },
+    },
+    CommandEntry {
+        name: "read_NVC",
+        stream_stem: "read_NVC",
+        prog: "read_NVC.py",
+        build: |args: &MultiArgs| {
+            let mapq = args.mapq;
+            let out_prefix = args.out_prefix.clone();
+            let nx = args.nx;
+            let skip_plot = args.skip_plot;
+            let rscript = args.rscript.clone();
+            Box::new(
+                move |records: ChannelRecords,
+                      stdout: &mut dyn io::Write,
+                      stderr: &mut dyn io::Write| {
+                    run_read_nvc(
+                        records,
+                        mapq,
+                        &out_prefix,
+                        nx,
+                        skip_plot,
+                        &rscript,
+                        stdout,
+                        stderr,
+                    )
                 },
             )
         },

@@ -53,6 +53,11 @@ struct Args {
     /// Rscript executable, forwarded to plotting commands.
     #[arg(long = "rscript", default_value = "Rscript")]
     rscript: String,
+
+    /// Include ambiguous nucleotides N and X in the NVC plot (`-x`),
+    /// forwarded to `read_NVC` only.
+    #[arg(short = 'x', long = "nx")]
+    nx: bool,
 }
 
 fn main() -> std::process::ExitCode {
@@ -94,6 +99,7 @@ fn run(args: &Args) -> std::io::Result<()> {
         out_prefix: prefix,
         skip_plot: args.skip_plot,
         rscript: args.rscript.clone(),
+        nx: args.nx,
     };
 
     // The calling thread is the reader: open here so an unreadable input
