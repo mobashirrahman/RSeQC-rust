@@ -15,7 +15,7 @@
 
 use std::collections::HashSet;
 use std::fs::File;
-use std::io::{BufReader, Write as _};
+use std::io::{BufReader, BufWriter, Write as _};
 use std::path::PathBuf;
 use std::process::Command;
 
@@ -136,22 +136,32 @@ fn run(args: &Args) -> std::io::Result<()> {
     let valid_chroms: HashSet<String> = header.reference_sequences().keys().map(|k| k.to_string()).collect();
     print_chrom_progress(&valid_chroms);
 
-    let signal = build_wig_signal(reader.records(), &header, strand_rule_active, &strand_map, args.skip_multi, args.map_qual)?;
+    // B2: the render functions drain `signal` per chromosome (freeing each
+    // entry once its block is rendered) so peak RSS is the maximum of the
+    // signal map and the output string rather than their sum.
+    let mut signal = build_wig_signal(reader.records(), &header, strand_rule_active, &strand_map, args.skip_multi, args.map_qual)?;
 
+    // B2: render functions stream into the files (never a whole `String`)
+    // and drain `signal` per chromosome, so peak RSS is the signal map
+    // alone rather than the map plus a ~0.5 GB output string.
     let prefix = args.out_prefix.to_string_lossy();
     if !strand_rule_active {
         let wig_path = format!("{prefix}.wig");
-        File::create(&wig_path)?.write_all(render_unstranded_wig(&chrom_sizes, &valid_chroms, &signal, normalization_factor).as_bytes())?;
+        let mut wig = BufWriter::new(File::create(&wig_path)?);
+        render_unstranded_wig(&mut wig, &chrom_sizes, &valid_chroms, &mut signal, normalization_factor)?;
+        wig.flush()?;
         // Upstream prints the (flag-less) command line to stdout first.
         println!("Run wigToBigWig {prefix}.wig {} {prefix}.bw ", args.chrom_size.display());
         std::io::stdout().flush()?;
         try_wig_to_bigwig(&[format!("wigToBigWig -clip {prefix}.wig {} {prefix}.bw ", args.chrom_size.display())]);
     } else {
-        let (fwd, rev) = render_stranded_wig(&chrom_sizes, &valid_chroms, &signal, normalization_factor);
         let fwd_path = format!("{prefix}.Forward.wig");
         let rev_path = format!("{prefix}.Reverse.wig");
-        File::create(&fwd_path)?.write_all(fwd.as_bytes())?;
-        File::create(&rev_path)?.write_all(rev.as_bytes())?;
+        let mut fwd = BufWriter::new(File::create(&fwd_path)?);
+        let mut rev = BufWriter::new(File::create(&rev_path)?);
+        render_stranded_wig(&mut fwd, &mut rev, &chrom_sizes, &valid_chroms, &mut signal, normalization_factor)?;
+        fwd.flush()?;
+        rev.flush()?;
         let cs = args.chrom_size.display();
         try_wig_to_bigwig(&[
             format!("wigToBigWig -clip {fwd_path} {cs} {prefix}.Forward.bw "),

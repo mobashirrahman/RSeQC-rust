@@ -68,12 +68,257 @@ pub fn load_chrom_sizes(reader: impl BufRead) -> io::Result<Vec<(String, i64)>> 
 
 #[derive(Debug, Default, Clone)]
 pub struct ChromWig {
-    /// 1-based position -> accumulated signal. Unstranded and forward
-    /// strand signal share this field (always non-negative).
-    pub forward: BTreeMap<i64, f64>,
-    /// 1-based position -> accumulated signal, always non-positive
+    /// Accumulated signal per 1-based position, chunked (see `StrandSignal`).
+    /// Unstranded and forward strand signal share this field (always
+    /// non-negative).
+    pub forward: StrandSignal,
+    /// Accumulated signal per 1-based position, chunked, always non-positive
     /// (upstream subtracts, not adds, for the reverse strand).
-    pub reverse: BTreeMap<i64, f64>,
+    pub reverse: StrandSignal,
+}
+
+/// Positions per dense chunk (B2 memory envelope).
+const CHUNK_SIZE: usize = 4096;
+/// Words of the per-chunk touched bitmap (`CHUNK_SIZE / 64`).
+const CHUNK_WORDS: usize = CHUNK_SIZE / 64;
+
+/// One dense chunk of per-position signal: `CHUNK_SIZE` `f64` values plus a
+/// bitmap of which positions were actually touched. A chunk is allocated on
+/// first touch; untouched slots (always 0.0) are never iterated or rendered,
+/// so a touched position holding 0.0 still renders while an untouched one is
+/// skipped, exactly like the per-position map this replaces.
+#[derive(Debug, Clone)]
+struct Chunk {
+    values: Box<[f64; CHUNK_SIZE]>,
+    touched: [u64; CHUNK_WORDS],
+}
+
+/// A chunk starts sparse and promotes to dense past this many DISTINCT
+/// touched positions. Sparse entries cost ~16 bytes each against a 32 KiB
+/// dense array, so chunks in thinly covered regions never pay for positions
+/// they do not hold; promotion keeps densely covered regions at 8 bytes per
+/// position. The trigger is deliberately the distinct-position count, not
+/// the touch count: deep RNA-seq coverage re-touches the same positions
+/// thousands of times, and promoting on touches would densify chunks whose
+/// distinct positions still fit in a few hundred bytes.
+///
+/// Sparse touches merge lazily: `add` only pushes, and the list is
+/// folded (sorted, repeated offsets summed) once `SPARSE_FOLD_EVERY`
+/// pushes have arrived since the last fold, promoting to dense when the
+/// folded distinct count exceeds `SPARSE_PROMOTE_AT`. Eager per-add
+/// merging scans the whole list per touch and costs minutes on real
+/// inputs; batching keeps adds amortised O(1). The fold cadence counts
+/// pushes (not list length): a chunk with mostly distinct positions must
+/// not re-sort on every push once past the threshold.
+const SPARSE_PROMOTE_AT: usize = 2048;
+/// Fold a sparse touch list every this many pushes since the last fold.
+const SPARSE_FOLD_EVERY: usize = 512;
+
+/// Per-chunk storage: a sparse `(offset, value)` touch list until the chunk
+/// proves dense, then a dense array plus touched bitmap. Offsets fit `u16`
+/// (`CHUNK_SIZE` is 4096); sparse entries are recorded in arrival order with
+/// one entry per `add` and merged (summed) on promotion or iteration, so
+/// repeated touches of one position accumulate exactly as the old
+/// `entry(pos).or_insert(0.0) += delta` did.
+#[derive(Debug, Clone)]
+enum ChunkData {
+    /// `(offset, value)` touches in arrival order (`folded` = list length
+    /// right after the last fold) plus the push count logic in `add`.
+    Sparse { touches: Vec<(u16, f64)>, since_fold: usize },
+    Dense(Box<Chunk>),
+}
+
+impl ChunkData {
+    /// Fold a sparse touch list into a dense chunk, summing repeated
+    /// touches of the same offset.
+    fn promote(touches: &[(u16, f64)]) -> Chunk {
+        let mut chunk = Chunk {
+            values: Box::new([0.0; CHUNK_SIZE]),
+            touched: [0; CHUNK_WORDS],
+        };
+        for &(off, val) in touches {
+            let off = off as usize;
+            chunk.values[off] += val;
+            chunk.touched[off / 64] |= 1u64 << (off % 64);
+        }
+        chunk
+    }
+
+    /// Sort a touch list by offset and sum repeated touches in place,
+    /// returning the folded (distinct-offset) list.
+    fn fold(touches: &mut Vec<(u16, f64)>) {
+        touches.sort_by_key(|&(off, _)| off);
+        let mut distinct = 0;
+        for i in 0..touches.len() {
+            if distinct > 0 && touches[distinct - 1].0 == touches[i].0 {
+                let v = touches[i].1;
+                touches[distinct - 1].1 += v;
+            } else {
+                touches[distinct] = touches[i];
+                distinct += 1;
+            }
+        }
+        touches.truncate(distinct);
+    }
+}
+
+/// Per-position coverage signal stored as fixed-size chunks (B2).
+///
+/// Replaces `BTreeMap<i64, f64>` (one heap node per covered position, ~44
+/// bytes per covered base). Each chunk covers `CHUNK_SIZE` consecutive
+/// positions and is keyed by chunk index in a `BTreeMap`; chunks start as a
+/// sparse touch list and promote to a dense 32 KiB array past
+/// `SPARSE_PROMOTE_AT` touches. Iteration yields exactly the touched
+/// positions in ascending order with the accumulated values, so every
+/// rendered value is unchanged.
+#[derive(Debug, Default, Clone)]
+pub struct StrandSignal {
+    chunks: BTreeMap<i64, ChunkData>,
+}
+
+impl StrandSignal {
+    /// Chunk index holding 1-based `pos` (positions start at 1; chunk 0
+    /// holds positions 1 through `CHUNK_SIZE`).
+    fn chunk_index(pos: i64) -> i64 {
+        (pos - 1) / CHUNK_SIZE as i64
+    }
+
+    /// Offset of 1-based `pos` within its chunk.
+    fn offset(pos: i64) -> usize {
+        ((pos - 1) % CHUNK_SIZE as i64) as usize
+    }
+
+    /// Accumulate `delta` at 1-based `pos`, allocating the chunk on first
+    /// touch and promoting it to dense past `SPARSE_PROMOTE_AT` distinct
+    /// positions. Sparse touches merge lazily (see the threshold docs), so
+    /// an add is an amortised-O(1) push; repeated touches of one offset are
+    /// summed at fold time.
+    pub fn add(&mut self, pos: i64, delta: f64) {
+        let (idx, off) = (Self::chunk_index(pos), Self::offset(pos));
+        let data = self.chunks.entry(idx).or_insert_with(|| ChunkData::Sparse {
+            touches: Vec::new(),
+            since_fold: 0,
+        });
+        if let ChunkData::Sparse { touches, since_fold } = data {
+            touches.push((off as u16, delta));
+            *since_fold += 1;
+            if *since_fold >= SPARSE_FOLD_EVERY {
+                *since_fold = 0;
+                ChunkData::fold(touches);
+                if touches.len() > SPARSE_PROMOTE_AT {
+                    *data = ChunkData::Dense(Box::new(ChunkData::promote(touches)));
+                } else if touches.capacity() > 1024 && touches.len() * 4 < touches.capacity() {
+                    // Bound retained capacity: repeated folds of a mostly
+                    // duplicate list would otherwise pin a large buffer.
+                    touches.shrink_to_fit();
+                }
+            }
+            return;
+        }
+        if let ChunkData::Dense(chunk) = data {
+            chunk.values[off] += delta;
+            chunk.touched[off / 64] |= 1u64 << (off % 64);
+        }
+    }
+
+    /// Set an absolute value at 1-based `pos` (used by tests to build
+    /// fixtures; production only accumulates via `add`). Recorded as a
+    /// touch, so the position renders.
+    pub fn insert(&mut self, pos: i64, value: f64) {
+        self.add(pos, value - self.get(pos).unwrap_or(0.0));
+    }
+
+    /// Value at 1-based `pos` (repeated touches summed), or `None` if
+    /// untouched.
+    pub fn get(&self, pos: i64) -> Option<f64> {
+        let data = self.chunks.get(&Self::chunk_index(pos))?;
+        match data {
+            ChunkData::Dense(chunk) => {
+                let off = Self::offset(pos);
+                if chunk.touched[off / 64] & (1u64 << (off % 64)) != 0 {
+                    Some(chunk.values[off])
+                } else {
+                    None
+                }
+            }
+            ChunkData::Sparse { touches, .. } => {
+                let off = Self::offset(pos) as u16;
+                let mut sum = 0.0;
+                let mut found = false;
+                for &(o, v) in touches {
+                    if o == off {
+                        sum += v;
+                        found = true;
+                    }
+                }
+                found.then_some(sum)
+            }
+        }
+    }
+
+    /// Number of touched positions. Sparse lists may hold unfolded
+    /// repeats, so this folds a copy to count distinct offsets.
+    pub fn len(&self) -> usize {
+        self.chunks
+            .values()
+            .map(|data| match data {
+                ChunkData::Dense(chunk) => chunk
+                    .touched
+                    .iter()
+                    .map(|w| w.count_ones() as usize)
+                    .sum::<usize>(),
+                ChunkData::Sparse { touches, .. } => {
+                    let mut offs: Vec<u16> =
+                        touches.iter().map(|&(o, _)| o).collect();
+                    offs.sort_unstable();
+                    offs.dedup();
+                    offs.len()
+                }
+            })
+            .sum()
+    }
+
+    /// True when no position has been touched (chunks are only ever created
+    /// by a touching `add`/`insert`, so no chunk means no positions).
+    pub fn is_empty(&self) -> bool {
+        self.chunks.is_empty()
+    }
+
+    /// Touched `(position, value)` pairs in ascending position order
+    /// (chunks iterate by ascending index; sparse touches are folded by
+    /// offset, repeated touches summed).
+    pub fn iter(&self) -> impl Iterator<Item = (i64, f64)> + '_ {
+        self.chunks.iter().flat_map(|(&idx, data)| {
+            let base = idx * CHUNK_SIZE as i64;
+            let folded: Vec<(u16, f64)> = match data {
+                ChunkData::Dense(chunk) => (0..CHUNK_SIZE)
+                    .filter_map(|off| {
+                        if chunk.touched[off / 64] & (1u64 << (off % 64)) != 0 {
+                            Some((off as u16, chunk.values[off]))
+                        } else {
+                            None
+                        }
+                    })
+                    .collect(),
+                ChunkData::Sparse { touches, .. } => {
+                    let mut sorted = touches.clone();
+                    sorted.sort_by_key(|&(off, _)| off);
+                    let mut folded: Vec<(u16, f64)> =
+                        Vec::with_capacity(sorted.len());
+                    for (off, val) in sorted {
+                        match folded.last_mut() {
+                            Some(last) if last.0 == off => last.1 += val,
+                            _ => folded.push((off, val)),
+                        }
+                    }
+                    folded
+                }
+            };
+            folded
+                .into_iter()
+                .map(move |(off, val)| (base + off as i64 + 1, val))
+        })
+    }
 }
 
 fn read_id_and_strand_key(flags: sam::alignment::record::Flags) -> String {
@@ -137,16 +382,16 @@ where
         for (s, e) in blocks {
             for pos1 in (s as i64 + 1)..=(e as i64) {
                 if !strand_rule_active {
-                    *entry.forward.entry(pos1).or_insert(0.0) += 1.0;
+                    entry.forward.add(pos1, 1.0);
                 } else {
                     let assigned = *strand_map.get(&key).ok_or_else(|| {
                         io::Error::new(io::ErrorKind::InvalidData, format!("strand_rule has no mapping for computed key {key:?} (rule/pairing-mode mismatch)"))
                     })?;
                     if assigned == '+' {
-                        *entry.forward.entry(pos1).or_insert(0.0) += 1.0;
+                        entry.forward.add(pos1, 1.0);
                     }
                     if assigned == '-' {
-                        *entry.reverse.entry(pos1).or_insert(0.0) -= 1.0;
+                        entry.reverse.add(pos1, -1.0);
                     }
                 }
             }
@@ -215,49 +460,58 @@ where
 /// Renders one chromosome's `variableStep` block plus its sorted
 /// position/value lines (`"%d\t%.2f"`, optionally scaled by
 /// `normalization_factor`), or just the header line if `chrom` has no
-/// entry in `signal` (a listed chromosome with zero coverage).
-fn render_chrom_block(out: &mut String, chrom: &str, values: Option<&BTreeMap<i64, f64>>, normalization_factor: Option<f64>) {
-    out.push_str("variableStep chrom=");
-    out.push_str(chrom);
-    out.push('\n');
-    let Some(values) = values else { return };
-    for (&pos, &value) in values {
+/// entry in `signal` (a listed chromosome with zero coverage). Bytes are
+/// written incrementally (B2: the full body is ~0.5 GB on real inputs and
+/// must never sit in memory as one `String`); formatting per line is
+/// unchanged.
+fn render_chrom_block(out: &mut impl io::Write, chrom: &str, values: Option<&StrandSignal>, normalization_factor: Option<f64>) -> io::Result<()> {
+    out.write_all(format!("variableStep chrom={chrom}\n").as_bytes())?;
+    let Some(values) = values else { return Ok(()) };
+    for (pos, value) in values.iter() {
         let scaled = normalization_factor.map(|f| value * f).unwrap_or(value);
-        out.push_str(&format!("{pos}\t{scaled:.2}\n"));
+        out.write_all(format!("{pos}\t{scaled:.2}\n").as_bytes())?;
     }
+    Ok(())
 }
 
-/// Renders the unstranded `.wig` file body. Ports the `strandRule`-empty
+/// Renders the unstranded `.wig` file body, streamed into `out` (B2: never
+/// materialised as one `String`). Ports the `strandRule`-empty
 /// branch of `bamTowig`'s output loop: a chromosome absent from the BAM
 /// header entirely is skipped (with a caller-visible warning, not
 /// rendered here); every chromosome present in the header always gets a
 /// `variableStep` header line, even with zero accumulated positions.
-pub fn render_unstranded_wig(chrom_sizes: &[(String, i64)], valid_chroms: &HashSet<String>, signal: &HashMap<String, ChromWig>, normalization_factor: Option<f64>) -> String {
-    let mut out = String::new();
+///
+/// Takes `signal` by `&mut` and drops each chromosome's entry once its block
+/// is rendered (B2): this frees the signal map progressively while output
+/// streams to disk, so peak RSS is the signal map alone rather than the map
+/// plus a ~0.5 GB output string. Iteration follows `chrom_sizes` order
+/// exactly as before, so output bytes are unchanged.
+pub fn render_unstranded_wig(out: &mut impl io::Write, chrom_sizes: &[(String, i64)], valid_chroms: &HashSet<String>, signal: &mut HashMap<String, ChromWig>, normalization_factor: Option<f64>) -> io::Result<()> {
     for (chrom, _) in chrom_sizes {
         if !valid_chroms.contains(chrom) {
             continue;
         }
         let values = signal.get(chrom).map(|c| &c.forward);
-        render_chrom_block(&mut out, chrom, values, normalization_factor);
+        render_chrom_block(out, chrom, values, normalization_factor)?;
+        signal.remove(chrom);
     }
-    out
+    Ok(())
 }
 
 /// Renders the `(forward_wig, reverse_wig)` file bodies for a
-/// strand-specific run.
-pub fn render_stranded_wig(chrom_sizes: &[(String, i64)], valid_chroms: &HashSet<String>, signal: &HashMap<String, ChromWig>, normalization_factor: Option<f64>) -> (String, String) {
-    let mut fwd = String::new();
-    let mut rev = String::new();
+/// strand-specific run, streamed into `fwd`/`rev`. Drains `signal` per
+/// chromosome like `render_unstranded_wig` (B2; see its doc comment).
+pub fn render_stranded_wig(fwd: &mut impl io::Write, rev: &mut impl io::Write, chrom_sizes: &[(String, i64)], valid_chroms: &HashSet<String>, signal: &mut HashMap<String, ChromWig>, normalization_factor: Option<f64>) -> io::Result<()> {
     for (chrom, _) in chrom_sizes {
         if !valid_chroms.contains(chrom) {
             continue;
         }
         let chrom_wig = signal.get(chrom);
-        render_chrom_block(&mut fwd, chrom, chrom_wig.map(|c| &c.forward), normalization_factor);
-        render_chrom_block(&mut rev, chrom, chrom_wig.map(|c| &c.reverse), normalization_factor);
+        render_chrom_block(fwd, chrom, chrom_wig.map(|c| &c.forward), normalization_factor)?;
+        render_chrom_block(rev, chrom, chrom_wig.map(|c| &c.reverse), normalization_factor)?;
+        signal.remove(chrom);
     }
-    (fwd, rev)
+    Ok(())
 }
 
 #[cfg(test)]
@@ -308,8 +562,8 @@ mod tests {
         let chr1 = &signal["chr1"];
         // 1-based positions 101..105 inclusive (5 bases), each covered once.
         assert_eq!(chr1.forward.len(), 5);
-        assert_eq!(chr1.forward[&101], 1.0);
-        assert_eq!(chr1.forward[&105], 1.0);
+        assert_eq!(chr1.forward.get(101), Some(1.0));
+        assert_eq!(chr1.forward.get(105), Some(1.0));
         assert!(chr1.reverse.is_empty());
     }
 
@@ -337,7 +591,7 @@ mod tests {
         let chr1 = &signal["chr1"];
         assert!(chr1.forward.is_empty());
         assert_eq!(chr1.reverse.len(), 3);
-        assert_eq!(chr1.reverse[&1], -1.0);
+        assert_eq!(chr1.reverse.get(1), Some(-1.0));
     }
 
     #[test]
@@ -422,8 +676,9 @@ mod tests {
         signal.insert("chr1".to_string(), chr1);
         // chrX has zero coverage: absent from `signal` entirely.
 
-        let wig = render_unstranded_wig(&chrom_sizes, &valid, &signal, None);
-        assert_eq!(wig, "variableStep chrom=chr1\n3\t1.00\n5\t2.00\nvariableStep chrom=chrX\n");
+        let mut buf = Vec::new();
+        render_unstranded_wig(&mut buf, &chrom_sizes, &valid, &mut signal, None).unwrap();
+        assert_eq!(String::from_utf8(buf).unwrap(), "variableStep chrom=chr1\n3\t1.00\n5\t2.00\nvariableStep chrom=chrX\n");
     }
 
     #[test]
@@ -432,8 +687,9 @@ mod tests {
         let mut valid = HashSet::new();
         valid.insert("chr1".to_string()); // chrUnknown NOT a valid BAM reference
 
-        let wig = render_unstranded_wig(&chrom_sizes, &valid, &HashMap::new(), None);
-        assert_eq!(wig, "variableStep chrom=chr1\n");
+        let mut buf = Vec::new();
+        render_unstranded_wig(&mut buf, &chrom_sizes, &valid, &mut HashMap::new(), None).unwrap();
+        assert_eq!(String::from_utf8(buf).unwrap(), "variableStep chrom=chr1\n");
     }
 
     #[test]
@@ -448,8 +704,10 @@ mod tests {
         chr1.reverse.insert(1, -4.0);
         signal.insert("chr1".to_string(), chr1);
 
-        let (fwd, rev) = render_stranded_wig(&chrom_sizes, &valid, &signal, Some(0.5));
-        assert_eq!(fwd, "variableStep chrom=chr1\n1\t2.00\n");
-        assert_eq!(rev, "variableStep chrom=chr1\n1\t-2.00\n");
+        let mut fwd_buf = Vec::new();
+        let mut rev_buf = Vec::new();
+        render_stranded_wig(&mut fwd_buf, &mut rev_buf, &chrom_sizes, &valid, &mut signal, Some(0.5)).unwrap();
+        assert_eq!(String::from_utf8(fwd_buf).unwrap(), "variableStep chrom=chr1\n1\t2.00\n");
+        assert_eq!(String::from_utf8(rev_buf).unwrap(), "variableStep chrom=chr1\n1\t-2.00\n");
     }
 }
