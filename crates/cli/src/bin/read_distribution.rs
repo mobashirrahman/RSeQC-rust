@@ -8,7 +8,7 @@ use rseqc_cli as _;
 use std::path::PathBuf;
 
 use clap::Parser;
-use rseqc_commands::read_distribution::{count_read_distribution, process_gene_model, render_report};
+use rseqc_commands::read_distribution::run_read_distribution;
 
 #[derive(Parser)]
 #[command(
@@ -38,21 +38,19 @@ fn main() -> std::process::ExitCode {
 }
 
 fn run(args: &Args) -> std::io::Result<()> {
-    // `print(f"Processing {gene_model} ...", end=" ")` then a separate
-    // `print("Done")` on the same line (one space from `end=" "`, one
-    // trailing newline from the "Done" print).
-    eprint!("Processing {} ... ", args.refgene.display());
-    let model = process_gene_model(&args.refgene)?;
-    eprintln!("Done");
-
-    // `print(f"Processing {input_file} ...", end=" ")` then a separate
-    // `print("Finished\n")`: the literal "\n" plus the print's own
-    // newline give a BLANK line after "Finished", not just one newline.
-    eprint!("Processing {} ... ", args.input_file.display());
+    // C1 multi-driver pattern: the CLI body lives in
+    // `rseqc_commands::read_distribution::run_read_distribution` (same
+    // bytes, same streams, same order) so `rseqc_multi` can drive it over a
+    // record broadcast plus per-command stream files. There is no
+    // output-prefix parent check to keep here: this command's report IS its
+    // stdout (upstream takes no `-o`), so there is no output file.
     let (header, records) = rseqc_formats::open_alignments(&args.input_file)?;
-    let counts = count_read_distribution(records, &header, &model)?;
-    eprintln!("Finished\n");
-
-    println!("{}", render_report(&model, &counts));
-    Ok(())
+    run_read_distribution(
+        records,
+        &header,
+        &args.refgene,
+        &args.input_file,
+        &mut std::io::stdout(),
+        &mut std::io::stderr(),
+    )
 }

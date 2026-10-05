@@ -322,6 +322,52 @@ pub fn render_report(model: &RegionModel, counts: &DistributionCounts) -> String
     lines.join("\n")
 }
 
+/// Runs the `read_distribution.py` CLI body over an already-opened record
+/// stream (C1 multi-driver pattern).
+///
+/// This is exactly what the standalone binary's `run()` does -- same two
+/// progress lines with their exact spacing (including the BLANK line after
+/// "Finished", which is upstream's `print("Finished\n")`: the literal `\n`
+/// plus print's own newline), same stdout report, same error propagation --
+/// except the record source is a caller-supplied iterator and stdout/stderr
+/// are caller-supplied sinks. The standalone binary delegates to this
+/// (passing the process streams); `rseqc_multi` passes one record broadcast,
+/// the shared header, and per-command stream files. `process_gene_model`,
+/// `count_read_distribution` and the renderer are untouched.
+///
+/// Like `infer_experiment`, this command writes no output file: its report
+/// IS stdout (upstream takes no `-o` here), so there is no output-prefix
+/// parent check, and the gene model is read from the broadcast path rather
+/// than being pre-parsed by the driver.
+pub fn run_read_distribution<I>(
+    records: I,
+    header: &sam::Header,
+    refgene: &std::path::Path,
+    input_file: &std::path::Path,
+    stdout: &mut dyn io::Write,
+    stderr: &mut dyn io::Write,
+) -> io::Result<()>
+where
+    I: IntoIterator<Item = io::Result<bam::Record>>,
+{
+    // `print(f"Processing {gene_model} ...", end=" ")` then a separate
+    // `print("Done")` on the same line (one space from `end=" "`, one
+    // trailing newline from the "Done" print).
+    write!(stderr, "Processing {} ... ", refgene.display())?;
+    let model = process_gene_model(refgene)?;
+    writeln!(stderr, "Done")?;
+
+    // `print(f"Processing {input_file} ...", end=" ")` then a separate
+    // `print("Finished\n")`: the literal "\n" plus the print's own
+    // newline give a BLANK line after "Finished", not just one newline.
+    write!(stderr, "Processing {} ... ", input_file.display())?;
+    let counts = count_read_distribution(records, header, &model)?;
+    writeln!(stderr, "Finished\n")?;
+
+    writeln!(stdout, "{}", render_report(&model, &counts))?;
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

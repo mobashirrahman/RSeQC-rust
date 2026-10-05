@@ -68,6 +68,7 @@ use crate::deletion_profile::run_deletion_profile;
 use crate::infer_experiment::run_infer_experiment;
 use crate::insertion_profile::run_insertion_profile;
 use crate::mismatch_profile::run_mismatch_profile;
+use crate::read_distribution::run_read_distribution;
 use crate::read_gc::run_read_gc;
 use crate::read_nvc::run_read_nvc;
 use crate::read_quality::run_read_quality;
@@ -163,8 +164,15 @@ pub struct MultiArgs {
     /// need it (currently `infer_experiment`) take `&sam::Header` from the
     /// `Arc`; the channel still carries records only.
     pub header: Arc<noodles_sam::Header>,
+    /// The input alignment path, as the user spelled it. Only used by the
+    /// commands whose progress lines echo the input filename
+    /// (`read_distribution`: upstream's `print(f"Processing {input_file}
+    /// ...", end=" ")`), so the driver's stderr matches standalone's byte
+    /// for byte. Not used to open anything: the reader already opened it.
+    pub input_file: PathBuf,
     /// Reference BED12 path (`-r`), required by the commands that read a
-    /// gene model (`infer_experiment` so far) and unused by the rest.
+    /// gene model (`infer_experiment`, `read_distribution`) and unused by
+    /// the rest.
     ///
     /// The PATH is broadcast rather than parsed gene ranges, on purpose:
     /// parsing belongs to the worker that needs it, so a missing or
@@ -176,7 +184,8 @@ pub struct MultiArgs {
 
 /// The pilot registry: `bam_stat`, `read_GC`, `read_NVC`, `read_quality`,
 /// `clipping_profile`, `insertion_profile`, `deletion_profile`,
-/// `mismatch_profile`, `infer_experiment`. C2 appends here.
+/// `mismatch_profile`, `infer_experiment`, `read_distribution`. C2 appends
+/// here.
 pub const COMMANDS: &[CommandEntry] = &[
     CommandEntry {
         name: "bam_stat",
@@ -366,6 +375,39 @@ pub const COMMANDS: &[CommandEntry] = &[
                         &refgene,
                         sample_size,
                         mapq,
+                        stdout,
+                        stderr,
+                    )
+                },
+            )
+        },
+    },
+    CommandEntry {
+        name: "read_distribution",
+        stream_stem: "read_distribution",
+        prog: "read_distribution.py",
+        build: |args: &MultiArgs| {
+            let header = Arc::clone(&args.header);
+            let reference_bed = args.reference_bed.clone();
+            let input_file = args.input_file.clone();
+            Box::new(
+                move |records: ChannelRecords,
+                      stdout: &mut dyn io::Write,
+                      stderr: &mut dyn io::Write| {
+                    // `-r` cannot be missing here: `rseqc_multi` rejects
+                    // selecting this command without it, since upstream
+                    // requires the flag.
+                    let refgene = reference_bed.clone().ok_or_else(|| {
+                        io::Error::new(
+                            io::ErrorKind::InvalidInput,
+                            "read_distribution.py: error: the following arguments are required: -r/--refgene",
+                        )
+                    })?;
+                    run_read_distribution(
+                        records,
+                        &header,
+                        &refgene,
+                        &input_file,
                         stdout,
                         stderr,
                     )

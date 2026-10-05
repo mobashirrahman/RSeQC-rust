@@ -153,17 +153,20 @@ fn run(args: &Args) -> std::io::Result<()> {
              mismatch_profile is selected (they filter reads on it)",
         );
     }
-    // `infer_experiment` reads a gene model; upstream's `-r` is required,
-    // and the driver's equivalent (`--reference-bed`) is optional because the
-    // other commands ignore it. Selecting this one without it is a usage
-    // error rather than a silent empty model.
-    if tokens.iter().any(|token| token == "infer_experiment")
+    // `infer_experiment` and `read_distribution` read a gene model;
+    // upstream's `-r` is required for both, and the driver's equivalent
+    // (`--reference-bed`) is optional because the other commands ignore it.
+    // Selecting either without it is a usage error rather than a silent
+    // empty model.
+    if tokens
+        .iter()
+        .any(|token| token == "infer_experiment" || token == "read_distribution")
         && args.reference_bed.is_none()
     {
         rseqc_cli::usage_exit(
             "rseqc_multi",
-            "--reference-bed is required when infer_experiment is selected \
-             (it reads a gene model)",
+            "--reference-bed is required when infer_experiment or \
+             read_distribution is selected (they read a gene model)",
         );
     }
 
@@ -190,6 +193,7 @@ fn run(args: &Args) -> std::io::Result<()> {
         sample_size: args.sample_size,
         header: std::sync::Arc::new(header),
         reference_bed: args.reference_bed.clone(),
+        input_file: args.input_file.clone(),
     };
 
     let results = drive(entries, &multi_args, records);

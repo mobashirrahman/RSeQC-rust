@@ -34,10 +34,16 @@ def build_bed12(path: Path) -> None:
     match against. Not a real annotation: check_multi compares the port
     against ITSELF through two invocation paths, so the model's contents are
     irrelevant as long as both sides see the same file.
+
+    Twelve columns, because `read_distribution.py` REFUSES a model that is
+    not (`error: has 11 columns; expected 12`) -- found by running this
+    check, which is why the column count is written out here explicitly
+    rather than left implicit: chr, start, end, name, score, strand,
+    thickStart, thickEnd, itemRgb, blockCount, blockSizes, blockStarts.
     """
     path.write_text(
-        "chr1\t100\t40000\tgene1\t0\t+\t100\t40000\t0,1,2,3\t0,10000,20000,30000\t0,0,0,0\n"
-        "chr1\t100\t40000\tgene2\t0\t-\t100\t40000\t0,1,2,3\t0,10000,20000,30000\t0,0,0,0\n"
+        "chr1\t100\t40000\tgene1\t0\t+\t100\t40000\t0\t4\t0,10000,20000,30000\t0,10000,20000,30000\n"
+        "chr1\t100\t40000\tgene2\t0\t-\t100\t40000\t0\t4\t0,10000,20000,30000\t0,10000,20000,30000\n"
     )
 
 
@@ -441,6 +447,53 @@ def main() -> int:
     )
     if rc != 2:
         failures.append(f"multi infer_experiment without -r exit code (expected 2, got {rc})")
+        print(f"UNEXPECTED: missing --reference-bed gave exit {rc}, not 2")
+
+    # read_distribution: needs -r, and its report IS stdout. Checked apart
+    # from the main matrix because it requires --reference-bed.
+    rd_solo_dir = work / "rd_solo"
+    rd_multi_dir = work / "rd_multi"
+    rd_solo_dir.mkdir()
+    rd_multi_dir.mkdir()
+    rc, rd_solo_out, rd_solo_err = run(
+        [str(bin_dir / "read_distribution"), "-i", str(bam), "-r", str(bed)],
+        rd_solo_dir,
+    )
+    if rc != 0:
+        failures.append("rd solo read_distribution exit code")
+    rc, _, _ = run(
+        [str(bin_dir / "rseqc_multi"), "-i", str(bam), "-o", "outrd", "-r", str(bed),
+         "--run", "read_distribution"],
+        rd_multi_dir,
+    )
+    if rc != 0:
+        failures.append("rd multi --reference-bed exit code")
+    for label, solo_bytes, stream in (
+        ("rd stdout", rd_solo_out, "outrd.read_distribution.stdout"),
+        ("rd stderr", rd_solo_err, "outrd.read_distribution.stderr"),
+    ):
+        path = rd_multi_dir / stream
+        if not path.exists():
+            failures.append(f"multi {stream} missing")
+            print(f"MISSING on multi side: {stream}")
+            continue
+        check_equal(label, solo_bytes, path.read_bytes(), failures)
+
+    # The progress line echoes the input path, so the driver must pass the
+    # user's spelling of it through unchanged (upstream prints the filename).
+    if b"Processing " + str(bam).encode() not in (rd_multi_dir / "outrd.read_distribution.stderr").read_bytes():
+        failures.append("multi read_distribution stderr lost the input path")
+        print("UNEXPECTED: input path missing from multi stderr")
+
+    # Refusal check: selecting read_distribution without --reference-bed must
+    # exit 2 (usage error).
+    rc, _, _ = run(
+        [str(bin_dir / "rseqc_multi"), "-i", str(bam), "-o", "outrd2",
+         "--run", "read_distribution"],
+        rd_multi_dir,
+    )
+    if rc != 2:
+        failures.append(f"multi read_distribution without -r exit code (expected 2, got {rc})")
         print(f"UNEXPECTED: missing --reference-bed gave exit {rc}, not 2")
 
     # deletion_profile: its own -l/-n, plus the required-flag refusal.
