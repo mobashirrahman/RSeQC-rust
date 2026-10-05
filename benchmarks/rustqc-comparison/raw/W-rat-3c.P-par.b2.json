@@ -1,0 +1,237 @@
+{
+  "configuration": "P-par",
+  "workload": "W-rat-3c",
+  "block": 2,
+  "order": 1,
+  "seed": 20261004,
+  "timeout_s": 3600.0,
+  "git_head": "f028698334b3863389fb16a0e74f54de03da93ec",
+  "git_dirty": true,
+  "port_bam_stat_sha256": "d98416529dd19779ceba1107d1871e363bd8f74a4e7be5d2ad9bbd68a72b4606",
+  "rustqc_tag": "v0.2.1",
+  "loadavg_before_run": [
+    2.94873046875,
+    7.18115234375,
+    10.453125
+  ],
+  "batch_wall_s": 22.8605384810362,
+  "baseline_mb": 4636.7890625,
+  "peak_aggregate_mb": 845.1953125,
+  "post_delta_mb": 201.01171875,
+  "samples": 455,
+  "timed_out": false,
+  "per_tool": [
+    {
+      "tool": "bam_stat",
+      "argv": [
+        "/scratch/mdra00001/RSeQC-rust/target/release/bam_stat",
+        "-i",
+        "/scratch/mdra00001/RSeQC-rust/datasets/heldout/aligned/SRR1177982/SRR1177982.bam"
+      ],
+      "exit": 0,
+      "timed_out": false,
+      "time_wall_s": 4.37,
+      "user_s": 4.27,
+      "sys_s": 0.09,
+      "peak_rss_mb": 2.921875
+    },
+    {
+      "tool": "infer_experiment",
+      "argv": [
+        "/scratch/mdra00001/RSeQC-rust/target/release/infer_experiment",
+        "-i",
+        "/scratch/mdra00001/RSeQC-rust/datasets/heldout/aligned/SRR1177982/SRR1177982.bam",
+        "-r",
+        "/scratch/mdra00001/RSeQC-rust/datasets/heldout/reference/rn6.indexed.bed12"
+      ],
+      "exit": 0,
+      "timed_out": false,
+      "time_wall_s": 0.37,
+      "user_s": 0.36,
+      "sys_s": 0.0,
+      "peak_rss_mb": 3.72265625
+    },
+    {
+      "tool": "read_duplication",
+      "argv": [
+        "/scratch/mdra00001/RSeQC-rust/target/release/read_duplication",
+        "-i",
+        "/scratch/mdra00001/RSeQC-rust/datasets/heldout/aligned/SRR1177982/SRR1177982.bam",
+        "-o",
+        "/scratch/mdra00001/tmp/timing-work-h4j97710/P-par/dup",
+        "--skip-plot"
+      ],
+      "exit": 0,
+      "timed_out": false,
+      "time_wall_s": 13.36,
+      "user_s": 12.67,
+      "sys_s": 0.68,
+      "peak_rss_mb": 530.3515625
+    },
+    {
+      "tool": "read_distribution",
+      "argv": [
+        "/scratch/mdra00001/RSeQC-rust/target/release/read_distribution",
+        "-i",
+        "/scratch/mdra00001/RSeQC-rust/datasets/heldout/aligned/SRR1177982/SRR1177982.bam",
+        "-r",
+        "/scratch/mdra00001/RSeQC-rust/datasets/heldout/reference/rn6.indexed.bed12"
+      ],
+      "exit": 0,
+      "timed_out": false,
+      "time_wall_s": 6.61,
+      "user_s": 6.49,
+      "sys_s": 0.12,
+      "peak_rss_mb": 27.38671875
+    },
+    {
+      "tool": "junction_annotation",
+      "argv": [
+        "/scratch/mdra00001/RSeQC-rust/target/release/junction_annotation",
+        "-i",
+        "/scratch/mdra00001/RSeQC-rust/datasets/heldout/aligned/SRR1177982/SRR1177982.bam",
+        "-r",
+        "/scratch/mdra00001/RSeQC-rust/datasets/heldout/reference/rn6.indexed.bed12",
+        "-o",
+        "/scratch/mdra00001/tmp/timing-work-h4j97710/P-par/ja",
+        "--skip-plot"
+      ],
+      "exit": 0,
+      "timed_out": false,
+      "time_wall_s": 5.29,
+      "user_s": 5.13,
+      "sys_s": 0.14,
+      "peak_rss_mb": 36.32421875
+    },
+    {
+      "tool": "junction_saturation",
+      "argv": [
+        "/scratch/mdra00001/RSeQC-rust/target/release/junction_saturation",
+        "-i",
+        "/scratch/mdra00001/RSeQC-rust/datasets/heldout/aligned/SRR1177982/SRR1177982.bam",
+        "-r",
+        "/scratch/mdra00001/RSeQC-rust/datasets/heldout/reference/rn6.indexed.bed12",
+        "-o",
+        "/scratch/mdra00001/tmp/timing-work-h4j97710/P-par/js",
+        "--skip-plot"
+      ],
+      "exit": 0,
+      "timed_out": false,
+      "time_wall_s": 6.54,
+      "user_s": 6.3,
+      "sys_s": 0.23,
+      "peak_rss_mb": 163.2890625
+    },
+    {
+      "tool": "inner_distance",
+      "argv": [
+        "/scratch/mdra00001/RSeQC-rust/target/release/inner_distance",
+        "-i",
+        "/scratch/mdra00001/RSeQC-rust/datasets/heldout/aligned/SRR1177982/SRR1177982.bam",
+        "-r",
+        "/scratch/mdra00001/RSeQC-rust/datasets/heldout/reference/rn6.indexed.bed12",
+        "-o",
+        "/scratch/mdra00001/tmp/timing-work-h4j97710/P-par/id",
+        "--skip-plot"
+      ],
+      "exit": 0,
+      "timed_out": false,
+      "time_wall_s": 2.14,
+      "user_s": 1.82,
+      "sys_s": 0.22,
+      "peak_rss_mb": 169.109375
+    },
+    {
+      "tool": "tin",
+      "argv": [
+        "/scratch/mdra00001/RSeQC-rust/target/release/tin",
+        "-i",
+        "/scratch/mdra00001/RSeQC-rust/datasets/heldout/aligned/SRR1177982/SRR1177982.bam",
+        "-r",
+        "/scratch/mdra00001/RSeQC-rust/datasets/heldout/reference/rn6.indexed.bed12",
+        "-n",
+        "100",
+        "-o",
+        "/scratch/mdra00001/tmp/timing-work-h4j97710/P-par/tin"
+      ],
+      "exit": 0,
+      "timed_out": false,
+      "time_wall_s": 22.83,
+      "user_s": 22.12,
+      "sys_s": 0.69,
+      "peak_rss_mb": 213.56640625
+    }
+  ],
+  "argv": [
+    [
+      "/scratch/mdra00001/RSeQC-rust/target/release/bam_stat",
+      "-i",
+      "/scratch/mdra00001/RSeQC-rust/datasets/heldout/aligned/SRR1177982/SRR1177982.bam"
+    ],
+    [
+      "/scratch/mdra00001/RSeQC-rust/target/release/infer_experiment",
+      "-i",
+      "/scratch/mdra00001/RSeQC-rust/datasets/heldout/aligned/SRR1177982/SRR1177982.bam",
+      "-r",
+      "/scratch/mdra00001/RSeQC-rust/datasets/heldout/reference/rn6.indexed.bed12"
+    ],
+    [
+      "/scratch/mdra00001/RSeQC-rust/target/release/read_duplication",
+      "-i",
+      "/scratch/mdra00001/RSeQC-rust/datasets/heldout/aligned/SRR1177982/SRR1177982.bam",
+      "-o",
+      "/scratch/mdra00001/tmp/timing-work-h4j97710/P-par/dup",
+      "--skip-plot"
+    ],
+    [
+      "/scratch/mdra00001/RSeQC-rust/target/release/read_distribution",
+      "-i",
+      "/scratch/mdra00001/RSeQC-rust/datasets/heldout/aligned/SRR1177982/SRR1177982.bam",
+      "-r",
+      "/scratch/mdra00001/RSeQC-rust/datasets/heldout/reference/rn6.indexed.bed12"
+    ],
+    [
+      "/scratch/mdra00001/RSeQC-rust/target/release/junction_annotation",
+      "-i",
+      "/scratch/mdra00001/RSeQC-rust/datasets/heldout/aligned/SRR1177982/SRR1177982.bam",
+      "-r",
+      "/scratch/mdra00001/RSeQC-rust/datasets/heldout/reference/rn6.indexed.bed12",
+      "-o",
+      "/scratch/mdra00001/tmp/timing-work-h4j97710/P-par/ja",
+      "--skip-plot"
+    ],
+    [
+      "/scratch/mdra00001/RSeQC-rust/target/release/junction_saturation",
+      "-i",
+      "/scratch/mdra00001/RSeQC-rust/datasets/heldout/aligned/SRR1177982/SRR1177982.bam",
+      "-r",
+      "/scratch/mdra00001/RSeQC-rust/datasets/heldout/reference/rn6.indexed.bed12",
+      "-o",
+      "/scratch/mdra00001/tmp/timing-work-h4j97710/P-par/js",
+      "--skip-plot"
+    ],
+    [
+      "/scratch/mdra00001/RSeQC-rust/target/release/inner_distance",
+      "-i",
+      "/scratch/mdra00001/RSeQC-rust/datasets/heldout/aligned/SRR1177982/SRR1177982.bam",
+      "-r",
+      "/scratch/mdra00001/RSeQC-rust/datasets/heldout/reference/rn6.indexed.bed12",
+      "-o",
+      "/scratch/mdra00001/tmp/timing-work-h4j97710/P-par/id",
+      "--skip-plot"
+    ],
+    [
+      "/scratch/mdra00001/RSeQC-rust/target/release/tin",
+      "-i",
+      "/scratch/mdra00001/RSeQC-rust/datasets/heldout/aligned/SRR1177982/SRR1177982.bam",
+      "-r",
+      "/scratch/mdra00001/RSeQC-rust/datasets/heldout/reference/rn6.indexed.bed12",
+      "-n",
+      "100",
+      "-o",
+      "/scratch/mdra00001/tmp/timing-work-h4j97710/P-par/tin"
+    ]
+  ],
+  "exit": 0,
+  "presence_ok": true
+}

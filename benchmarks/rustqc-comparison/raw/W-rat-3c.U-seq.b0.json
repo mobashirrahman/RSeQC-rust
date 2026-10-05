@@ -1,0 +1,298 @@
+{
+  "configuration": "U-seq",
+  "workload": "W-rat-3c",
+  "block": 0,
+  "order": 3,
+  "seed": 20261004,
+  "timeout_s": 3600.0,
+  "git_head": "f028698334b3863389fb16a0e74f54de03da93ec",
+  "git_dirty": true,
+  "port_bam_stat_sha256": "d98416529dd19779ceba1107d1871e363bd8f74a4e7be5d2ad9bbd68a72b4606",
+  "rustqc_tag": "v0.2.1",
+  "loadavg_before_run": [
+    11.42138671875,
+    22.0673828125,
+    17.869140625
+  ],
+  "per_tool": [
+    {
+      "tool": "bam_stat",
+      "argv": [
+        "/scratch/mdra00001/RSeQC-rust/oracle/venv/bin/python3",
+        "/scratch/mdra00001/RSeQC-rust/oracle/upstream-src/scripts/bam_stat.py",
+        "-i",
+        "/scratch/mdra00001/RSeQC-rust/datasets/heldout/aligned/SRR1177982/SRR1177982.bam"
+      ],
+      "exit": 0,
+      "timed_out": false,
+      "loadavg_before": [
+        11.42138671875,
+        22.0673828125,
+        17.869140625
+      ],
+      "time_wall_s": 19.01,
+      "user_s": 18.77,
+      "sys_s": 0.14,
+      "peak_rss_mb": 38.64453125,
+      "wall_s": 19.047371349937748
+    },
+    {
+      "tool": "infer_experiment",
+      "argv": [
+        "/scratch/mdra00001/RSeQC-rust/oracle/venv/bin/python3",
+        "/scratch/mdra00001/RSeQC-rust/oracle/upstream-src/scripts/infer_experiment.py",
+        "-i",
+        "/scratch/mdra00001/RSeQC-rust/datasets/heldout/aligned/SRR1177982/SRR1177982.bam",
+        "-r",
+        "/scratch/mdra00001/RSeQC-rust/datasets/heldout/reference/rn6.indexed.bed12"
+      ],
+      "exit": 0,
+      "timed_out": false,
+      "loadavg_before": [
+        9.69482421875,
+        20.97802734375,
+        17.599609375
+      ],
+      "time_wall_s": 1.24,
+      "user_s": 1.2,
+      "sys_s": 0.04,
+      "peak_rss_mb": 39.796875,
+      "wall_s": 1.2664719970198348
+    },
+    {
+      "tool": "read_duplication",
+      "argv": [
+        "/scratch/mdra00001/RSeQC-rust/oracle/venv/bin/python3",
+        "/scratch/mdra00001/RSeQC-rust/oracle/upstream-src/scripts/read_duplication.py",
+        "-i",
+        "/scratch/mdra00001/RSeQC-rust/datasets/heldout/aligned/SRR1177982/SRR1177982.bam",
+        "-o",
+        "/scratch/mdra00001/tmp/timing-work-_cn8pif3/U-seq/dup",
+        "--skip-plot"
+      ],
+      "exit": 0,
+      "timed_out": false,
+      "loadavg_before": [
+        9.69482421875,
+        20.97802734375,
+        17.599609375
+      ],
+      "time_wall_s": 25.72,
+      "user_s": 24.61,
+      "sys_s": 1.08,
+      "peak_rss_mb": 1094.07421875,
+      "wall_s": 25.759801384992898
+    },
+    {
+      "tool": "read_distribution",
+      "argv": [
+        "/scratch/mdra00001/RSeQC-rust/oracle/venv/bin/python3",
+        "/scratch/mdra00001/RSeQC-rust/oracle/upstream-src/scripts/read_distribution.py",
+        "-i",
+        "/scratch/mdra00001/RSeQC-rust/datasets/heldout/aligned/SRR1177982/SRR1177982.bam",
+        "-r",
+        "/scratch/mdra00001/RSeQC-rust/datasets/heldout/reference/rn6.indexed.bed12"
+      ],
+      "exit": 0,
+      "timed_out": false,
+      "loadavg_before": [
+        7.541015625,
+        19.56494140625,
+        17.22119140625
+      ],
+      "time_wall_s": 28.87,
+      "user_s": 28.41,
+      "sys_s": 0.42,
+      "peak_rss_mb": 191.265625,
+      "wall_s": 28.915482812095433
+    },
+    {
+      "tool": "junction_annotation",
+      "argv": [
+        "/scratch/mdra00001/RSeQC-rust/oracle/venv/bin/python3",
+        "/scratch/mdra00001/RSeQC-rust/oracle/upstream-src/scripts/junction_annotation.py",
+        "-i",
+        "/scratch/mdra00001/RSeQC-rust/datasets/heldout/aligned/SRR1177982/SRR1177982.bam",
+        "-r",
+        "/scratch/mdra00001/RSeQC-rust/datasets/heldout/reference/rn6.indexed.bed12",
+        "-o",
+        "/scratch/mdra00001/tmp/timing-work-_cn8pif3/U-seq/ja",
+        "--skip-plot"
+      ],
+      "exit": 0,
+      "timed_out": false,
+      "loadavg_before": [
+        5.97314453125,
+        18.029296875,
+        16.78369140625
+      ],
+      "time_wall_s": 24.53,
+      "user_s": 21.83,
+      "sys_s": 0.33,
+      "peak_rss_mb": 48.94921875,
+      "wall_s": 24.561592382960953
+    },
+    {
+      "tool": "junction_saturation",
+      "argv": [
+        "/scratch/mdra00001/RSeQC-rust/oracle/venv/bin/python3",
+        "/scratch/mdra00001/RSeQC-rust/oracle/upstream-src/scripts/junction_saturation.py",
+        "-i",
+        "/scratch/mdra00001/RSeQC-rust/datasets/heldout/aligned/SRR1177982/SRR1177982.bam",
+        "-r",
+        "/scratch/mdra00001/RSeQC-rust/datasets/heldout/reference/rn6.indexed.bed12",
+        "-o",
+        "/scratch/mdra00001/tmp/timing-work-_cn8pif3/U-seq/js",
+        "--skip-plot"
+      ],
+      "exit": 0,
+      "timed_out": false,
+      "loadavg_before": [
+        10.9306640625,
+        18.2470703125,
+        16.8916015625
+      ],
+      "time_wall_s": 24.53,
+      "user_s": 22.58,
+      "sys_s": 0.48,
+      "peak_rss_mb": 219.66796875,
+      "wall_s": 24.589064253959805
+    },
+    {
+      "tool": "inner_distance",
+      "argv": [
+        "/scratch/mdra00001/RSeQC-rust/oracle/venv/bin/python3",
+        "/scratch/mdra00001/RSeQC-rust/oracle/upstream-src/scripts/inner_distance.py",
+        "-i",
+        "/scratch/mdra00001/RSeQC-rust/datasets/heldout/aligned/SRR1177982/SRR1177982.bam",
+        "-r",
+        "/scratch/mdra00001/RSeQC-rust/datasets/heldout/reference/rn6.indexed.bed12",
+        "-o",
+        "/scratch/mdra00001/tmp/timing-work-_cn8pif3/U-seq/id",
+        "--skip-plot"
+      ],
+      "exit": 0,
+      "timed_out": false,
+      "loadavg_before": [
+        11.55810546875,
+        17.86083984375,
+        16.80322265625
+      ],
+      "time_wall_s": 29.24,
+      "user_s": 28.77,
+      "sys_s": 0.37,
+      "peak_rss_mb": 270.34375,
+      "wall_s": 29.27319409197662
+    },
+    {
+      "tool": "tin",
+      "argv": [
+        "/scratch/mdra00001/RSeQC-rust/oracle/venv/bin/python3",
+        "/scratch/mdra00001/RSeQC-rust/oracle/upstream-src/scripts/tin.py",
+        "-i",
+        "/scratch/mdra00001/RSeQC-rust/datasets/heldout/aligned/SRR1177982/SRR1177982.bam",
+        "-r",
+        "/scratch/mdra00001/RSeQC-rust/datasets/heldout/reference/rn6.indexed.bed12",
+        "-n",
+        "100",
+        "-o",
+        "/scratch/mdra00001/tmp/timing-work-_cn8pif3/U-seq/tin"
+      ],
+      "exit": 0,
+      "timed_out": false,
+      "loadavg_before": [
+        9.40576171875,
+        16.84423828125,
+        16.49365234375
+      ],
+      "time_wall_s": 206.43,
+      "user_s": 195.26,
+      "sys_s": 1.63,
+      "peak_rss_mb": 49.8359375,
+      "wall_s": 206.44056886294857
+    }
+  ],
+  "total_wall_s": 359.85706409893464,
+  "total_cpu_s": 345.91999999999996,
+  "argv": [
+    [
+      "/scratch/mdra00001/RSeQC-rust/oracle/venv/bin/python3",
+      "/scratch/mdra00001/RSeQC-rust/oracle/upstream-src/scripts/bam_stat.py",
+      "-i",
+      "/scratch/mdra00001/RSeQC-rust/datasets/heldout/aligned/SRR1177982/SRR1177982.bam"
+    ],
+    [
+      "/scratch/mdra00001/RSeQC-rust/oracle/venv/bin/python3",
+      "/scratch/mdra00001/RSeQC-rust/oracle/upstream-src/scripts/infer_experiment.py",
+      "-i",
+      "/scratch/mdra00001/RSeQC-rust/datasets/heldout/aligned/SRR1177982/SRR1177982.bam",
+      "-r",
+      "/scratch/mdra00001/RSeQC-rust/datasets/heldout/reference/rn6.indexed.bed12"
+    ],
+    [
+      "/scratch/mdra00001/RSeQC-rust/oracle/venv/bin/python3",
+      "/scratch/mdra00001/RSeQC-rust/oracle/upstream-src/scripts/read_duplication.py",
+      "-i",
+      "/scratch/mdra00001/RSeQC-rust/datasets/heldout/aligned/SRR1177982/SRR1177982.bam",
+      "-o",
+      "/scratch/mdra00001/tmp/timing-work-_cn8pif3/U-seq/dup",
+      "--skip-plot"
+    ],
+    [
+      "/scratch/mdra00001/RSeQC-rust/oracle/venv/bin/python3",
+      "/scratch/mdra00001/RSeQC-rust/oracle/upstream-src/scripts/read_distribution.py",
+      "-i",
+      "/scratch/mdra00001/RSeQC-rust/datasets/heldout/aligned/SRR1177982/SRR1177982.bam",
+      "-r",
+      "/scratch/mdra00001/RSeQC-rust/datasets/heldout/reference/rn6.indexed.bed12"
+    ],
+    [
+      "/scratch/mdra00001/RSeQC-rust/oracle/venv/bin/python3",
+      "/scratch/mdra00001/RSeQC-rust/oracle/upstream-src/scripts/junction_annotation.py",
+      "-i",
+      "/scratch/mdra00001/RSeQC-rust/datasets/heldout/aligned/SRR1177982/SRR1177982.bam",
+      "-r",
+      "/scratch/mdra00001/RSeQC-rust/datasets/heldout/reference/rn6.indexed.bed12",
+      "-o",
+      "/scratch/mdra00001/tmp/timing-work-_cn8pif3/U-seq/ja",
+      "--skip-plot"
+    ],
+    [
+      "/scratch/mdra00001/RSeQC-rust/oracle/venv/bin/python3",
+      "/scratch/mdra00001/RSeQC-rust/oracle/upstream-src/scripts/junction_saturation.py",
+      "-i",
+      "/scratch/mdra00001/RSeQC-rust/datasets/heldout/aligned/SRR1177982/SRR1177982.bam",
+      "-r",
+      "/scratch/mdra00001/RSeQC-rust/datasets/heldout/reference/rn6.indexed.bed12",
+      "-o",
+      "/scratch/mdra00001/tmp/timing-work-_cn8pif3/U-seq/js",
+      "--skip-plot"
+    ],
+    [
+      "/scratch/mdra00001/RSeQC-rust/oracle/venv/bin/python3",
+      "/scratch/mdra00001/RSeQC-rust/oracle/upstream-src/scripts/inner_distance.py",
+      "-i",
+      "/scratch/mdra00001/RSeQC-rust/datasets/heldout/aligned/SRR1177982/SRR1177982.bam",
+      "-r",
+      "/scratch/mdra00001/RSeQC-rust/datasets/heldout/reference/rn6.indexed.bed12",
+      "-o",
+      "/scratch/mdra00001/tmp/timing-work-_cn8pif3/U-seq/id",
+      "--skip-plot"
+    ],
+    [
+      "/scratch/mdra00001/RSeQC-rust/oracle/venv/bin/python3",
+      "/scratch/mdra00001/RSeQC-rust/oracle/upstream-src/scripts/tin.py",
+      "-i",
+      "/scratch/mdra00001/RSeQC-rust/datasets/heldout/aligned/SRR1177982/SRR1177982.bam",
+      "-r",
+      "/scratch/mdra00001/RSeQC-rust/datasets/heldout/reference/rn6.indexed.bed12",
+      "-n",
+      "100",
+      "-o",
+      "/scratch/mdra00001/tmp/timing-work-_cn8pif3/U-seq/tin"
+    ]
+  ],
+  "exit": 0,
+  "timed_out": false,
+  "presence_ok": true
+}

@@ -1,0 +1,38 @@
+{
+  "configuration": "R-8",
+  "workload": "W-rat-wg",
+  "block": 4,
+  "order": 0,
+  "seed": 20261004,
+  "timeout_s": 43200.0,
+  "git_head": "7f2cd24213f30a207821b3fec443f95a8c944e61",
+  "git_dirty": true,
+  "port_bam_stat_sha256": "a1089b77167f39ee13a966b821195eefdc1f3ffd31cf4ddd47f0bd0d325159ce",
+  "rustqc_tag": "v0.2.1",
+  "loadavg_before_run": [
+    3.03466796875,
+    2.9453125,
+    4.4873046875
+  ],
+  "argv": [
+    "/scratch/mdra00001/RSeQC-rust/benchmarks/rustqc-comparison/tools/rustqc",
+    "rna",
+    "/scratch/mdra00001/RSeQC-rust/datasets/heldout/aligned_wholegenome/SRR1177982/SRR1177982.bam",
+    "--gtf",
+    "/scratch/mdra00001/RSeQC-rust/benchmarks/rustqc-comparison/gtf-subsets/rn6.3c.gtf",
+    "--paired",
+    "--outdir",
+    "/scratch/mdra00001/tmp/timing-work-yi4uil2g/R-8",
+    "--threads",
+    "8",
+    "--skip-dup-check"
+  ],
+  "time_wall_s": 48.06,
+  "user_s": 173.85,
+  "sys_s": 17.81,
+  "peak_rss_mb": 3052.4296875,
+  "wall_s": 48.09819668100681,
+  "exit": 0,
+  "timed_out": false,
+  "presence_ok": true
+}

@@ -1,0 +1,92 @@
+{
+  "workload": "W-hum-3c",
+  "tolerance": 0.0,
+  "u_dir": "/tmp/eq-hum3c/U",
+  "p_dir": "/tmp/eq-hum3c/P",
+  "r_dir": "/tmp/eq-hum3c/R",
+  "timeouts": {
+    "U:tin.py": 3600
+  },
+  "verdicts": {
+    "bam_stat": {
+      "P": {
+        "verdict": "byte-identical",
+        "detail": "836 bytes identical"
+      },
+      "R": {
+        "verdict": "byte-identical",
+        "detail": "ERR10229623.bam_stat.txt: 836 bytes identical"
+      }
+    },
+    "infer_experiment": {
+      "P": {
+        "verdict": "byte-identical",
+        "detail": "182 bytes identical"
+      },
+      "R": {
+        "verdict": "differs",
+        "detail": "ERR10229623.infer_experiment.txt: largest absolute 0.1663, largest relative 0.401206; first differences:\nline count 5 vs 6\nline 2: 'This is PairEnd Data' vs ''\nline 3: 'Fraction of reads failed to determine: 0.1546' vs 'This is PairEnd Data'\nline 4: 'Fraction of reads explained by \"1++,1--,2+-,2-+\": 0.4145' vs 'Fraction of reads failed to determine: 0.2482'\nline 5: 'Fraction of reads explained by \"1+-,1-+,2++,2--\": 0.4309' vs 'Fraction of reads explained by \"1++,1--,2+-,2-+\": 0.3679'"
+      }
+    },
+    "read_duplication": {
+      "P": {
+        "verdict": "byte-identical",
+        "detail": "dup.seq.DupRate.xls=byte-identical; dup.pos.DupRate.xls=byte-identical"
+      },
+      "R": {
+        "verdict": "byte-identical",
+        "detail": "ERR10229623.seq.DupRate.xls: byte-identical: 5235 bytes identical | ERR10229623.pos.DupRate.xls: byte-identical: 5337 bytes identical"
+      }
+    },
+    "read_distribution": {
+      "P": {
+        "verdict": "byte-identical",
+        "detail": "1128 bytes identical"
+      },
+      "R": {
+        "verdict": "differs",
+        "detail": "ERR10229623.read_distribution.txt: largest absolute 6.0416e+06, largest relative 1; first differences:\nline 3: 'Total Assigned Tags           12288501' vs 'Total Assigned Tags           12282960'\nline 6: 'CDS_Exons           23789748            9932742             417.52            ' vs 'CDS_Exons           17748150            8086886             455.65            '\nline 7: \"5'UTR_Exons         0                   0                   0.00              \" vs \"5'UTR_Exons         1009965             110708              109.62            \"\nline 8: \"3'UTR_Exons         0                   0                   0.00              \" vs \"3'UTR_Exons         5043570             1729607             342.93            \""
+      }
+    },
+    "junction_annotation": {
+      "P": {
+        "verdict": "differs",
+        "detail": "ja.junction.xls=byte-identical; ja.junction.bed=byte-identical; ja.junction.Interact.bed=differs"
+      },
+      "R": {
+        "verdict": "differs",
+        "detail": "ERR10229623.junction.xls: byte-identical: 2569140 bytes identical | ERR10229623.junction.bed: byte-identical: 5198771 bytes identical | ERR10229623.junction.Interact.bed: differs: largest absolute 0, largest relative 0; first differences:\nline 1: 'track type=interact name=\"Splice junctions\" description=\"Splice junctions detected from /scratch/mdr' vs 'track type=interact name=\""
+      }
+    },
+    "junction_saturation": {
+      "P": {
+        "verdict": "not-comparable",
+        "detail": "upstream shuffles alignments without an RNG seed; two upstream runs differ"
+      },
+      "R": {
+        "verdict": "not-comparable",
+        "detail": "upstream shuffles alignments without an RNG seed; two upstream runs differ"
+      }
+    },
+    "inner_distance": {
+      "P": {
+        "verdict": "byte-identical",
+        "detail": "id.inner_distance.txt=byte-identical; id.inner_distance_freq.txt=byte-identical"
+      },
+      "R": {
+        "verdict": "byte-identical",
+        "detail": "ERR10229623.inner_distance.txt: byte-identical: 48331013 bytes identical | ERR10229623.inner_distance_freq.txt: byte-identical: 1241 bytes identical"
+      }
+    },
+    "tin": {
+      "P": {
+        "verdict": "missing",
+        "detail": "U tin timed out; U outputs partial, no verdict"
+      },
+      "R": {
+        "verdict": "missing",
+        "detail": "U tin timed out; U outputs partial, no verdict (R files listed, not judged)"
+      }
+    }
+  }
+}

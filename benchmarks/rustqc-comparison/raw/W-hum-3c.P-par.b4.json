@@ -1,0 +1,237 @@
+{
+  "configuration": "P-par",
+  "workload": "W-hum-3c",
+  "block": 4,
+  "order": 3,
+  "seed": 20261004,
+  "timeout_s": 3600.0,
+  "git_head": "e11666dc604f5c13b357d7a3013c55239fde0802",
+  "git_dirty": true,
+  "port_bam_stat_sha256": "08e8f023671f05b0a528ed7db68de5f10ce5d96f1e1f52f832e01077e805a47a",
+  "rustqc_tag": "v0.2.1",
+  "loadavg_before_run": [
+    1.1123046875,
+    1.2138671875,
+    1.22607421875
+  ],
+  "batch_wall_s": 113.9460006270092,
+  "baseline_mb": 4697.046875,
+  "peak_aggregate_mb": 814.984375,
+  "post_delta_mb": -7.265625,
+  "samples": 2271,
+  "timed_out": false,
+  "per_tool": [
+    {
+      "tool": "bam_stat",
+      "argv": [
+        "/scratch/mdra00001/RSeQC-rust/target/release/bam_stat",
+        "-i",
+        "/scratch/mdra00001/RSeQC-rust/datasets/heldout/aligned/ERR10229623/ERR10229623.bam"
+      ],
+      "exit": 0,
+      "timed_out": false,
+      "time_wall_s": 5.47,
+      "user_s": 5.32,
+      "sys_s": 0.15,
+      "peak_rss_mb": 3.00390625
+    },
+    {
+      "tool": "infer_experiment",
+      "argv": [
+        "/scratch/mdra00001/RSeQC-rust/target/release/infer_experiment",
+        "-i",
+        "/scratch/mdra00001/RSeQC-rust/datasets/heldout/aligned/ERR10229623/ERR10229623.bam",
+        "-r",
+        "/scratch/mdra00001/RSeQC-rust/datasets/heldout/reference/gencode.v47.indexed.bed12/model.bed12"
+      ],
+      "exit": 0,
+      "timed_out": false,
+      "time_wall_s": 0.35,
+      "user_s": 0.34,
+      "sys_s": 0.01,
+      "peak_rss_mb": 7.40234375
+    },
+    {
+      "tool": "read_duplication",
+      "argv": [
+        "/scratch/mdra00001/RSeQC-rust/target/release/read_duplication",
+        "-i",
+        "/scratch/mdra00001/RSeQC-rust/datasets/heldout/aligned/ERR10229623/ERR10229623.bam",
+        "-o",
+        "/scratch/mdra00001/tmp/timing-work-zloidlho/P-par/dup",
+        "--skip-plot"
+      ],
+      "exit": 0,
+      "timed_out": false,
+      "time_wall_s": 16.24,
+      "user_s": 15.67,
+      "sys_s": 0.56,
+      "peak_rss_mb": 531.1640625
+    },
+    {
+      "tool": "read_distribution",
+      "argv": [
+        "/scratch/mdra00001/RSeQC-rust/target/release/read_distribution",
+        "-i",
+        "/scratch/mdra00001/RSeQC-rust/datasets/heldout/aligned/ERR10229623/ERR10229623.bam",
+        "-r",
+        "/scratch/mdra00001/RSeQC-rust/datasets/heldout/reference/gencode.v47.indexed.bed12/model.bed12"
+      ],
+      "exit": 0,
+      "timed_out": false,
+      "time_wall_s": 9.87,
+      "user_s": 9.66,
+      "sys_s": 0.19,
+      "peak_rss_mb": 54.76953125
+    },
+    {
+      "tool": "junction_annotation",
+      "argv": [
+        "/scratch/mdra00001/RSeQC-rust/target/release/junction_annotation",
+        "-i",
+        "/scratch/mdra00001/RSeQC-rust/datasets/heldout/aligned/ERR10229623/ERR10229623.bam",
+        "-r",
+        "/scratch/mdra00001/RSeQC-rust/datasets/heldout/reference/gencode.v47.indexed.bed12/model.bed12",
+        "-o",
+        "/scratch/mdra00001/tmp/timing-work-zloidlho/P-par/ja",
+        "--skip-plot"
+      ],
+      "exit": 0,
+      "timed_out": false,
+      "time_wall_s": 6.61,
+      "user_s": 6.42,
+      "sys_s": 0.18,
+      "peak_rss_mb": 53.0703125
+    },
+    {
+      "tool": "junction_saturation",
+      "argv": [
+        "/scratch/mdra00001/RSeQC-rust/target/release/junction_saturation",
+        "-i",
+        "/scratch/mdra00001/RSeQC-rust/datasets/heldout/aligned/ERR10229623/ERR10229623.bam",
+        "-r",
+        "/scratch/mdra00001/RSeQC-rust/datasets/heldout/reference/gencode.v47.indexed.bed12/model.bed12",
+        "-o",
+        "/scratch/mdra00001/tmp/timing-work-zloidlho/P-par/js",
+        "--skip-plot"
+      ],
+      "exit": 0,
+      "timed_out": false,
+      "time_wall_s": 7.33,
+      "user_s": 7.06,
+      "sys_s": 0.27,
+      "peak_rss_mb": 167.921875
+    },
+    {
+      "tool": "inner_distance",
+      "argv": [
+        "/scratch/mdra00001/RSeQC-rust/target/release/inner_distance",
+        "-i",
+        "/scratch/mdra00001/RSeQC-rust/datasets/heldout/aligned/ERR10229623/ERR10229623.bam",
+        "-r",
+        "/scratch/mdra00001/RSeQC-rust/datasets/heldout/reference/gencode.v47.indexed.bed12/model.bed12",
+        "-o",
+        "/scratch/mdra00001/tmp/timing-work-zloidlho/P-par/id",
+        "--skip-plot"
+      ],
+      "exit": 0,
+      "timed_out": false,
+      "time_wall_s": 1.96,
+      "user_s": 1.67,
+      "sys_s": 0.2,
+      "peak_rss_mb": 194.328125
+    },
+    {
+      "tool": "tin",
+      "argv": [
+        "/scratch/mdra00001/RSeQC-rust/target/release/tin",
+        "-i",
+        "/scratch/mdra00001/RSeQC-rust/datasets/heldout/aligned/ERR10229623/ERR10229623.bam",
+        "-r",
+        "/scratch/mdra00001/RSeQC-rust/datasets/heldout/reference/gencode.v47.indexed.bed12/model.bed12",
+        "-n",
+        "100",
+        "-o",
+        "/scratch/mdra00001/tmp/timing-work-zloidlho/P-par/tin"
+      ],
+      "exit": 0,
+      "timed_out": false,
+      "time_wall_s": 113.91,
+      "user_s": 112.94,
+      "sys_s": 0.93,
+      "peak_rss_mb": 334.30859375
+    }
+  ],
+  "argv": [
+    [
+      "/scratch/mdra00001/RSeQC-rust/target/release/bam_stat",
+      "-i",
+      "/scratch/mdra00001/RSeQC-rust/datasets/heldout/aligned/ERR10229623/ERR10229623.bam"
+    ],
+    [
+      "/scratch/mdra00001/RSeQC-rust/target/release/infer_experiment",
+      "-i",
+      "/scratch/mdra00001/RSeQC-rust/datasets/heldout/aligned/ERR10229623/ERR10229623.bam",
+      "-r",
+      "/scratch/mdra00001/RSeQC-rust/datasets/heldout/reference/gencode.v47.indexed.bed12/model.bed12"
+    ],
+    [
+      "/scratch/mdra00001/RSeQC-rust/target/release/read_duplication",
+      "-i",
+      "/scratch/mdra00001/RSeQC-rust/datasets/heldout/aligned/ERR10229623/ERR10229623.bam",
+      "-o",
+      "/scratch/mdra00001/tmp/timing-work-zloidlho/P-par/dup",
+      "--skip-plot"
+    ],
+    [
+      "/scratch/mdra00001/RSeQC-rust/target/release/read_distribution",
+      "-i",
+      "/scratch/mdra00001/RSeQC-rust/datasets/heldout/aligned/ERR10229623/ERR10229623.bam",
+      "-r",
+      "/scratch/mdra00001/RSeQC-rust/datasets/heldout/reference/gencode.v47.indexed.bed12/model.bed12"
+    ],
+    [
+      "/scratch/mdra00001/RSeQC-rust/target/release/junction_annotation",
+      "-i",
+      "/scratch/mdra00001/RSeQC-rust/datasets/heldout/aligned/ERR10229623/ERR10229623.bam",
+      "-r",
+      "/scratch/mdra00001/RSeQC-rust/datasets/heldout/reference/gencode.v47.indexed.bed12/model.bed12",
+      "-o",
+      "/scratch/mdra00001/tmp/timing-work-zloidlho/P-par/ja",
+      "--skip-plot"
+    ],
+    [
+      "/scratch/mdra00001/RSeQC-rust/target/release/junction_saturation",
+      "-i",
+      "/scratch/mdra00001/RSeQC-rust/datasets/heldout/aligned/ERR10229623/ERR10229623.bam",
+      "-r",
+      "/scratch/mdra00001/RSeQC-rust/datasets/heldout/reference/gencode.v47.indexed.bed12/model.bed12",
+      "-o",
+      "/scratch/mdra00001/tmp/timing-work-zloidlho/P-par/js",
+      "--skip-plot"
+    ],
+    [
+      "/scratch/mdra00001/RSeQC-rust/target/release/inner_distance",
+      "-i",
+      "/scratch/mdra00001/RSeQC-rust/datasets/heldout/aligned/ERR10229623/ERR10229623.bam",
+      "-r",
+      "/scratch/mdra00001/RSeQC-rust/datasets/heldout/reference/gencode.v47.indexed.bed12/model.bed12",
+      "-o",
+      "/scratch/mdra00001/tmp/timing-work-zloidlho/P-par/id",
+      "--skip-plot"
+    ],
+    [
+      "/scratch/mdra00001/RSeQC-rust/target/release/tin",
+      "-i",
+      "/scratch/mdra00001/RSeQC-rust/datasets/heldout/aligned/ERR10229623/ERR10229623.bam",
+      "-r",
+      "/scratch/mdra00001/RSeQC-rust/datasets/heldout/reference/gencode.v47.indexed.bed12/model.bed12",
+      "-n",
+      "100",
+      "-o",
+      "/scratch/mdra00001/tmp/timing-work-zloidlho/P-par/tin"
+    ]
+  ],
+  "exit": 0,
+  "presence_ok": true
+}

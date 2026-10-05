@@ -40,9 +40,9 @@ RustQC (Seqera, Bioconda package `rustqc`, nf-core module `rustqc`) reimplements
 
 | Tool | Scope | Output compatibility | Speed comparison |
 |---|---|---|---|
-| Upstream RSeQC 5.0.5 | 33 commands | baseline | to be measured (card E1) |
-| RustQC | 15 tools in one binary, including 8 RSeQC equivalents | format-compatible with upstream and MultiQC, per its own description | to be measured (card E1) |
-| This project | all 33 RSeQC commands under their original names | byte-identical against the pinned upstream | to be measured (card E1) |
+| Upstream RSeQC 5.0.5 | 33 commands | baseline | sequential baseline; see `benchmarks/rustqc-comparison/RESULTS.md` section 4 (shared hardware) |
+| RustQC v0.2.1 | 15 tools in one binary, including 8 RSeQC equivalents | equivalence verdicts in `benchmarks/rustqc-comparison/RESULTS.md` section 3 | single-pass `rna` at 1 and 8 threads; see `benchmarks/rustqc-comparison/RESULTS.md` section 4 (shared hardware; R time includes dupRadar/featureCounts/preseq/Qualimap/samtools) |
+| This project | all 33 RSeQC commands under their original names | equivalence verdicts in `benchmarks/rustqc-comparison/RESULTS.md` section 3 | sequential and 8-concurrent medians; see `benchmarks/rustqc-comparison/RESULTS.md` section 4 (shared hardware) |
 
 ## Design and implementation
 

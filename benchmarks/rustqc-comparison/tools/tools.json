@@ -1,0 +1,10 @@
+{
+  "tag": "v0.2.1",
+  "download_url": "https://github.com/seqeralabs/RustQC/releases/download/v0.2.1/rustqc-linux-x86_64.tar.gz",
+  "tarball_sha256": "2fa72e96a4dbeae06eaf53f3f75850ba4f8b82b086d09e736c4e214078bf804a",
+  "binary_sha256": "480f096c3591b040acf88e24d8ded1931723174090bbf15041b6b1915a015d3e",
+  "version_output": "rustqc 0.2.1 (c868466, built 2026-04-09T12:09:17Z)\nBinary: x86-64 (baseline) | CPU: AVX2 SSE4.2 POPCNT detected. Use the x86-64-v3 build for better performance.",
+  "date": "2026-10-04",
+  "release_page": "https://github.com/seqeralabs/RustQC/releases/tag/v0.2.1",
+  "commit": "c8684663fd8cd7231a63ff3ae1b107ae2a03cf2f"
+}

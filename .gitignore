@@ -52,3 +52,6 @@ benchmarks/results-*/*/*/rep*/
 # upstream script from the repository root leaves a stray log behind. It is a run
 # artifact, not a source file.
 log.txt
+benchmarks/rustqc-comparison/tools/rustqc
+benchmarks/rustqc-comparison/tools/*.tar.gz
+benchmarks/rustqc-comparison/gtf-subsets/

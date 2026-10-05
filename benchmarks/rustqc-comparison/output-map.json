@@ -1,0 +1,139 @@
+{
+  "rustqc_help_source": "benchmarks/rustqc-comparison/tools/rustqc-help.txt",
+  "thread_flag": "-t/--threads (default 1)",
+  "tool_selection": {
+    "can_run_single_rseqc_tool": false,
+    "can_skip_single_rseqc_tool": "only --skip-tin and --skip-read-duplication; the other six RSeQC tools always run",
+    "skips_available": ["--skip-tin", "--skip-read-duplication", "--skip-preseq"],
+    "non_rseqc_skippable": "only preseq (--skip-preseq); dupRadar, featureCounts, Qualimap and samtools stats always run"
+  },
+  "library_options": {
+    "stranded": "-s/--stranded (unstranded|forward|reverse; default unstranded)",
+    "paired": "-p/--paired (required for paired-end BAMs; upstream auto-detects from FLAG)",
+    "note": "Study uses --paired for all three workloads (all paired-end) and default unstranded (infer_experiment shows ~50/50 on W-rat-3c, i.e. unstranded)"
+  },
+  "mapq": {
+    "upstream": "-q/--mapq default 30 (bam_stat, infer_experiment, read_duplication, junction_annotation, junction_saturation, inner_distance)",
+    "rustqc": "-Q/--mapq default 30 (global)",
+    "study_value": 30
+  },
+  "sample_size": {
+    "infer_experiment": {"upstream": "-s default 200000", "rustqc": "--infer-experiment-sample-size default 200000"},
+    "inner_distance": {"upstream": "-k default 1000000", "rustqc": "--inner-distance-sample-size default 1000000"},
+    "tin": {"upstream": "-n default 100 positions per transcript, -c default 10 min distinct starts", "rustqc": "no --tin-sample-size / --tin-min-cov flag; only --tin-seed"},
+    "junction_saturation": {"upstream": "stochastic shuffle, no seed", "rustqc": "--junction-saturation-seed (extra determinism)"}
+  },
+  "rustqc_canonical_argv": [
+    "rustqc", "rna", "<bam>",
+    "--gtf", "<gtf_subset>",
+    "--paired",
+    "--outdir", "<outdir>",
+    "--threads", "<1|8>",
+    "--skip-dup-check"
+  ],
+  "rustqc_canonical_notes": [
+    "--skip-dup-check is required: all three workloads have 0 records with flag 0x400, and without it RustQC exits with 'No duplicate-flagged reads found' (verified 2026-10-04). Upstream and this port need no duplicate marking.",
+    "Strandedness left at default unstranded; --paired passed because upstream infers PE from FLAG while RustQC needs the flag.",
+    "All other RustQC options left at defaults (MAPQ 30, infer sample 200k, min-intron 50, saturation 5/100/5 + min-coverage 1, inner-distance 1M/-250/250/5).",
+    "No --skip-tin / --skip-read-duplication / --skip-preseq: study measures defaults, i.e. all eight RSeQC tools plus all non-RSeQC tools."
+  ],
+  "tools": {
+    "bam_stat": {
+      "upstream_argv": ["bam_stat.py", "-i", "<bam>"],
+      "port_argv": ["bam_stat", "-i", "<bam>"],
+      "rustqc_options": ["-Q/--mapq (default 30)"],
+      "upstream_outputs": {"stdout": "report table (Total records, QC failed, ...)", "files": []},
+      "port_outputs": {"stdout": "same report table", "files": []},
+      "rustqc_outputs": {"files": ["rseqc/bam_stat/<sample>.bam_stat.txt"]},
+      "upstream_options_without_rustqc_equivalent": []
+    },
+    "infer_experiment": {
+      "upstream_argv": ["infer_experiment.py", "-i", "<bam>", "-r", "<bed>"],
+      "port_argv": ["infer_experiment", "-i", "<bam>", "-r", "<bed>"],
+      "rustqc_options": ["--infer-experiment-sample-size (default 200000)", "-Q/--mapq", "--paired/--stranded (library context)"],
+      "upstream_outputs": {"stdout": "PairEnd/SingleEnd header + three Fraction lines", "files": []},
+      "port_outputs": {"stdout": "same three Fraction lines", "files": []},
+      "rustqc_outputs": {"files": ["rseqc/infer_experiment/<sample>.infer_experiment.txt"]},
+      "upstream_options_without_rustqc_equivalent": ["-s/--sample-size has an equivalent; no U-only options"]
+    },
+    "read_duplication": {
+      "upstream_argv": ["read_duplication.py", "-i", "<bam>", "-o", "<out>/dup", "--skip-plot"],
+      "port_argv": ["read_duplication", "-i", "<bam>", "-o", "<out>/dup", "--skip-plot"],
+      "rustqc_options": ["--skip-read-duplication (not used; tool runs)", "-Q/--mapq (global)"],
+      "upstream_outputs": {"stdout": "none (progress to stderr)", "files": ["<out>/dup.seq.DupRate.xls", "<out>/dup.pos.DupRate.xls", "<out>/dup.DupRate_plot.r"]},
+      "port_outputs": {"stdout": "none", "files": ["same three files"]},
+      "rustqc_outputs": {"files": ["rseqc/read_duplication/<sample>.seq.DupRate.xls", "rseqc/read_duplication/<sample>.pos.DupRate.xls", "rseqc/read_duplication/<sample>.DupRate_plot.r", "rseqc/read_duplication/<sample>.DupRate_plot.png", "rseqc/read_duplication/<sample>.DupRate_plot.svg"]},
+      "upstream_options_without_rustqc_equivalent": ["-u/--up-limit (plot-only y-cap, no R equivalent)", "--skip-plot/--rscript (R PDF execution; R always writes PNG/SVG+R and has no skip)"]
+    },
+    "read_distribution": {
+      "upstream_argv": ["read_distribution.py", "-i", "<bam>", "-r", "<bed>"],
+      "port_argv": ["read_distribution", "-i", "<bam>", "-r", "<bed>"],
+      "rustqc_options": ["-Q/--mapq (global); no read_distribution-specific flags on either side"],
+      "upstream_outputs": {"stdout": "fixed-width table (Total Reads/Tags/Assigned + CDS/UTR/Intron/TSS/TES rows)", "files": []},
+      "port_outputs": {"stdout": "same table", "files": []},
+      "rustqc_outputs": {"files": ["rseqc/read_distribution/<sample>.read_distribution.txt"]},
+      "upstream_options_without_rustqc_equivalent": []
+    },
+    "junction_annotation": {
+      "upstream_argv": ["junction_annotation.py", "-i", "<bam>", "-r", "<bed>", "-o", "<out>/ja", "--skip-plot"],
+      "port_argv": ["junction_annotation", "-i", "<bam>", "-r", "<bed>", "-o", "<out>/ja", "--skip-plot"],
+      "rustqc_options": ["--min-intron (default 50)", "-Q/--mapq"],
+      "upstream_outputs": {"stdout": "total = <n> line", "files": ["<out>/ja.junction.xls", "<out>/ja.junction.bed", "<out>/ja.junction.Interact.bed", "<out>/ja.junction_plot.r"]},
+      "port_outputs": {"stdout": "same total line", "files": ["same four files"]},
+      "rustqc_outputs": {"files": ["rseqc/junction_annotation/<sample>.junction.xls", "rseqc/junction_annotation/<sample>.junction.bed", "rseqc/junction_annotation/<sample>.junction.Interact.bed", "rseqc/junction_annotation/<sample>.junction_plot.r", "rseqc/junction_annotation/<sample>.splice_events.png/.svg", "rseqc/junction_annotation/<sample>.splice_junction.png/.svg", "rseqc/junction_annotation/<sample>.junction_annotation.log"]},
+      "upstream_options_without_rustqc_equivalent": ["--skip-plot/--rscript (R PDF execution)", "--skip-bed/--skip-interact (R always writes both)"]
+    },
+    "junction_saturation": {
+      "upstream_argv": ["junction_saturation.py", "-i", "<bam>", "-r", "<bed>", "-o", "<out>/js", "--skip-plot"],
+      "port_argv": ["junction_saturation", "-i", "<bam>", "-r", "<bed>", "-o", "<out>/js", "--skip-plot"],
+      "rustqc_options": ["--min-intron", "--junction-saturation-seed", "--junction-saturation-min-coverage (default 1)", "--junction-saturation-percentile-floor/ceiling/step (5/100/5)", "-Q/--mapq"],
+      "upstream_outputs": {"stdout": "none", "stderr": "per-percentile sampling lines", "files": ["<out>/js.junctionSaturation_plot.r"]},
+      "port_outputs": {"stdout": "none", "stderr": "same sampling lines (counts differ run-to-run: stochastic shuffle)", "files": ["same .r file"]},
+      "rustqc_outputs": {"files": ["rseqc/junction_saturation/<sample>.junctionSaturation_plot.r", "rseqc/junction_saturation/<sample>.junctionSaturation_plot.png/.svg", "rseqc/junction_saturation/<sample>.junctionSaturation_summary.txt"]},
+      "upstream_options_without_rustqc_equivalent": ["-l/-u/-s have equivalents (floor/ceiling/step); -v has equivalent (min-coverage); --skip-plot/--rscript have none; upstream has no seed flag (stochastic), R adds --junction-saturation-seed"]
+    },
+    "inner_distance": {
+      "upstream_argv": ["inner_distance.py", "-i", "<bam>", "-r", "<bed>", "-o", "<out>/id", "--skip-plot"],
+      "port_argv": ["inner_distance", "-i", "<bam>", "-r", "<bed>", "-o", "<out>/id", "--skip-plot"],
+      "rustqc_options": ["--inner-distance-sample-size/lower-bound/upper-bound/step (1000000/-250/250/5)", "-Q/--mapq"],
+      "upstream_outputs": {"stdout": "none", "files": ["<out>/id.inner_distance.txt", "<out>/id.inner_distance_freq.txt", "<out>/id.inner_distance_plot.r"]},
+      "port_outputs": {"stdout": "none", "files": ["same three files"]},
+      "rustqc_outputs": {"files": ["rseqc/inner_distance/<sample>.inner_distance.txt", "rseqc/inner_distance/<sample>.inner_distance_freq.txt", "rseqc/inner_distance/<sample>.inner_distance_plot.r", "rseqc/inner_distance/<sample>.inner_distance_plot.png/.svg", "rseqc/inner_distance/<sample>.inner_distance_mean.txt", "rseqc/inner_distance/<sample>.inner_distance_summary.txt"]},
+      "upstream_options_without_rustqc_equivalent": ["--skip-plot/--rscript (R PDF execution; R always writes PNG/SVG+R)"]
+    },
+    "tin": {
+      "upstream_argv": ["tin.py", "-i", "<bam>", "-r", "<bed>", "-n", "100", "-o", "<outdir>"],
+      "port_argv": ["tin", "-i", "<bam>", "-r", "<bed>", "-n", "100", "-o", "<outdir>"],
+      "rustqc_options": ["--tin-seed", "--skip-tin (not used; tool runs)"],
+      "upstream_outputs": {"stdout": "none", "files": ["<outdir>/<bambase>.tin.xls", "<outdir>/<bambase>.summary.txt"]},
+      "port_outputs": {"stdout": "none", "files": ["same two files"]},
+      "rustqc_outputs": {"files": ["rseqc/tin/<sample>.tin.xls", "rseqc/tin/<sample>.summary.txt"]},
+      "upstream_options_without_rustqc_equivalent": ["-c/--minCov (default 10) and -n/--sample-size (default 100): no RustQC flags; -s/--subtract-background: no RustQC flag; --verbose: no RustQC equivalent"]
+    }
+  },
+  "rustqc_non_rseqc_outputs": {
+    "files": [
+      "featurecounts/<sample>.featureCounts.tsv + .summary",
+      "dupradar/<sample>_dupMatrix.txt, <sample>_duprateExp*.txt/png/svg, <sample>_expressionHist.png/svg, <sample>_intercept_slope.txt, <sample>_dup_intercept_mqc.txt",
+      "preseq/<sample>.lc_extrap.txt",
+      "qualimap/rnaseq_qc_results.txt, qualimapReport.html, images_qualimapReport/*.png/.svg, raw_data_qualimapReport/*.txt",
+      "samtools/<sample>.flagstat, <sample>.idxstats, <sample>.stats",
+      "CITATIONS.md"
+    ],
+    "can_be_switched_off": {
+      "preseq": true,
+      "dupRadar": false,
+      "featureCounts": false,
+      "qualimap": false,
+      "samtools_stats": false
+    },
+    "study_choice": "defaults: everything runs (no --skip-preseq). Every timing row for R includes these tools; seeTiming and RESULTS limitations sections."
+  },
+  "scratch_mapping_runs": {
+    "workload": "W-rat-3c",
+    "upstream_dir": "/tmp/map-U-full (+ /tmp/map-U-tin, /tmp/map-U2)",
+    "port_dir": "/tmp/map-P-full (+ /tmp/map-P-tin, /tmp/map-P2)",
+    "rustqc_dir": "/tmp/rustqc-probe-out",
+    "rustqc_argv_used": "rustqc rna datasets/heldout/aligned/SRR1177982/SRR1177982.bam --gtf benchmarks/rustqc-comparison/gtf-subsets/rn6.3c.gtf --paired --outdir /tmp/rustqc-probe-out --threads 1 --skip-dup-check"
+  }
+}

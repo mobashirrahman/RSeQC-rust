@@ -1,0 +1,91 @@
+{
+  "workload": "W-rat-wg",
+  "tolerance": 0.0,
+  "u_dir": "/tmp/eq-ratwg/U",
+  "p_dir": "/tmp/eq-ratwg/P",
+  "r_dir": "/tmp/eq-ratwg/R",
+  "timeouts": {},
+  "rustqc_exit": 0,
+  "verdicts": {
+    "bam_stat": {
+      "P": {
+        "verdict": "byte-identical",
+        "detail": "844 bytes identical"
+      },
+      "R": {
+        "verdict": "byte-identical",
+        "detail": "SRR1177982.bam_stat.txt: 844 bytes identical"
+      }
+    },
+    "infer_experiment": {
+      "P": {
+        "verdict": "byte-identical",
+        "detail": "182 bytes identical"
+      },
+      "R": {
+        "verdict": "differs",
+        "detail": "SRR1177982.infer_experiment.txt: largest absolute 0.2604, largest relative 0.518622; first differences:\nline count 5 vs 6\nline 2: 'This is PairEnd Data' vs ''\nline 3: 'Fraction of reads failed to determine: 0.0004' vs 'This is PairEnd Data'\nline 4: 'Fraction of reads explained by \"1++,1--,2+-,2-+\": 0.4975' vs 'Fraction of reads failed to determine: 0.5173'\nline 5: 'Fraction of reads explained by \"1+-,1-+,2++,2--\": 0.5021' vs 'Fraction of reads explained by \"1++,1--,2+-,2-+\": 0.2417'"
+      }
+    },
+    "read_duplication": {
+      "P": {
+        "verdict": "byte-identical",
+        "detail": "dup.seq.DupRate.xls=byte-identical; dup.pos.DupRate.xls=byte-identical"
+      },
+      "R": {
+        "verdict": "byte-identical",
+        "detail": "SRR1177982.seq.DupRate.xls: byte-identical: 10723 bytes identical | SRR1177982.pos.DupRate.xls: byte-identical: 12754 bytes identical"
+      }
+    },
+    "read_distribution": {
+      "P": {
+        "verdict": "byte-identical",
+        "detail": "1127 bytes identical"
+      },
+      "R": {
+        "verdict": "differs",
+        "detail": "SRR1177982.read_distribution.txt: largest absolute 3.34404e+08, largest relative 0.659064; first differences:\nline 3: 'Total Assigned Tags           8407135' vs 'Total Assigned Tags           8643988'\nline 6: 'CDS_Exons           10963531            7310437             666.80            ' vs 'CDS_Exons           10963473            7306189             666.41            '\nline 9: 'Introns             172988837           595040              3.44              ' vs 'Introns             507393163           1104871             2.18              '\nline 10: 'TSS_up_1kb          4367043             28551               6.54              ' vs 'TSS_up_1kb          1530546             10080               6.59              '\nline 11: 'TSS_up_5kb          19700304            61335               3.11              ' vs 'TSS_up_5kb          7056705             48323               6.85              '\nline 12: 'TSS_up_10kb         36007239            97155               2.70              ' vs 'TSS_up_10kb         13144927            63927               4.86              '\nline 13: 'TES_down_1kb        4275951             176799              41.35             ' vs 'TES_down_1kb        1521287             74114               48.72             '\nline 14: 'TES_down_5kb        18423589            354727              19.25             ' vs 'TES_down_5kb        6718546             139997              20.84             '\nline 15: 'TES_down_10kb       32790367            404503              12.34             ' vs 'TES_down_10kb       12140821            169001              13.92             '"
+      }
+    },
+    "junction_annotation": {
+      "P": {
+        "verdict": "byte-identical",
+        "detail": "ja.junction.xls=byte-identical; ja.junction.bed=byte-identical; ja.junction.Interact.bed=byte-identical"
+      },
+      "R": {
+        "verdict": "differs",
+        "detail": "SRR1177982.junction.xls: differs: largest absolute 0, largest relative 0; first differences:\nline 73351: 'chr2\\t54832670\\t54833250\\t318\\t annotated' vs 'chr2\\t54832670\\t54833250\\t318\\t complete_novel'\nline 73352: 'chr2\\t54833386\\t5483 | SRR1177982.junction.bed: differs: largest absolute 0, largest relative 0; first differences:\nline 73350: 'chr2\\t54832669\\t54833251\\tannotated\\t318\\t.\\t54832669\\t54833251\\t205,0,0\\t2\\t1,1\\t0,581' vs 'chr2\\t54832669\\t54833251\\tcomplete_ | SRR1177982.junction.Interact.bed: differs: largest absolute 0, largest relative 0; first differences:\nline 73351: 'chr2\\t54832669\\t54833251\\tchr2:54832669-54833251_annotated\\t318\\t318.0\\tRNAseq_junction\\t205,0,0\\tchr2\\t54832' vs 'chr2\\t5483266"
+      }
+    },
+    "junction_saturation": {
+      "P": {
+        "verdict": "not-comparable",
+        "detail": "upstream shuffles alignments without an RNG seed; two upstream runs differ"
+      },
+      "R": {
+        "verdict": "not-comparable",
+        "detail": "upstream shuffles alignments without an RNG seed; two upstream runs differ"
+      }
+    },
+    "inner_distance": {
+      "P": {
+        "verdict": "byte-identical",
+        "detail": "id.inner_distance.txt=byte-identical; id.inner_distance_freq.txt=byte-identical"
+      },
+      "R": {
+        "verdict": "differs",
+        "detail": "SRR1177982.inner_distance.txt: differs: largest absolute 667258, largest relative 0.999831; first differences:\nline 7529: 'SRR1177982.10075785\\t-16\\tsameTranscript=No,dist=genomic' vs 'SRR1177982.10075785\\t-16\\treadPairOverlap'\nline 7798: ' | SRR1177982.inner_distance_freq.txt: differs: largest absolute 49, largest relative 0.0140845; first differences:\nline 51: '0\\t5\\t22319' vs '0\\t5\\t22356'\nline 52: '5\\t10\\t21129' vs '5\\t10\\t21176'\nline 53: '10\\t15\\t18810' vs '10\\t15\\t18859'\nline 5"
+      }
+    },
+    "tin": {
+      "P": {
+        "verdict": "differs",
+        "detail": "SRR1177982.tin.xls=differs; SRR1177982.summary.txt=differs: largest absolute 3.65601, largest relative 0.0405751; first differences:\nline 157: 'NM_013162\\tchr1\\t256806475\\t256813678\\t93.71165044454774' vs 'NM_013162\\tchr1\\t256806475\\t256813678\\t93.81863111963806'\nline 654: 'NM_012559\\tchr2\\t181987233\\t181994516\\t95.89641066103516' vs 'NM_012559\\tchr2\\t181987"
+      },
+      "R": {
+        "verdict": "differs",
+        "detail": "SRR1177982.tin.xls: differs: largest absolute 2.7581e+08, largest relative 1; first differences:\nline count 5360 vs 5181\nline 6: 'NM_013134\\tchr2\\t27480225\\t27500654\\t93.93058017243231' vs 'NM_013134\\tchr2\\t27480225\\t27500654\\t93 | SRR1177982.summary.txt: differs: largest absolute 1.32015, largest relative 0.0550698; first differences:\nline 2: 'SRR1177982.bam\\t75.77608569737573\\t84.67803068410421\\t22.213946344269893' vs '/scratch/mdra00001/RSeQC-rust/datasets/h"
+      }
+    }
+  }
+}

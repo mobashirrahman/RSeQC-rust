@@ -12,6 +12,12 @@ of a feature or a closed divergence, not every commit.
 
 ### Added
 
+- Three-way comparison with RustQC v0.2.1 (`benchmarks/rustqc-comparison/`): upstream RSeQC 5.0.5,
+  this repository and RustQC `rna` on the eight RSeQC tools both reimplement, across two 3-contig
+  workloads and one whole-genome rat workload. Equivalence verdicts and wall/CPU/peak-memory medians
+  are generated from `raw/` by `report.py` into `RESULTS.md`; README section "Comparison with RustQC"
+  copies sections 2-4 exactly. Shared hardware; numbers must not be pooled with any other study.
+  W-hum-3c U-seq totals include upstream `tin` hitting the 1 h per-process timeout in all 3 reps.
 - A **real-data validation panel** (`datasets/`) implementing `testing.md` section 11.1:
   real RNA-seq reads from public archives, fetched with per-run MD5 verification from the
   archive, aligned by a pinned third-party aligner (STAR 2.7.11b) rather than by this
