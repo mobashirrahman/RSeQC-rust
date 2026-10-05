@@ -35,6 +35,17 @@ verification/fixtures/genebody_coverage_float/manifest.json
 # are inspected exactly once, at final validation.
 datasets/heldout/
 
+# E2 human whole-genome BAMs: 29 GB of ENCODE alignments, verified by MD5
+# against the portal and recorded in datasets/e2-human-wg/manifest.yaml
+# with byte counts. Never commit the bytes; the manifest (not the BAM) is
+# the evidence of what was measured. The .bai sidecars are rebuilt by
+# samtools index on demand.
+datasets/e2-human-wg/*.bam
+datasets/e2-human-wg/*.bai
+# Regenerable via datasets/make_bed12.py from the pinned GTF (see the
+# manifest); 43 MB of derived annotation, not evidence.
+datasets/e2-human-wg/hg38.v47.bed12/
+
 # Per-repetition artifact trees written by benchmarks/bench.py.
 #
 # These are scratch, not evidence. The gate compares each repetition's outputs and

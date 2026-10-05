@@ -1,0 +1,74 @@
+# E2 human whole-genome workloads — dataset manifest
+#
+# Staged 2026-10-05 for card E2 (protocol-v2 §4 production scale). This is
+# NOT part of the T4 held-out panel (datasets/manifest.yaml, one-way door):
+# it lives outside datasets/heldout/ deliberately, so nothing here can be
+# mistaken for untouched validation data. These BAMs serve the performance
+# study (timing/memory at production scale) and parity spot-checks on the
+# way in; scientific-endpoint claims are out of scope for E2 either way.
+#
+# Why public BAMs instead of aligning locally: a whole-genome GENCODE
+# human STAR index does not build on this machine (OOM-killed 3x at
+# junction insertion; see datasets/build_star_index.sh), and protocol-v2 §3
+# prefers public, independently aligned BAMs where local indexing is
+# impractical. A BAM from this repo's own generator would also test the
+# port against its own assumptions.
+#
+# Source: ENCODE experiment ENCSR100SIL (polyA mRNA RNA-seq on primary
+# keratinocytes, day 6 of differentiation; two biological replicates),
+# ENCODE4 uniform pipeline v1.2.4 (STAR 2.5.1b, GENCODE V29) on GRCh38.
+# Both files: released status, donor ENCDO615NVN (human), no blocking
+# audits (one INTERNAL_ACTION on analysis status bookkeeping only).
+# Download URLs: https://www.encodeproject.org/files/<ACCESSION>/@@download/<ACCESSION>.bam
+# (also mirrored on S3: s3://encode-public/...; see the file objects).
+
+schema_version: 1
+created: 2026-10-05
+governing: benchmarks/protocol-v2.md §3-§4
+
+workloads:
+  W-hum-wg-rep1:
+    file: ENCFF274NBX.bam
+    replicate: 1
+    md5sum: f88186ce4e2579fda703944dbfc0d4c7
+    bytes: 11193752122
+    records: 144187426
+    pairs: 66113570
+    mapped_pct: 97.13
+    properly_paired_pct: 96.87
+    duplicates_marked: 0
+    sort_order: coordinate
+    contigs: 292
+    contig_naming: chrN (GRCh38 primary + alts/decoys)
+  W-hum-wg-rep2:
+    file: ENCFF333WBQ.bam
+    replicate: 2
+    md5sum: 8dc25c9407a8fb3c20bf0fa50ab569ab
+    bytes: 17871447533
+    records: 233705130
+    pairs: 103162062
+    mapped_pct: 97.26
+    properly_paired_pct: 96.89
+    duplicates_marked: 0
+    sort_order: coordinate
+    contigs: 292
+    contig_naming: chrN (GRCh38 primary + alts/decoys)
+
+annotation_note: >
+  Aligned against GENCODE V29 by the ENCODE pipeline; the QC BED12 used
+  here is derived from the repo-pinned GENCODE v47 GTF
+  (datasets/reference/gencode.v47.annotation.gtf.gz) via
+  datasets/make_bed12.py over the 25 primary contigs (GENCODE ships no
+  alt-contig transcripts, so alt/decoy reads have no BED match by
+  construction; regenerable: make_bed12.py --gtf <v47 GTF> --contigs
+  chr1..chr22 chrX chrY chrM --out hg38.v47.bed12; 356,707 transcripts).
+  Both arms of every comparison use the same BAM+BED, so
+  parity and timing hold regardless; only biological interpretation would
+  care about the V29/v47 gap, and E2 claims none.
+
+scale_ladder: >
+  Small: W-hum-3c (12.3M records, 3 contigs). Intermediate: W-hum-wg-rep1
+  (144M records / 66.1M pairs). Production: W-hum-wg-rep2 (233.7M
+  records / 103.2M pairs). Measured counts, never requested counts
+  (protocol-v2 §4); the AGENT_PLAN "10M and 50M" targets are exceeded,
+  not subsetted toward, so no sampling bias is introduced.
