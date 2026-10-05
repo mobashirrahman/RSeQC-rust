@@ -24,7 +24,8 @@
 //! `IntoIterator<Item = io::Result<bam::Record>>`).
 
 use std::collections::{BTreeSet, HashMap};
-use std::io::{self, BufRead};
+use std::fs::File;
+use std::io::{self, BufRead, BufReader};
 
 use noodles_bam as bam;
 use noodles_sam::{self as sam, alignment::record::cigar::op::Kind};
@@ -315,6 +316,78 @@ where
 
 fn get(map: &HashMap<String, u64>, key: &str) -> u64 {
     map.get(key).copied().unwrap_or(0)
+}
+
+/// Runs the `infer_experiment.py` CLI body over an already-opened record
+/// stream (C1 multi-driver pattern).
+///
+/// This is exactly what the standalone binary's `run()` does -- same
+/// warning, same progress lines with their exact spacing, same stdout
+/// report, same error propagation -- except the record source is a
+/// caller-supplied iterator and stdout/stderr are caller-supplied sinks.
+/// The standalone binary delegates to this (passing the process streams);
+/// `rseqc_multi` passes one record broadcast, the shared header, and
+/// per-command stream files. `compute_experiment` and the renderer are
+/// untouched.
+///
+/// This is the first command needing the SAM header (`MultiArgs::header`,
+/// one `Arc` shared by every worker rather than a per-command clone of the
+/// whole reference dictionary) and the first needing a gene model
+/// (`MultiArgs::reference_bed`). The BED is opened and parsed HERE rather
+/// than by the driver, so a missing or malformed file produces this
+/// command's own `infer_experiment.py: error:` text on its stderr stream
+/// file, byte-identical to the standalone binary, instead of a
+/// driver-level message naming neither the file nor the command.
+///
+/// Unlike the file-writing commands there is no output-prefix parent check:
+/// this one writes no output file, so there is no parent to check. That is
+/// upstream's own shape, not an omission.
+pub fn run_infer_experiment<I>(
+    records: I,
+    header: &sam::Header,
+    refgene: &std::path::Path,
+    sample_size: u64,
+    q_cut: u8,
+    stdout: &mut dyn io::Write,
+    stderr: &mut dyn io::Write,
+) -> io::Result<()>
+where
+    I: IntoIterator<Item = io::Result<bam::Record>>,
+{
+    // Upstream's `validate_args` prints this warning (if any) before doing
+    // any real work -- ahead of even opening the refgene BED.
+    if sample_size < 1_000 {
+        writeln!(
+            stderr,
+            "Warning: sample size is below 1,000; the inferred protocol may be unreliable."
+        )?;
+    }
+
+    // `"Reading reference gene model " + refbed + ' ...'` then `end=' '`:
+    // one space from the literal's own trailing `...`+space concatenation,
+    // no second space (unlike read_quality's "Read BAM file ...  Done").
+    write!(
+        stderr,
+        "Reading reference gene model {} ... ",
+        refgene.display()
+    )?;
+    let (gene_ranges, skipped) = GeneRanges::parse(BufReader::new(File::open(refgene)?))?;
+    if skipped > 0 {
+        writeln!(stderr, "[NOTE: input bed must be 12-column] skipped {skipped} line(s)")?;
+    }
+    writeln!(stderr, "Done")?;
+
+    // `"Loading SAM/BAM file ... "` (trailing space in the literal) plus
+    // `end=' '` gives two spaces before whatever prints next.
+    write!(stderr, "Loading SAM/BAM file ...  ")?;
+    let result = compute_experiment(records, header, &gene_ranges, sample_size, q_cut)?;
+    if result.stopped_at_eof {
+        writeln!(stderr, "Finished")?;
+    }
+    writeln!(stderr, "Total {} usable reads were sampled", result.sampled_count)?;
+
+    writeln!(stdout, "{}", render_results(&result))?;
+    Ok(())
 }
 
 /// Matches `print_results()` in oracle/upstream-src/scripts/infer_experiment.py exactly.

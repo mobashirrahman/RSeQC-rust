@@ -26,6 +26,21 @@ from pathlib import Path
 COMMANDS = ("bam_stat", "read_GC", "read_NVC", "read_quality", "clipping_profile", "insertion_profile")
 
 
+def build_bed12(path: Path) -> None:
+    """Minimal BED12 covering the fixture's reads, for the gene-model commands.
+
+    The fixture's reads all start at or after position 100 on chr1, so two
+    wide transcripts are enough to give these commands something real to
+    match against. Not a real annotation: check_multi compares the port
+    against ITSELF through two invocation paths, so the model's contents are
+    irrelevant as long as both sides see the same file.
+    """
+    path.write_text(
+        "chr1\t100\t40000\tgene1\t0\t+\t100\t40000\t0,1,2,3\t0,10000,20000,30000\t0,0,0,0\n"
+        "chr1\t100\t40000\tgene2\t0\t-\t100\t40000\t0,1,2,3\t0,10000,20000,30000\t0,0,0,0\n"
+    )
+
+
 def build_fixture(path: Path, n_reads: int = 300, seed: int = 7) -> None:
     """Deterministic small BAM: 101 bp reads stepping along chr1."""
     import pysam
@@ -101,6 +116,8 @@ def main() -> int:
 
     bam = work / "input.bam"
     build_fixture(bam)
+    bed = work / "model.bed12"
+    build_bed12(bed)
     q = str(args.mapq)
     failures: list = []
 
@@ -147,6 +164,9 @@ def main() -> int:
     print(f"solo clipping_profile exit={rc}")
     if rc != 0:
         failures.append("solo clipping_profile exit code")
+
+    # `infer_experiment` is checked separately below: it needs `--reference-bed`,
+    # which the main matrix run does not pass, so it cannot be part of COMMANDS.
 
     # Standalone insertion_profile SE (files + streams; driver defaults to SE).
     rc, solo_ip_out, solo_ip_err = run(
@@ -347,6 +367,81 @@ def main() -> int:
         ["outpe.clipping_profile.xls", "outpe.clipping_profile.r"],
         failures,
     )
+
+    # infer_experiment: needs -r (gene model) and the shared header, and
+    # writes no output file (its report IS stdout). Checked apart from the
+    # main matrix because it requires --reference-bed.
+    ie_solo_dir = work / "ie_solo"
+    ie_multi_dir = work / "ie_multi"
+    ie_solo_dir.mkdir()
+    ie_multi_dir.mkdir()
+    rc, ie_solo_out, ie_solo_err = run(
+        [str(bin_dir / "infer_experiment"), "-i", str(bam), "-r", str(bed), "-q", q],
+        ie_solo_dir,
+    )
+    if rc != 0:
+        failures.append("ie solo infer_experiment exit code")
+    rc, _, _ = run(
+        [str(bin_dir / "rseqc_multi"), "-i", str(bam), "-o", "outie", "-r", str(bed),
+         "--run", "infer_experiment", "-q", q],
+        ie_multi_dir,
+    )
+    if rc != 0:
+        failures.append("ie multi --reference-bed exit code")
+    for label, solo_bytes, stream in (
+        ("ie stdout", ie_solo_out, "outie.infer_experiment.stdout"),
+        ("ie stderr", ie_solo_err, "outie.infer_experiment.stderr"),
+    ):
+        path = ie_multi_dir / stream
+        if not path.exists():
+            failures.append(f"multi {stream} missing")
+            print(f"MISSING on multi side: {stream}")
+            continue
+        check_equal(label, solo_bytes, path.read_bytes(), failures)
+
+    # --sample-size forwarding: long-only on the driver (-s is sequencing).
+    ss_solo_dir = work / "ss_solo"
+    ss_multi_dir = work / "ss_multi"
+    ss_solo_dir.mkdir()
+    ss_multi_dir.mkdir()
+    rc, ss_solo_out, ss_solo_err = run(
+        [str(bin_dir / "infer_experiment"), "-i", str(bam), "-r", str(bed), "-s", "5", "-q", q],
+        ss_solo_dir,
+    )
+    if rc != 0:
+        failures.append("ss solo infer_experiment -s 5 exit code")
+    rc, _, _ = run(
+        [str(bin_dir / "rseqc_multi"), "-i", str(bam), "-o", "outss", "-r", str(bed),
+         "--run", "infer_experiment", "-q", q, "--sample-size", "5"],
+        ss_multi_dir,
+    )
+    if rc != 0:
+        failures.append("ss multi --sample-size 5 exit code")
+    for label, solo_bytes, stream in (
+        ("ss stdout", ss_solo_out, "outss.infer_experiment.stdout"),
+        ("ss stderr", ss_solo_err, "outss.infer_experiment.stderr"),
+    ):
+        path = ss_multi_dir / stream
+        if not path.exists():
+            failures.append(f"multi {stream} missing")
+            print(f"MISSING on multi side: {stream}")
+            continue
+        check_equal(label, solo_bytes, path.read_bytes(), failures)
+    # The sample-size warning must survive the driver, not be dropped.
+    if b"below 1,000" not in (ss_multi_dir / "outss.infer_experiment.stderr").read_bytes():
+        failures.append("multi dropped the sub-1000 sample-size warning")
+        print("UNEXPECTED: sample-size warning missing from multi stderr")
+
+    # Refusal check: selecting infer_experiment without --reference-bed
+    # must exit 2 (usage error), not run against an empty gene model.
+    rc, _, _ = run(
+        [str(bin_dir / "rseqc_multi"), "-i", str(bam), "-o", "outie2",
+         "--run", "infer_experiment", "-q", q],
+        ie_multi_dir,
+    )
+    if rc != 2:
+        failures.append(f"multi infer_experiment without -r exit code (expected 2, got {rc})")
+        print(f"UNEXPECTED: missing --reference-bed gave exit {rc}, not 2")
 
     # deletion_profile: its own -l/-n, plus the required-flag refusal.
     del_solo_dir = work / "del_solo"

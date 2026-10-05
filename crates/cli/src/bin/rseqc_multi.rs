@@ -26,8 +26,9 @@ struct Args {
     #[arg(short = 'i', long = "input-file")]
     input_file: PathBuf,
 
-    /// Reference BED file. Accepted and currently ignored: no pilot
-    /// command reads a gene model (reserved for later commands).
+    /// Reference BED file (gene model), forwarded to the commands that
+    /// read one (`infer_experiment`, which requires it). Ignored by the
+    /// others.
     #[arg(short = 'r', long = "reference-bed")]
     reference_bed: Option<PathBuf>,
 
@@ -85,6 +86,11 @@ struct Args {
     /// default applies when absent.
     #[arg(long = "read-num")]
     read_num: Option<u64>,
+
+    /// Usable alignments to sample for `infer_experiment` (`-s` there).
+    /// Long-only: `-s` is already the sequencing layout on this driver.
+    #[arg(long = "sample-size", default_value_t = 200_000)]
+    sample_size: u64,
 }
 
 fn main() -> std::process::ExitCode {
@@ -99,8 +105,6 @@ fn main() -> std::process::ExitCode {
 }
 
 fn run(args: &Args) -> std::io::Result<()> {
-    let _ = args.reference_bed.as_ref();
-
     let tokens: Vec<String> = match &args.run {
         Some(list) => list
             .split(',')
@@ -149,6 +153,28 @@ fn run(args: &Args) -> std::io::Result<()> {
              mismatch_profile is selected (they filter reads on it)",
         );
     }
+    // `infer_experiment` reads a gene model; upstream's `-r` is required,
+    // and the driver's equivalent (`--reference-bed`) is optional because the
+    // other commands ignore it. Selecting this one without it is a usage
+    // error rather than a silent empty model.
+    if tokens.iter().any(|token| token == "infer_experiment")
+        && args.reference_bed.is_none()
+    {
+        rseqc_cli::usage_exit(
+            "rseqc_multi",
+            "--reference-bed is required when infer_experiment is selected \
+             (it reads a gene model)",
+        );
+    }
+
+    // The calling thread is the reader: open here so an unreadable input
+    // fails before any stream file is created, exactly like a standalone
+    // binary failing its open before any output. The header is read from the
+    // same open and shared with every worker as one `Arc` (C2's
+    // header-broadcast step): it is a whole reference dictionary, so cloning
+    // it per command would be wasteful, and workers must see the same
+    // dictionary the reader saw.
+    let (header, records) = rseqc_formats::open_alignments(&args.input_file)?;
 
     let prefix = args.out_prefix.to_string_lossy().into_owned();
     let multi_args = MultiArgs {
@@ -161,12 +187,11 @@ fn run(args: &Args) -> std::io::Result<()> {
         sequencing: args.sequencing.clone(),
         read_align_length: args.read_align_length,
         read_num: args.read_num,
+        sample_size: args.sample_size,
+        header: std::sync::Arc::new(header),
+        reference_bed: args.reference_bed.clone(),
     };
 
-    // The calling thread is the reader: open here so an unreadable input
-    // fails before any stream file is created, exactly like a standalone
-    // binary failing its open before any output.
-    let (_header, records) = rseqc_formats::open_alignments(&args.input_file)?;
     let results = drive(entries, &multi_args, records);
 
     let mut failed = 0;

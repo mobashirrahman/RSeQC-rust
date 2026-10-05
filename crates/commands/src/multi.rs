@@ -57,6 +57,7 @@
 
 use std::io;
 use std::io::Write as _;
+use std::path::PathBuf;
 use std::sync::{Arc, mpsc};
 
 use noodles_bam as bam;
@@ -64,6 +65,7 @@ use noodles_bam as bam;
 use crate::bam_stat::run_bam_stat;
 use crate::clipping_profile::run_clipping_profile;
 use crate::deletion_profile::run_deletion_profile;
+use crate::infer_experiment::run_infer_experiment;
 use crate::insertion_profile::run_insertion_profile;
 use crate::mismatch_profile::run_mismatch_profile;
 use crate::read_gc::run_read_gc;
@@ -147,11 +149,34 @@ pub struct MultiArgs {
     /// `mismatch_profile` (`-n` in each), forwarded only; `None` means the
     /// command's own default applies.
     pub read_num: Option<u64>,
+    /// Usable alignments to sample for `infer_experiment` (`-s` there).
+    /// Long-only on the driver: `-s` is already the sequencing layout.
+    pub sample_size: u64,
+    /// The alignment's SAM header, shared with every worker (card C2's
+    /// header-broadcast step).
+    ///
+    /// `noodles_sam::Header` is not `Sync`-friendly to clone per worker by
+    /// value -- it is, but it is a whole reference dictionary, so cloning it
+    /// once per command is wasteful at 10M+ records. It is read once here
+    /// (already open, from `open_alignments`) and handed out as an `Arc`,
+    /// so every worker sees the same object the reader saw. Commands that
+    /// need it (currently `infer_experiment`) take `&sam::Header` from the
+    /// `Arc`; the channel still carries records only.
+    pub header: Arc<noodles_sam::Header>,
+    /// Reference BED12 path (`-r`), required by the commands that read a
+    /// gene model (`infer_experiment` so far) and unused by the rest.
+    ///
+    /// The PATH is broadcast rather than parsed gene ranges, on purpose:
+    /// parsing belongs to the worker that needs it, so a missing or
+    /// malformed BED surfaces as that command's own `prog: error:` line --
+    /// byte-identical to the standalone binary's -- instead of a driver-level
+    /// message that names neither the file nor the command.
+    pub reference_bed: Option<PathBuf>,
 }
 
 /// The pilot registry: `bam_stat`, `read_GC`, `read_NVC`, `read_quality`,
 /// `clipping_profile`, `insertion_profile`, `deletion_profile`,
-/// `mismatch_profile`. C2 appends here.
+/// `mismatch_profile`, `infer_experiment`. C2 appends here.
 pub const COMMANDS: &[CommandEntry] = &[
     CommandEntry {
         name: "bam_stat",
@@ -305,6 +330,42 @@ pub const COMMANDS: &[CommandEntry] = &[
                         read_num,
                         skip_plot,
                         &rscript,
+                        stdout,
+                        stderr,
+                    )
+                },
+            )
+        },
+    },
+    CommandEntry {
+        name: "infer_experiment",
+        stream_stem: "infer_experiment",
+        prog: "infer_experiment.py",
+        build: |args: &MultiArgs| {
+            let mapq = args.mapq;
+            let header = Arc::clone(&args.header);
+            let reference_bed = args.reference_bed.clone();
+            let sample_size = args.sample_size;
+            Box::new(
+                move |records: ChannelRecords,
+                      stdout: &mut dyn io::Write,
+                      stderr: &mut dyn io::Write| {
+                    // `-r` cannot be missing here: `rseqc_multi` rejects
+                    // selecting this command without it, since upstream
+                    // requires the flag. The fallback is unreachable rather
+                    // than a silently empty gene model.
+                    let refgene = reference_bed.clone().ok_or_else(|| {
+                        io::Error::new(
+                            io::ErrorKind::InvalidInput,
+                            "infer_experiment.py: error: the following arguments are required: -r/--refgene",
+                        )
+                    })?;
+                    run_infer_experiment(
+                        records,
+                        &header,
+                        &refgene,
+                        sample_size,
+                        mapq,
                         stdout,
                         stderr,
                     )

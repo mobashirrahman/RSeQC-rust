@@ -5,12 +5,10 @@
 // B4: link `rseqc_cli` so its `#[global_allocator]` (actionable
 // out-of-memory message) applies to this binary too.
 use rseqc_cli as _;
-use std::fs::File;
-use std::io::BufReader;
 use std::path::PathBuf;
 
 use clap::Parser;
-use rseqc_commands::infer_experiment::{compute_experiment, render_results, GeneRanges};
+use rseqc_commands::infer_experiment::run_infer_experiment;
 
 #[derive(Parser)]
 #[command(
@@ -48,32 +46,20 @@ fn main() -> std::process::ExitCode {
 }
 
 fn run(args: &Args) -> std::io::Result<()> {
-    // Upstream's `validate_args` prints this warning (if any) before doing
-    // any real work -- ahead of even opening the refgene BED.
-    if args.sample_size < 1_000 {
-        eprintln!("Warning: sample size is below 1,000; the inferred protocol may be unreliable.");
-    }
-
-    // `"Reading reference gene model " + refbed + ' ...'` then `end=' '`:
-    // one space from the literal's own trailing `...`+space concatenation,
-    // no second space (unlike read_quality's "Read BAM file ...  Done").
-    eprint!("Reading reference gene model {} ... ", args.refgene.display());
-    let (gene_ranges, skipped) = GeneRanges::parse(BufReader::new(File::open(&args.refgene)?))?;
-    if skipped > 0 {
-        eprintln!("[NOTE: input bed must be 12-column] skipped {skipped} line(s)");
-    }
-    eprintln!("Done");
-
-    // `"Loading SAM/BAM file ... "` (trailing space in the literal) plus
-    // `end=' '` gives two spaces before whatever prints next.
-    eprint!("Loading SAM/BAM file ...  ");
+    // C1 multi-driver pattern: the CLI body lives in
+    // `rseqc_commands::infer_experiment::run_infer_experiment` (same bytes,
+    // same streams, same order) so `rseqc_multi` can drive it over a record
+    // broadcast plus per-command stream files. There is no output-prefix
+    // parent check to keep here: this command writes no output file, so
+    // there is no parent directory to check -- upstream's shape, not a gap.
     let (header, records) = rseqc_formats::open_alignments(&args.input_file)?;
-    let result = compute_experiment(records, &header, &gene_ranges, args.sample_size, args.mapq)?;
-    if result.stopped_at_eof {
-        eprintln!("Finished");
-    }
-    eprintln!("Total {} usable reads were sampled", result.sampled_count);
-
-    println!("{}", render_results(&result));
-    Ok(())
+    run_infer_experiment(
+        records,
+        &header,
+        &args.refgene,
+        args.sample_size,
+        args.mapq,
+        &mut std::io::stdout(),
+        &mut std::io::stderr(),
+    )
 }
