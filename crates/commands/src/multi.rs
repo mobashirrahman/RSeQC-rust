@@ -65,6 +65,7 @@ use crate::bam_stat::run_bam_stat;
 use crate::clipping_profile::run_clipping_profile;
 use crate::deletion_profile::run_deletion_profile;
 use crate::insertion_profile::run_insertion_profile;
+use crate::mismatch_profile::run_mismatch_profile;
 use crate::read_gc::run_read_gc;
 use crate::read_nvc::run_read_nvc;
 use crate::read_quality::run_read_quality;
@@ -136,19 +137,21 @@ pub struct MultiArgs {
     /// accepts). Upstream requires the flag; the driver defaults to `SE`
     /// so unattended full runs work.
     pub sequencing: String,
-    /// Expected aligned read length for `deletion_profile` (`-l`), which
-    /// filters on it. No default on purpose: upstream requires the flag,
-    /// and a driver-supplied length would silently decide which reads
-    /// qualify, so `rseqc_multi` exits 2 when this command is selected
-    /// without it.
+    /// Expected aligned read length for `deletion_profile` and
+    /// `mismatch_profile` (`-l` in each), which both filter on it. No
+    /// default on purpose: upstream requires the flag, and a driver-supplied
+    /// length would silently decide which reads qualify, so `rseqc_multi`
+    /// exits 2 when either command is selected without it.
     pub read_align_length: Option<usize>,
-    /// Maximum qualifying reads for `deletion_profile` (`-n`), forwarded
-    /// only; `None` means the command's own default applies.
+    /// Maximum qualifying reads for `deletion_profile` and
+    /// `mismatch_profile` (`-n` in each), forwarded only; `None` means the
+    /// command's own default applies.
     pub read_num: Option<u64>,
 }
 
 /// The pilot registry: `bam_stat`, `read_GC`, `read_NVC`, `read_quality`,
-/// `clipping_profile`, `insertion_profile`, `deletion_profile`. C2 appends here.
+/// `clipping_profile`, `insertion_profile`, `deletion_profile`,
+/// `mismatch_profile`. C2 appends here.
 pub const COMMANDS: &[CommandEntry] = &[
     CommandEntry {
         name: "bam_stat",
@@ -295,6 +298,39 @@ pub const COMMANDS: &[CommandEntry] = &[
                       stdout: &mut dyn io::Write,
                       stderr: &mut dyn io::Write| {
                     run_deletion_profile(
+                        records,
+                        mapq,
+                        &out_prefix,
+                        read_align_length,
+                        read_num,
+                        skip_plot,
+                        &rscript,
+                        stdout,
+                        stderr,
+                    )
+                },
+            )
+        },
+    },
+    CommandEntry {
+        name: "mismatch_profile",
+        stream_stem: "mismatch_profile",
+        prog: "mismatch_profile.py",
+        build: |args: &MultiArgs| {
+            let mapq = args.mapq;
+            let out_prefix = args.out_prefix.clone();
+            // See `deletion_profile`: `rseqc_multi` rejects selecting either
+            // command without `--read-align-length`, so this fallback is
+            // unreachable rather than a silent default.
+            let read_align_length = args.read_align_length.unwrap_or(0);
+            let read_num = args.read_num.unwrap_or(1_000_000);
+            let skip_plot = args.skip_plot;
+            let rscript = args.rscript.clone();
+            Box::new(
+                move |records: ChannelRecords,
+                      stdout: &mut dyn io::Write,
+                      stderr: &mut dyn io::Write| {
+                    run_mismatch_profile(
                         records,
                         mapq,
                         &out_prefix,

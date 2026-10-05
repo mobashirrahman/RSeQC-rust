@@ -407,6 +407,65 @@ def main() -> int:
         failures.append(f"multi deletion_profile without -l exit code (expected 2, got {rc})")
         print(f"UNEXPECTED: missing --read-align-length gave exit {rc}, not 2")
 
+    # mismatch_profile: its own -l/-n, plus the shared required-flag refusal.
+    mm_solo_dir = work / "mm_solo"
+    mm_multi_dir = work / "mm_multi"
+    mm_solo_dir.mkdir()
+    mm_multi_dir.mkdir()
+    rc, mm_solo_out, mm_solo_err = run(
+        [str(bin_dir / "mismatch_profile"), "-i", str(bam), "-o", "outmm",
+         "-l", "101", "-n", "100000", "-q", q, "--skip-plot"],
+        mm_solo_dir,
+    )
+    if rc != 0:
+        failures.append("mm solo mismatch_profile exit code")
+    rc, _, _ = run(
+        [str(bin_dir / "rseqc_multi"), "-i", str(bam), "-o", "outmm",
+         "--run", "mismatch_profile", "--read-align-length", "101",
+         "--read-num", "100000", "-q", q, "--skip-plot"],
+        mm_multi_dir,
+    )
+    if rc != 0:
+        failures.append("mm multi --read-align-length exit code")
+    check_equal(
+        "mm mismatch_profile.stdout",
+        mm_solo_out,
+        (mm_multi_dir / "outmm.mismatch_profile.stdout").read_bytes()
+        if (mm_multi_dir / "outmm.mismatch_profile.stdout").exists()
+        else b"<MISSING>",
+        failures,
+    )
+    if not (mm_multi_dir / "outmm.mismatch_profile.stdout").exists():
+        failures.append("mm multi outmm.mismatch_profile.stdout missing")
+    check_equal(
+        "mm mismatch_profile.stderr",
+        mm_solo_err,
+        (mm_multi_dir / "outmm.mismatch_profile.stderr").read_bytes()
+        if (mm_multi_dir / "outmm.mismatch_profile.stderr").exists()
+        else b"<MISSING>",
+        failures,
+    )
+    if not (mm_multi_dir / "outmm.mismatch_profile.stderr").exists():
+        failures.append("mm multi outmm.mismatch_profile.stderr missing")
+    check_files(
+        "mm files",
+        mm_solo_dir,
+        mm_multi_dir,
+        ["outmm.mismatch_profile.xls", "outmm.mismatch_profile.r"],
+        failures,
+    )
+
+    # Refusal check: selecting mismatch_profile without --read-align-length
+    # must exit 2 (usage error), same as deletion_profile.
+    rc, _, _ = run(
+        [str(bin_dir / "rseqc_multi"), "-i", str(bam), "-o", "outmm2",
+         "--run", "mismatch_profile", "-q", q, "--skip-plot"],
+        mm_multi_dir,
+    )
+    if rc != 2:
+        failures.append(f"multi mismatch_profile without -l exit code (expected 2, got {rc})")
+        print(f"UNEXPECTED: missing --read-align-length gave exit {rc}, not 2")
+
     # Subset selection: --run bam_stat alone produces only bam_stat streams.
     sub_dir = work / "subset"
     sub_dir.mkdir()

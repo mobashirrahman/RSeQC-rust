@@ -72,15 +72,17 @@ struct Args {
     #[arg(short = 's', long = "sequencing", default_value = "SE")]
     sequencing: String,
 
-    /// Expected aligned read length for `deletion_profile` (`-l` there),
-    /// which filters reads on it. Required when that command is selected:
-    /// it has no sensible driver default, because a wrong length silently
-    /// changes which reads qualify.
+    /// Expected aligned read length for `deletion_profile` and
+    /// `mismatch_profile` (`-l` in each), which filter reads on it.
+    /// Required when either is selected: there is no sensible driver
+    /// default, because a wrong length silently changes which reads
+    /// qualify.
     #[arg(long = "read-align-length")]
     read_align_length: Option<usize>,
 
-    /// Maximum qualifying reads for `deletion_profile` (`-n` there).
-    /// Optional; the command's own default applies when absent.
+    /// Maximum qualifying reads for `deletion_profile` and
+    /// `mismatch_profile` (`-n` in each). Optional; the command's own
+    /// default applies when absent.
     #[arg(long = "read-num")]
     read_num: Option<u64>,
 }
@@ -132,16 +134,19 @@ fn run(args: &Args) -> std::io::Result<()> {
             "invalid --sequencing (expected SE or PE)",
         );
     }
-    // `deletion_profile` filters on the aligned read length, so there is no
-    // honest default to supply on its behalf: a wrong value would silently
-    // change which reads qualify and the command would still succeed.
-    if tokens.iter().any(|token| token == "deletion_profile")
+    // `deletion_profile` and `mismatch_profile` filter on the aligned read
+    // length, so there is no honest default to supply on their behalf: a
+    // wrong value would silently change which reads qualify and the
+    // command would still succeed.
+    if tokens
+        .iter()
+        .any(|token| token == "deletion_profile" || token == "mismatch_profile")
         && args.read_align_length.is_none()
     {
         rseqc_cli::usage_exit(
             "rseqc_multi",
-            "--read-align-length is required when deletion_profile is selected \
-             (it filters reads on it)",
+            "--read-align-length is required when deletion_profile or \
+             mismatch_profile is selected (they filter reads on it)",
         );
     }
 

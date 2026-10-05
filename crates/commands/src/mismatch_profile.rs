@@ -24,7 +24,10 @@
 //! `MismatchProfile::data.is_empty()` for this, not this module.
 
 use std::collections::{BTreeMap, HashMap};
+use std::fs::File;
 use std::io;
+use std::io::Write as _;
+use std::process::{Command, Stdio};
 
 use noodles_bam as bam;
 use noodles_sam::alignment::record::cigar::op::Kind;
@@ -221,6 +224,136 @@ pub fn render_mismatch_r_script(p: &MismatchProfile, out_prefix: &str) -> String
     // Trailing newline: upstream's plain `print(...)` calls each add
     // their own trailing newline, including the final `dev.off()`.
     format!("{}\n", lines.join("\n"))
+}
+
+/// Refuses an output prefix whose parent directory does not exist, before
+/// any work. Mirrors `rseqc_cli::require_existing_output_parent` exactly
+/// (same `Path::parent` mapping, same message); kept local because the
+/// commands crate cannot depend on the CLI crate.
+fn require_output_parent(output_prefix: &str) -> io::Result<()> {
+    use std::path::Path;
+    let prefix = Path::new(output_prefix);
+    let parent = match prefix.parent() {
+        Some(p) if p.as_os_str().is_empty() => Path::new("."),
+        Some(p) => p,
+        None => Path::new("."),
+    };
+    if parent.is_dir() {
+        Ok(())
+    } else {
+        Err(io::Error::new(
+            io::ErrorKind::NotFound,
+            format!("output directory does not exist: {}", parent.display()),
+        ))
+    }
+}
+
+/// Runs the `mismatch_profile.py` CLI body over an already-opened record
+/// stream (C1 multi-driver pattern).
+///
+/// This is exactly what the standalone binary's `run()` does -- same
+/// progress lines, the same two stdout blank lines, the same
+/// no-mismatches early return (including which files exist and what is
+/// inside them in that branch), same files with the same bytes, same
+/// Rscript contract, same error propagation -- except the record source
+/// is a caller-supplied iterator and stdout/stderr are caller-supplied
+/// sinks. The standalone binary delegates to this (passing the process
+/// streams); `rseqc_multi` passes one record broadcast plus per-command
+/// stream files. The compute function and both renderers are untouched.
+///
+/// The empty-data branch is reproduced exactly rather than "cleaned up":
+/// upstream opens both output files unconditionally before checking
+/// `len(data) == 0` and then `sys.exit()`s, so both files exist; only on
+/// natural iterator exhaustion has the "Total reads used" line already
+/// been written to the xls. That is an output contract the differential
+/// suite pins, so it is preserved byte for byte.
+///
+/// The argument list is long on purpose and carries a targeted lint
+/// allowance: this is the C1 multi-driver pattern (one callable per
+/// command carrying its full CLI surface plus the two sinks), and
+/// bundling the flags into a struct would only hide them from the C2
+/// cards that copy this signature command by command.
+#[allow(clippy::too_many_arguments)]
+pub fn run_mismatch_profile<I>(
+    records: I,
+    q_cut: u8,
+    out_prefix: &str,
+    read_align_length: usize,
+    read_num: u64,
+    skip_plot: bool,
+    rscript: &str,
+    stdout: &mut dyn io::Write,
+    stderr: &mut dyn io::Write,
+) -> io::Result<()>
+where
+    I: IntoIterator<Item = io::Result<bam::Record>>,
+{
+    // Same rule as the binary's `require_existing_output_parent_or_exit`
+    // (and upstream's `validate_args`), in `Result` form; see above.
+    require_output_parent(out_prefix)?;
+
+    // Upstream: `print("Process BAM file ... ", end=' ', file=sys.stderr)`
+    // -- the literal's own trailing space plus `end=' '` gives two spaces
+    // before whatever prints next on the same stderr line.
+    write!(stderr, "Process BAM file ...  ")?;
+    let profile = compute_mismatch_profile(records, q_cut, read_align_length, read_num)?;
+
+    if !profile.loop_exhausted_naturally {
+        writeln!(stderr, "Total reads used: {}", profile.count)?;
+    }
+    // Upstream's unconditional `print('\n')` twice: the literal "\n" plus
+    // print's own trailing newline is two bytes each, always, regardless
+    // of whether any mismatches were found. These go to STDOUT (no
+    // `file=` argument), so a worker routes them to its stdout stream
+    // file and they still compare byte-wise.
+    writeln!(stdout)?;
+    writeln!(stdout)?;
+
+    if profile.data.is_empty() {
+        // Upstream opens both output files unconditionally before this
+        // check, so they exist even though `sys.exit()` fires before the
+        // table header or any data rows are written. On natural iterator
+        // exhaustion the "Total reads used" line was already written
+        // before this check, so that single line is present in an
+        // otherwise-empty xls.
+        if profile.loop_exhausted_naturally {
+            File::create(format!("{out_prefix}.mismatch_profile.xls"))?
+                .write_all(format!("Total reads used: {}\n", profile.count).as_bytes())?;
+        } else {
+            File::create(format!("{out_prefix}.mismatch_profile.xls"))?;
+        }
+        File::create(format!("{out_prefix}.mismatch_profile.r"))?;
+        writeln!(stderr, "No mismatches found")?;
+        return Ok(());
+    }
+
+    File::create(format!("{out_prefix}.mismatch_profile.xls"))?
+        .write_all(render_mismatch_table(&profile).as_bytes())?;
+
+    let r_path = format!("{out_prefix}.mismatch_profile.r");
+    File::create(&r_path)?.write_all(render_mismatch_r_script(&profile, out_prefix).as_bytes())?;
+
+    if !skip_plot {
+        let rscript_path = crate::exec_resolve::which(rscript).ok_or_else(|| {
+            io::Error::new(
+                io::ErrorKind::NotFound,
+                format!("Rscript executable not found: {rscript}"),
+            )
+        })?;
+        let out = Command::new(&rscript_path)
+            .arg(&r_path)
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()?
+            .wait_with_output()?;
+        stdout.write_all(&out.stdout)?;
+        stderr.write_all(&out.stderr)?;
+        if !out.status.success() {
+            return Err(io::Error::other(format!("R plotting failed for {r_path}")));
+        }
+    }
+
+    Ok(())
 }
 
 #[cfg(test)]
