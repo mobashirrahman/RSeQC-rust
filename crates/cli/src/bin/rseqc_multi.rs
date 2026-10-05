@@ -64,6 +64,13 @@ struct Args {
     /// already the reference BED on this driver.
     #[arg(long = "reduce", default_value_t = 1)]
     reduce: u64,
+
+    /// Sequencing layout for `clipping_profile` (`SE` or `PE`, the only
+    /// values its standalone `--sequencing` accepts), forwarded to
+    /// `clipping_profile` only. Upstream requires the flag; the driver
+    /// defaults to `SE` so unattended full runs work.
+    #[arg(short = 's', long = "sequencing", default_value = "SE")]
+    sequencing: String,
 }
 
 fn main() -> std::process::ExitCode {
@@ -98,6 +105,18 @@ fn run(args: &Args) -> std::io::Result<()> {
         Ok(entries) => entries,
         Err(message) => rseqc_cli::usage_exit("rseqc_multi", &message),
     };
+    // `clipping_profile` is the only registered command whose standalone
+    // flag is restricted (clap `SE`/`PE`); validate here so a bad value
+    // stays a usage error (exit 2) instead of a worker failure.
+    if tokens.iter().any(|token| token == "clipping_profile")
+        && args.sequencing != "SE"
+        && args.sequencing != "PE"
+    {
+        rseqc_cli::usage_exit(
+            "rseqc_multi",
+            "invalid --sequencing (expected SE or PE)",
+        );
+    }
 
     let prefix = args.out_prefix.to_string_lossy().into_owned();
     let multi_args = MultiArgs {
@@ -107,6 +126,7 @@ fn run(args: &Args) -> std::io::Result<()> {
         rscript: args.rscript.clone(),
         nx: args.nx,
         reduce: args.reduce,
+        sequencing: args.sequencing.clone(),
     };
 
     // The calling thread is the reader: open here so an unreadable input

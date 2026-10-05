@@ -2,16 +2,10 @@
 //! contain '.' (see crates/cli/Cargo.toml); packaging (PORTING_PLAN Step
 //! 10) adds the `.py`-suffixed PATH alias.
 
-use std::fs::File;
-use std::io::Write as _;
 use std::path::PathBuf;
-use std::process::Command;
 
 use clap::{Parser, ValueEnum};
-use rseqc_commands::clipping_profile::{
-    compute_paired_end, compute_single_end, render_paired_r_script, render_paired_table,
-    render_single_r_script, render_single_table,
-};
+use rseqc_commands::clipping_profile::run_clipping_profile;
 
 #[derive(Clone, Copy, ValueEnum)]
 enum Layout {
@@ -65,6 +59,13 @@ fn main() -> std::process::ExitCode {
 }
 
 fn run(args: &Args) -> std::io::Result<()> {
+    // C1 multi-driver pattern: the CLI body lives in
+    // `rseqc_commands::clipping_profile::run_clipping_profile` (same bytes,
+    // same files, same order) so `rseqc_multi` can drive it over a record
+    // broadcast with per-command stream files. The `_or_exit` parent check
+    // stays here so standalone exit 2 is unchanged; the shared body
+    // re-checks in `Result` form for workers.
+    //
     // Upstream's validate_args refuses an output prefix whose parent directory does
     // not exist, before any input is read. Omitting it here meant the whole
     // alignment was read and every metric computed, then discarded when the output
@@ -75,53 +76,19 @@ fn run(args: &Args) -> std::io::Result<()> {
     rseqc_cli::require_existing_output_parent_or_exit("clipping_profile.py", &args.out_prefix);
 
     let (_header, records) = rseqc_formats::open_alignments(&args.input_file)?;
-    let prefix = args.out_prefix.to_string_lossy();
-
-    // Upstream: `if self.bam_format: print("Load BAM file ... ", end=' ')
-    // else: print("Load SAM file ... ", end=' ')` -- dead-code else
-    // branch, same as bam_stat.py and others (pysam.Samfile(path, 'rb')
-    // succeeds for genuine .sam content too). The literal's own trailing
-    // space plus `end=' '` gives two spaces before "Done".
-    eprint!("Load BAM file ...  ");
-
-    let (table_text, r_script_text) = match args.sequencing {
-        Layout::SingleEnd => {
-            let profile = compute_single_end(records, args.mapq, b'S')?;
-            eprintln!("Done");
-            // Upstream: `print("Totoal reads used: %d" % ...)` -- a
-            // literal upstream typo ("Totoal"), preserved exactly.
-            eprintln!("Totoal reads used: {}", profile.total_read);
-            (render_single_table(&profile), render_single_r_script(&profile, &prefix))
-        }
-        Layout::PairedEnd => {
-            let profile = compute_paired_end(records, args.mapq, b'S')?;
-            eprintln!("Done");
-            // Upstream prints these as TWO SEPARATE lines (also with
-            // the same "Totoal" typo), not one combined line.
-            eprintln!("Totoal read-1 used: {}", profile.total_read1);
-            eprintln!("Totoal read-2 used: {}", profile.total_read2);
-            (render_paired_table(&profile), render_paired_r_script(&profile, &prefix))
-        }
+    let prefix = args.out_prefix.to_string_lossy().into_owned();
+    let sequencing = match args.sequencing {
+        Layout::SingleEnd => "SE",
+        Layout::PairedEnd => "PE",
     };
-
-    let xls_path = format!("{prefix}.clipping_profile.xls");
-    File::create(&xls_path)?.write_all(table_text.as_bytes())?;
-
-    let r_path = format!("{prefix}.clipping_profile.r");
-    File::create(&r_path)?.write_all(r_script_text.as_bytes())?;
-
-    if !args.skip_plot {
-        let rscript_path = rseqc_commands::exec_resolve::which(&args.rscript).ok_or_else(|| {
-            std::io::Error::new(
-                std::io::ErrorKind::NotFound,
-                format!("Rscript executable not found: {}", args.rscript),
-            )
-        })?;
-        let status = Command::new(&rscript_path).arg(&r_path).status()?;
-        if !status.success() {
-            return Err(std::io::Error::other(format!("R plotting failed for {r_path}")));
-        }
-    }
-
-    Ok(())
+    run_clipping_profile(
+        records,
+        args.mapq,
+        &prefix,
+        sequencing,
+        args.skip_plot,
+        &args.rscript,
+        &mut std::io::stdout(),
+        &mut std::io::stderr(),
+    )
 }

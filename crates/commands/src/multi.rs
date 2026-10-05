@@ -62,6 +62,7 @@ use std::sync::{Arc, mpsc};
 use noodles_bam as bam;
 
 use crate::bam_stat::run_bam_stat;
+use crate::clipping_profile::run_clipping_profile;
 use crate::read_gc::run_read_gc;
 use crate::read_nvc::run_read_nvc;
 use crate::read_quality::run_read_quality;
@@ -128,9 +129,14 @@ pub struct MultiArgs {
     /// times (`--reduce`), forwarded to `read_quality` only. Long-only on
     /// the driver: `-r` is already the reference BED there.
     pub reduce: u64,
+    /// Sequencing layout for `clipping_profile` (`SE` or `PE`, the only
+    /// values its standalone `--sequencing` accepts). Upstream requires
+    /// the flag; the driver defaults to `SE` so unattended full runs work.
+    pub sequencing: String,
 }
 
-/// The pilot registry: `bam_stat`, `read_GC`, `read_NVC`, `read_quality`. C2 appends here.
+/// The pilot registry: `bam_stat`, `read_GC`, `read_NVC`, `read_quality`,
+/// `clipping_profile`. C2 appends here.
 pub const COMMANDS: &[CommandEntry] = &[
     CommandEntry {
         name: "bam_stat",
@@ -220,6 +226,34 @@ pub const COMMANDS: &[CommandEntry] = &[
                         mapq,
                         &out_prefix,
                         reduce,
+                        skip_plot,
+                        &rscript,
+                        stdout,
+                        stderr,
+                    )
+                },
+            )
+        },
+    },
+    CommandEntry {
+        name: "clipping_profile",
+        stream_stem: "clipping_profile",
+        prog: "clipping_profile.py",
+        build: |args: &MultiArgs| {
+            let mapq = args.mapq;
+            let out_prefix = args.out_prefix.clone();
+            let sequencing = args.sequencing.clone();
+            let skip_plot = args.skip_plot;
+            let rscript = args.rscript.clone();
+            Box::new(
+                move |records: ChannelRecords,
+                      stdout: &mut dyn io::Write,
+                      stderr: &mut dyn io::Write| {
+                    run_clipping_profile(
+                        records,
+                        mapq,
+                        &out_prefix,
+                        &sequencing,
                         skip_plot,
                         &rscript,
                         stdout,

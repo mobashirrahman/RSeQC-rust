@@ -23,7 +23,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-COMMANDS = ("bam_stat", "read_GC", "read_NVC", "read_quality")
+COMMANDS = ("bam_stat", "read_GC", "read_NVC", "read_quality", "clipping_profile")
 
 
 def build_fixture(path: Path, n_reads: int = 300, seed: int = 7) -> None:
@@ -139,6 +139,15 @@ def main() -> int:
     if rc != 0:
         failures.append("solo read_quality exit code")
 
+    # Standalone clipping_profile SE (files + streams; driver defaults to SE).
+    rc, solo_cp_out, solo_cp_err = run(
+        [str(bin_dir / "clipping_profile"), "-i", str(bam), "-o", "out", "-s", "SE", "-q", q, "--skip-plot"],
+        solo_dir,
+    )
+    print(f"solo clipping_profile exit={rc}")
+    if rc != 0:
+        failures.append("solo clipping_profile exit code")
+
     # Through the driver, same flags, same relative prefix.
     rc, multi_own_out, multi_own_err = run(
         [
@@ -168,6 +177,8 @@ def main() -> int:
         ("read_NVC.stderr", solo_nvc_err, "out.read_NVC.stderr"),
         ("read_quality.stdout", solo_rq_out, "out.read_quality.stdout"),
         ("read_quality.stderr", solo_rq_err, "out.read_quality.stderr"),
+        ("clipping_profile.stdout", solo_cp_out, "out.clipping_profile.stdout"),
+        ("clipping_profile.stderr", solo_cp_err, "out.clipping_profile.stderr"),
     ):
         stream_file = multi_dir / stream_name
         if not stream_file.exists():
@@ -181,7 +192,8 @@ def main() -> int:
         "files",
         solo_dir,
         multi_dir,
-        ["out.GC.xls", "out.GC_plot.r", "out.NVC.xls", "out.NVC_plot.r", "out.qual.r"],
+        ["out.GC.xls", "out.GC_plot.r", "out.NVC.xls", "out.NVC_plot.r", "out.qual.r",
+         "out.clipping_profile.xls", "out.clipping_profile.r"],
         failures,
     )
 
@@ -275,6 +287,52 @@ def main() -> int:
         red_solo_dir,
         red_multi_dir,
         ["outred.qual.r"],
+        failures,
+    )
+
+        # PE sequencing forwarding: solo -s PE vs multi -s PE, same prefix.
+    pe_solo_dir = work / "pe_solo"
+    pe_multi_dir = work / "pe_multi"
+    pe_solo_dir.mkdir()
+    pe_multi_dir.mkdir()
+    rc, pe_solo_out, pe_solo_err = run(
+        [str(bin_dir / "clipping_profile"), "-i", str(bam), "-o", "outpe", "-s", "PE", "-q", q, "--skip-plot"],
+        pe_solo_dir,
+    )
+    if rc != 0:
+        failures.append("pe solo clipping_profile -s PE exit code")
+    rc, _, _ = run(
+        [str(bin_dir / "rseqc_multi"), "-i", str(bam), "-o", "outpe",
+         "--run", "clipping_profile", "-q", q, "-s", "PE", "--skip-plot"],
+        pe_multi_dir,
+    )
+    if rc != 0:
+        failures.append("pe multi -s PE exit code")
+    check_equal(
+        "pe clipping_profile.stdout",
+        pe_solo_out,
+        (pe_multi_dir / "outpe.clipping_profile.stdout").read_bytes()
+        if (pe_multi_dir / "outpe.clipping_profile.stdout").exists()
+        else b"<MISSING>",
+        failures,
+    )
+    if not (pe_multi_dir / "outpe.clipping_profile.stdout").exists():
+        failures.append("pe multi outpe.clipping_profile.stdout missing")
+    check_equal(
+        "pe clipping_profile.stderr",
+        pe_solo_err,
+        (pe_multi_dir / "outpe.clipping_profile.stderr").read_bytes()
+        if (pe_multi_dir / "outpe.clipping_profile.stderr").exists()
+        else b"<MISSING>",
+        failures,
+    )
+    if not (pe_multi_dir / "outpe.clipping_profile.stderr").exists():
+        failures.append("pe multi outpe.clipping_profile.stderr missing")
+    check_files(
+        "pe files",
+        pe_solo_dir,
+        pe_multi_dir,
+        ["outpe.clipping_profile.xls", "outpe.clipping_profile.r"],
         failures,
     )
 
