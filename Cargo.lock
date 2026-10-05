@@ -1035,6 +1035,7 @@ dependencies = [
  "noodles-bgzf",
  "noodles-core",
  "noodles-cram",
+ "noodles-fasta",
  "noodles-sam",
  "proptest",
  "rseqc-core",

@@ -21,6 +21,13 @@ noodles-sam = "0.90.0"
 # auto-fetch (upstream's own commands don't expose a --reference flag
 # either, and this project is offline-first by design).
 noodles-cram = "0.99.0"
+# Empty reference-sequence repository for the container-streamed CRAM
+# decode (B3): `slice.records()` takes the repository by value, and this
+# build resolves no external reference by design, so each container is
+# decoded against `Repository::default()`. Already in Cargo.lock via
+# noodles-cram 0.99.0 (which uses noodles-fasta 0.66.0); direct here
+# because open_alignments names the type itself.
+noodles-fasta = "0.66"
 rseqc-core = { path = "../core" }
 thiserror = "2"
 # Pure-Rust BigWig reader (no write/remote/cli support needed -- only

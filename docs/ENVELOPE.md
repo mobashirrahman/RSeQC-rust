@@ -338,10 +338,10 @@ available are far too small to demonstrate them.
 
 | Limit | Where | Consequence |
 |---|---|---|
-| CRAM decodes whole-file | `crates/formats/src/lib.rs`, `AlignmentRecords::CramBuffered` | CRAM input is bounded by available memory, not by alignment size. `noodles-cram` 0.99 exposes record iteration only as `records(&header)`, which is single-use, so re-entering a drained reader yields a spurious decode error indistinguishable from a genuine mid-file error. Streaming CRAM needs a self-referential reader or decode reimplemented on `read_container`. |
+| CRAM decodes container by container (B3) | `crates/formats/src/lib.rs`, `AlignmentRecords::CramStreaming` | One container's records buffered at a time, decoded via the public `read_container` / `slices` / `decode_blocks` / `slice.records` calls. Measured: `bam_stat` on an 8.2M-record embedded-reference CRAM (397 MB file, pysam `embed_ref=2` from the rat BAM) peaks at 51 MB vs 3 MB on the BAM, byte-identical output; a 1-record CRAM peaks at 3.7 MB. Slower than BAM (~79 s vs ~4 s, dominated by CRAM decode plus the per-container BAM round trip), but flat in file size. The external-reference error still surfaces at open with the historical message. |
 | `bam2wig` retains covered positions | `crates/commands/src/bam2wig.rs` | Proportional to covered bases; see the measured slope above. |
 | `read_duplication` retains one entry per read | `crates/commands/src/read_duplication.rs` | Proportional to alignment records; see the measured slope above. |
-| SAM and CRAM round-trip through memory | `crates/formats/src/lib.rs`, `encode_decode` | Bounded by the chunk size for SAM (4,096 records); unbounded for CRAM, as above. |
+| SAM and CRAM round-trip through memory | `crates/formats/src/lib.rs`, `encode_decode` | Bounded by the chunk size for SAM (4,096 records) and by one container for CRAM (B3); whole-file buffering is gone on both paths. |
 | Threading | whole workspace | The port exposes no `--threads` flag and has no first-party parallelism. Memory per concurrent invocation is therefore additive: N concurrent jobs need N times the per-job figure. |
 
 ## What is not established
@@ -371,8 +371,10 @@ Recorded as gaps rather than left to be assumed:
   machine for the two non-flat commands (above), and additive. Three samples of a
   shared machine is not a concurrency study: the x1 cells move by several hundred MB
   between adjacent runs, and levels above ×8 were not run.
-- **CRAM at scale.** The CRAM fixture is 10 records. The whole-file decode is a code
-  fact; its *cost* has never been measured on a real CRAM alignment.
+- **CRAM at scale: measured once (B3).** Beyond the 10-record fixture, `bam_stat`
+  on the 8.2M-record embedded-reference rat CRAM peaks at 51 MB with output
+  byte-identical to the BAM run. One file, one command, one machine -- not a
+  per-record CRAM slope.
 - **The rat panel is one exposed sample.** It is the largest alignment measured, and
   it is also the stratum whose result drove development changes. Its cost
   characteristics are not a general claim about RNA-seq alignments.

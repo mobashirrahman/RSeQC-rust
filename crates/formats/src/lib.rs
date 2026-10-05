@@ -4,7 +4,7 @@
 
 use std::fs::File;
 use std::io::{self, BufRead, BufReader};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use noodles_sam as sam;
 
@@ -154,16 +154,15 @@ pub fn write_bai_index(path: &Path) -> io::Result<()> {
 /// - **BAM** -- true O(1): `read_record` decodes into one reusable buffer.
 /// - **SAM** -- O(chunk): `read_record_buf` into owned `RecordBuf`s, converted in
 ///   batches of [`ROUND_TRIP_CHUNK_RECORDS`].
-/// - **CRAM** -- O(file), i.e. still buffered whole. This is a limitation of
-///   `noodles-cram` 0.99, not a preference: record iteration is exposed only as
-///   `records(&header)`, which is **single-use**. Re-entering it on a drained reader
-///   yields a spurious `InvalidData`/`TryFromIntError` instead of EOF (verified
-///   directly), and draining it partially and then re-entering does work -- so the
-///   failure is specifically at exhaustion, which is indistinguishable from a genuine
-///   mid-file decode error. Bounding the memory would need a self-referential reader
-///   (or reimplementing decode on top of `read_container`), neither of which is
-///   justified for the least common input format here. CRAM is not where the measured
-///   memory problem was: every benchmarked workload is BAM.
+/// - **CRAM** -- O(container): one container's records at a time (B3),
+///   decoded via the public `read_container` / `slices` / `decode_blocks` /
+///   `slice.records` calls -- the same calls `noodles-cram` 0.99's own
+///   `Records` iterator makes internally. Noodles exposes record iteration
+///   only as `records(&header)`, which is **single-use** (re-entering it on
+///   a drained reader yields a spurious `InvalidData`/`TryFromIntError`
+///   instead of EOF, verified directly), so holding that iterator would
+///   need a self-referential struct; driving containers directly owns
+///   everything and holds no borrow across calls.
 pub enum AlignmentRecords {
     /// True O(1)-memory streaming decode of a BAM file.
     Bam {
@@ -187,9 +186,28 @@ pub enum AlignmentRecords {
         pending: std::collections::VecDeque<io::Result<noodles_bam::Record>>,
         done: bool,
     },
-    /// Whole-file buffered conversion for CRAM.
-    CramBuffered {
-        pending: std::vec::IntoIter<io::Result<noodles_bam::Record>>,
+    /// Container-streamed conversion for CRAM (B3).
+    ///
+    /// Owns the CRAM reader, a clone of the header (needed both for
+    /// `slice.records` and for the per-container BAM round trip), the
+    /// source path (for the external-reference error), one reusable
+    /// container buffer and a queue of already-decoded `bam::Record`s.
+    /// Each `next()` decodes at most one container, so peak memory is
+    /// O(container) rather than O(file). The first container is decoded
+    /// eagerly in `open_alignments`, so a file that needs an external
+    /// reference still fails at open with the historical message.
+    ///
+    /// The header is boxed: without it this variant is far larger than the
+    /// others, so every match on the enum copies that padding, including on
+    /// the BAM path where this variant is never constructed (same reason as
+    /// `SamBuffered`'s boxed header).
+    CramStreaming {
+        reader: noodles_cram::io::Reader<File>,
+        header: Box<sam::Header>,
+        path: PathBuf,
+        container: noodles_cram::io::reader::Container,
+        pending: std::collections::VecDeque<io::Result<noodles_bam::Record>>,
+        done: bool,
     },
 }
 
@@ -257,7 +275,47 @@ impl Iterator for AlignmentRecords {
                 pending.extend(it);
                 first
             }
-            AlignmentRecords::CramBuffered { pending } => pending.next(),
+            AlignmentRecords::CramStreaming {
+                reader,
+                header,
+                path,
+                container,
+                pending,
+                done,
+            } => {
+                loop {
+                    if let Some(item) = pending.pop_front() {
+                        return Some(item);
+                    }
+                    if *done {
+                        return None;
+                    }
+                    // Decodes at most one container; an empty container falls
+                    // through to the next one rather than ending the stream.
+                    // A queued error sets `done`, so like the BAM path the
+                    // iterator stops at the first error. The known
+                    // external-reference panic is converted to the historical
+                    // error value (without touching the process-global hook;
+                    // see the open-time comment); anything else re-panics.
+                    match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                        fill_cram_pending(reader, header, container, pending)
+                    })) {
+                        Ok(exhausted) => {
+                            if exhausted {
+                                *done = true;
+                            }
+                        }
+                        Err(payload) => {
+                            let detail = panic_message(&payload);
+                            if !detail.contains("invalid slice reference sequence name") {
+                                std::panic::resume_unwind(payload);
+                            }
+                            pending.push_back(Err(cram_external_reference_error(path, &detail)));
+                            *done = true;
+                        }
+                    }
+                }
+            }
         }
     }
 }
@@ -291,6 +349,107 @@ fn encode_decode(
         return Vec::new();
     }
     reader.records().collect()
+}
+
+/// The historical external-reference error, byte-identical to the
+/// whole-file era message: names the file and the cause, with kind
+/// `InvalidData` (bad input, not an I/O failure).
+fn cram_external_reference_error(path: &Path, detail: &str) -> io::Error {
+    io::Error::new(
+        io::ErrorKind::InvalidData,
+        format!(
+            "{}: this CRAM was encoded against an external reference \
+                              that is not embedded in the file, and this build resolves \
+                              no external reference ({}). Re-encode it with the \
+                              reference embedded, e.g. pysam \
+                              AlignmentFile(path, 'wc', header=header) with no \
+                              reference_filename, which makes htslib embed it.",
+            path.display(),
+            detail
+        ),
+    )
+}
+
+/// Decodes a single CRAM container into `pending` via the public
+/// `read_container` / `slices` / `decode_blocks` / `slice.records` calls --
+/// the same calls `noodles-cram` 0.99's own `Records` iterator makes
+/// internally (see its `io::reader::records` module and the doctest on
+/// `Slice::records`, which decode exactly this way with
+/// `fasta::Repository::default()`).
+///
+/// Returns true when the stream is exhausted: EOF (no more containers) or
+/// a decode error was queued (the iterator stops after the first error,
+/// like the BAM path). An empty container returns false with nothing
+/// queued; the caller decodes the next one.
+///
+/// The external-reference `expect` inside the decoder is NOT caught here;
+/// callers wrap this in `catch_unwind` and map the known message to
+/// [`cram_external_reference_error`].
+fn fill_cram_pending(
+    reader: &mut noodles_cram::io::Reader<File>,
+    header: &sam::Header,
+    container: &mut noodles_cram::io::reader::Container,
+    pending: &mut std::collections::VecDeque<io::Result<noodles_bam::Record>>,
+) -> bool {
+    match reader.read_container(container) {
+        Err(e) => {
+            pending.push_back(Err(e));
+            return true;
+        }
+        Ok(0) => return true,
+        Ok(_) => {}
+    }
+    let compression_header = match container.compression_header() {
+        Ok(compression_header) => compression_header,
+        Err(e) => {
+            pending.push_back(Err(e));
+            return true;
+        }
+    };
+    let mut bufs = Vec::new();
+    for slice_result in container.slices() {
+        let slice = match slice_result {
+            Ok(slice) => slice,
+            Err(e) => {
+                pending.push_back(Err(e));
+                return true;
+            }
+        };
+        let (core_data_src, external_data_srcs) = match slice.decode_blocks() {
+            Ok(blocks) => blocks,
+            Err(e) => {
+                pending.push_back(Err(e));
+                return true;
+            }
+        };
+        let records = match slice.records(
+            noodles_fasta::Repository::default(),
+            header,
+            &compression_header,
+            &core_data_src,
+            &external_data_srcs,
+        ) {
+            Ok(records) => records,
+            Err(e) => {
+                pending.push_back(Err(e));
+                return true;
+            }
+        };
+        for record in &records {
+            match sam::alignment::RecordBuf::try_from_alignment_record(header, record) {
+                Ok(buf) => bufs.push(fix_unmapped_missing_mapping_quality(buf)),
+                Err(e) => {
+                    pending.push_back(Err(e));
+                    return true;
+                }
+            }
+        }
+    }
+    // Same BAM round trip the whole-file implementation used, applied per
+    // container (as on the SAM path): `bam::Record` has no public
+    // constructor, so conversion goes through an in-memory BAM buffer.
+    pending.extend(encode_decode(header, bufs.into_iter()));
+    false
 }
 
 /// Opens a BAM, SAM, or CRAM file and returns its header plus a **streaming** record
@@ -334,45 +493,52 @@ pub fn open_alignments(path: &Path) -> io::Result<(sam::Header, AlignmentRecords
         Some("cram") => {
             let mut cram_reader = File::open(path).map(noodles_cram::io::Reader::new)?;
             let header = cram_reader.read_header()?;
-            // Whole-file, because `noodles_cram`'s `records(&header)` is single-use; see
-            // the `AlignmentRecords` doc comment for the measured detail.
+            // Container-streamed (B3): one container decoded per `next()`
+            // instead of the whole file up front; see the `AlignmentRecords`
+            // doc comment for why containers are driven directly rather than
+            // through `records(&header)`.
             //
-            // The decode runs inside `catch_unwind` because a CRAM that needs an
-            // external reference PANICS in the dependency rather than returning an
-            // error: `noodles_cram`'s slice reader does
+            // The first container is decoded eagerly here, on this thread,
+            // before any command has spawned workers: a CRAM that needs an
+            // external reference therefore still fails at open (as the
+            // whole-file implementation did), with the identical message.
+            // Later containers decode during iteration.
+            //
+            // Either decode runs inside `catch_unwind` because a CRAM that
+            // needs an external reference PANICS in the dependency rather
+            // than returning an error: `noodles_cram`'s slice reader does
             // `repository.get(name).transpose()?.expect("invalid slice reference
             // sequence name")`, and the repository here is empty by design (see the
             // doc comment above), so the `expect` always fires for such a file.
             // Uncaught, that reaches the user as a Rust panic with a backtrace hint
-            // and exit 101, which names neither the input nor the reason -- the
-            // opposite of the "surfaces as a decode error" the doc comment above
-            // used to promise. The promise is now kept.
+            // and exit 101, which names neither the input nor the reason. It is
+            // converted here into an `io::Error` naming the file and the actual
+            // cause. Any *other* panic from the decoder is re-raised, so a genuine
+            // bug keeps its original location and backtrace rather than being
+            // laundered into "missing reference".
             //
-            // It is converted here into an `io::Error` naming the file and the actual
-            // cause. The default panic hook is silenced for the duration, because it
-            // fires on the way out of the unwinding panic and would otherwise print a
-            // backtrace hint for an error the user is about to be told about
-            // properly. Any *other* panic from the decoder is re-raised with the hook
-            // restored, so a genuine bug keeps its original location and backtrace
-            // rather than being laundered into "missing reference".
-            //
-            // The hook is process-global, so this is only sound because the decode is
-            // the only thing running on this thread here. That is true of every current
-            // call site (each command opens its input before doing anything else), and
-            // it is called out because it would stop being true the moment a command
-            // grew an internal worker thread.
+            // The default panic hook is silenced around the open-time decode
+            // only, because the hook fires on the way out of the unwinding
+            // panic and would otherwise print a backtrace hint for an error
+            // the user is about to be told about properly. That swap is
+            // process-global, so it stays at open (single-threaded, as every
+            // command opens its input before spawning workers) and is NOT
+            // repeated mid-stream: a later container that newly required an
+            // external reference (pathological in real files, where every
+            // container shares one encoding) would additionally print the
+            // hook's own panic line, but the returned error value is still
+            // exactly the historical one.
+            let mut container = noodles_cram::io::reader::Container::default();
+            let mut pending = std::collections::VecDeque::new();
+            let path_buf = path.to_path_buf();
             let previous_hook = std::panic::take_hook();
             std::panic::set_hook(Box::new(|_| {}));
-            let decode = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                cram_reader
-                    .records(&header)
-                    .map(|result| result.map(fix_unmapped_missing_mapping_quality))
-                    .collect::<io::Result<Vec<sam::alignment::RecordBuf>>>()
+            let first = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                fill_cram_pending(&mut cram_reader, &header, &mut container, &mut pending)
             }));
             std::panic::set_hook(previous_hook);
-            let bufs: Vec<sam::alignment::RecordBuf> = match decode {
-                Ok(Ok(bufs)) => bufs,
-                Ok(Err(e)) => return Err(e),
+            let done = match first {
+                Ok(exhausted) => exhausted,
                 Err(payload) => {
                     let detail = panic_message(&payload);
                     if !detail.contains("invalid slice reference sequence name") {
@@ -380,25 +546,26 @@ pub fn open_alignments(path: &Path) -> io::Result<(sam::Header, AlignmentRecords
                         // its original panic location.
                         std::panic::resume_unwind(payload);
                     }
-                    return Err(io::Error::new(
-                        io::ErrorKind::InvalidData,
-                        format!(
-                            "{}: this CRAM was encoded against an external reference \
-                             that is not embedded in the file, and this build resolves \
-                             no external reference ({}). Re-encode it with the \
-                             reference embedded, e.g. pysam \
-                             AlignmentFile(path, 'wc', header=header) with no \
-                             reference_filename, which makes htslib embed it.",
-                            path.display(),
-                            detail
-                        ),
-                    ));
+                    return Err(cram_external_reference_error(path, &detail));
                 }
             };
-            let records = AlignmentRecords::CramBuffered {
-                pending: encode_decode(&header, bufs.into_iter()).into_iter(),
-            };
-            Ok((header, records))
+            if let Some(Err(_)) = pending.front() {
+                // Surface a first-container failure at open, matching the
+                // historical behaviour (and its test).
+                let err = pending.pop_front().unwrap().unwrap_err();
+                return Err(err);
+            }
+            Ok((
+                header.clone(),
+                AlignmentRecords::CramStreaming {
+                    reader: cram_reader,
+                    header: Box::new(header),
+                    path: path_buf,
+                    container,
+                    pending,
+                    done,
+                },
+            ))
         }
         _ => {
             let (reader, header) = open_bam(path)?;
