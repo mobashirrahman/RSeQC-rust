@@ -14,11 +14,16 @@
 //! the next record), not the total records scanned.
 
 use std::collections::HashMap;
+use std::fs::File;
 use std::io;
+use std::io::Write as _;
+use std::process::{Command, Stdio};
 
 use noodles_bam as bam;
 use noodles_sam::alignment::record::cigar::op::Kind;
 use rseqc_formats::cigar::fetch_deletion_range;
+
+use crate::exec_resolve;
 
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
 pub struct DeletionProfile {
@@ -114,6 +119,116 @@ pub fn render_deletion_r_script(p: &DeletionProfile, out_prefix: &str) -> String
         pos.join(","),
         vals.join(","),
     )
+}
+
+/// Refuses an output prefix whose parent directory does not exist, before
+/// any work. Mirrors `rseqc_cli::require_existing_output_parent` exactly
+/// (same `Path::parent` mapping, same message); kept local because the
+/// commands crate cannot depend on the CLI crate.
+fn require_output_parent(output_prefix: &str) -> io::Result<()> {
+    use std::path::Path;
+    let prefix = Path::new(output_prefix);
+    let parent = match prefix.parent() {
+        Some(p) if p.as_os_str().is_empty() => Path::new("."),
+        Some(p) => p,
+        None => Path::new("."),
+    };
+    if parent.is_dir() {
+        Ok(())
+    } else {
+        Err(io::Error::new(
+            io::ErrorKind::NotFound,
+            format!("output directory does not exist: {}", parent.display()),
+        ))
+    }
+}
+
+/// Runs the `deletion_profile.py` CLI body over an already-opened record
+/// stream (C1 multi-driver pattern).
+///
+/// This is exactly what the standalone binary's `run()` does -- same
+/// progress lines, same two stdout blank lines (upstream's
+/// `print('\n')` twice: the literal `\n` plus print's own newline), same
+/// files with the same bytes, same Rscript contract, same error
+/// propagation -- except the record source is a caller-supplied iterator
+/// and stdout/stderr are caller-supplied sinks. The standalone binary
+/// delegates to this (passing the process streams); `rseqc_multi` passes
+/// one record broadcast plus per-command stream files. The compute
+/// function and both renderers are untouched.
+///
+/// `read_align_length` and `read_num` are the command's own `-l`/`-n`
+/// flags; both are forwarded verbatim because the filtering they drive is
+/// the whole point of the command, and a driver default would silently
+/// change which reads qualify (the driver makes `-l` required for this
+/// command rather than inventing a length).
+///
+/// The argument list is long on purpose and carries a targeted lint
+/// allowance: this is the C1 multi-driver pattern (one callable per
+/// command carrying its full CLI surface plus the two sinks), and
+/// bundling the flags into a struct would only hide them from the C2
+/// cards that copy this signature command by command.
+#[allow(clippy::too_many_arguments)]
+pub fn run_deletion_profile<I>(
+    records: I,
+    q_cut: u8,
+    out_prefix: &str,
+    read_align_length: usize,
+    read_num: u64,
+    skip_plot: bool,
+    rscript: &str,
+    stdout: &mut dyn io::Write,
+    stderr: &mut dyn io::Write,
+) -> io::Result<()>
+where
+    I: IntoIterator<Item = io::Result<bam::Record>>,
+{
+    // Same rule as the binary's `require_existing_output_parent_or_exit`
+    // (and upstream's `validate_args`), in `Result` form; see above.
+    require_output_parent(out_prefix)?;
+
+    // Upstream: `print("Process BAM file ... ", end=' ', file=sys.stderr)`
+    // -- the string literal's own trailing space plus `end=' '` gives two
+    // spaces before "Total reads used" on the same stderr line.
+    write!(stderr, "Process BAM file ...  ")?;
+    let profile = compute_deletion_profile(records, q_cut, read_align_length, read_num)?;
+    writeln!(stderr, "Total reads used: {}", profile.count)?;
+
+    // Upstream's unconditional `print('\n')` twice: the literal "\n" plus
+    // print's own trailing newline is two bytes each. These go to STDOUT
+    // (no `file=` argument), which is why the driver routes them to the
+    // per-command stdout stream file and they still compare byte-wise.
+    writeln!(stdout)?;
+    writeln!(stdout)?;
+
+    let r_path = format!("{out_prefix}.deletion_profile.r");
+    File::create(&r_path)?.write_all(render_deletion_r_script(&profile, out_prefix).as_bytes())?;
+    // Upstream writes the table first, then the R script; both paths are
+    // created here rather than in the caller so a worker writes exactly
+    // what the standalone binary writes, in the same order.
+    File::create(format!("{out_prefix}.deletion_profile.txt"))?
+        .write_all(render_deletion_table(&profile).as_bytes())?;
+
+    if !skip_plot {
+        let rscript_path = exec_resolve::which(rscript).ok_or_else(|| {
+            io::Error::new(
+                io::ErrorKind::NotFound,
+                format!("Rscript executable not found: {rscript}"),
+            )
+        })?;
+        let out = Command::new(&rscript_path)
+            .arg(&r_path)
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()?
+            .wait_with_output()?;
+        stdout.write_all(&out.stdout)?;
+        stderr.write_all(&out.stderr)?;
+        if !out.status.success() {
+            return Err(io::Error::other(format!("R plotting failed for {r_path}")));
+        }
+    }
+
+    Ok(())
 }
 
 #[cfg(test)]

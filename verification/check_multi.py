@@ -348,6 +348,65 @@ def main() -> int:
         failures,
     )
 
+    # deletion_profile: its own -l/-n, plus the required-flag refusal.
+    del_solo_dir = work / "del_solo"
+    del_multi_dir = work / "del_multi"
+    del_solo_dir.mkdir()
+    del_multi_dir.mkdir()
+    rc, del_solo_out, del_solo_err = run(
+        [str(bin_dir / "deletion_profile"), "-i", str(bam), "-o", "outdel",
+         "-l", "101", "-n", "100000", "-q", q, "--skip-plot"],
+        del_solo_dir,
+    )
+    if rc != 0:
+        failures.append("del solo deletion_profile exit code")
+    rc, _, _ = run(
+        [str(bin_dir / "rseqc_multi"), "-i", str(bam), "-o", "outdel",
+         "--run", "deletion_profile", "--read-align-length", "101",
+         "--read-num", "100000", "-q", q, "--skip-plot"],
+        del_multi_dir,
+    )
+    if rc != 0:
+        failures.append("del multi --read-align-length exit code")
+    check_equal(
+        "del deletion_profile.stdout",
+        del_solo_out,
+        (del_multi_dir / "outdel.deletion_profile.stdout").read_bytes()
+        if (del_multi_dir / "outdel.deletion_profile.stdout").exists()
+        else b"<MISSING>",
+        failures,
+    )
+    if not (del_multi_dir / "outdel.deletion_profile.stdout").exists():
+        failures.append("del multi outdel.deletion_profile.stdout missing")
+    check_equal(
+        "del deletion_profile.stderr",
+        del_solo_err,
+        (del_multi_dir / "outdel.deletion_profile.stderr").read_bytes()
+        if (del_multi_dir / "outdel.deletion_profile.stderr").exists()
+        else b"<MISSING>",
+        failures,
+    )
+    if not (del_multi_dir / "outdel.deletion_profile.stderr").exists():
+        failures.append("del multi outdel.deletion_profile.stderr missing")
+    check_files(
+        "del files",
+        del_solo_dir,
+        del_multi_dir,
+        ["outdel.deletion_profile.txt", "outdel.deletion_profile.r"],
+        failures,
+    )
+
+    # Refusal check: selecting deletion_profile without --read-align-length
+    # must exit 2 (usage error), not run with an invented length.
+    rc, _, _ = run(
+        [str(bin_dir / "rseqc_multi"), "-i", str(bam), "-o", "outdel2",
+         "--run", "deletion_profile", "-q", q, "--skip-plot"],
+        del_multi_dir,
+    )
+    if rc != 2:
+        failures.append(f"multi deletion_profile without -l exit code (expected 2, got {rc})")
+        print(f"UNEXPECTED: missing --read-align-length gave exit {rc}, not 2")
+
     # Subset selection: --run bam_stat alone produces only bam_stat streams.
     sub_dir = work / "subset"
     sub_dir.mkdir()

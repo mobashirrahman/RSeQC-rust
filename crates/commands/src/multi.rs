@@ -63,6 +63,7 @@ use noodles_bam as bam;
 
 use crate::bam_stat::run_bam_stat;
 use crate::clipping_profile::run_clipping_profile;
+use crate::deletion_profile::run_deletion_profile;
 use crate::insertion_profile::run_insertion_profile;
 use crate::read_gc::run_read_gc;
 use crate::read_nvc::run_read_nvc;
@@ -130,15 +131,24 @@ pub struct MultiArgs {
     /// times (`--reduce`), forwarded to `read_quality` only. Long-only on
     /// the driver: `-r` is already the reference BED there.
     pub reduce: u64,
-    /// Sequencing layout for `clipping_profile` (`SE` or `PE`, the only
-    /// values its standalone `--sequencing` accepts). Upstream requires
-    /// the flag; the driver defaults to `SE` so unattended full runs work.
-    /// Forwarded to `insertion_profile` too, which takes the same flag.
+    /// Sequencing layout for `clipping_profile` and `insertion_profile`
+    /// (`SE` or `PE`, the only values their standalone `--sequencing`
+    /// accepts). Upstream requires the flag; the driver defaults to `SE`
+    /// so unattended full runs work.
     pub sequencing: String,
+    /// Expected aligned read length for `deletion_profile` (`-l`), which
+    /// filters on it. No default on purpose: upstream requires the flag,
+    /// and a driver-supplied length would silently decide which reads
+    /// qualify, so `rseqc_multi` exits 2 when this command is selected
+    /// without it.
+    pub read_align_length: Option<usize>,
+    /// Maximum qualifying reads for `deletion_profile` (`-n`), forwarded
+    /// only; `None` means the command's own default applies.
+    pub read_num: Option<u64>,
 }
 
 /// The pilot registry: `bam_stat`, `read_GC`, `read_NVC`, `read_quality`,
-/// `clipping_profile`, `insertion_profile`. C2 appends here.
+/// `clipping_profile`, `insertion_profile`, `deletion_profile`. C2 appends here.
 pub const COMMANDS: &[CommandEntry] = &[
     CommandEntry {
         name: "bam_stat",
@@ -256,6 +266,40 @@ pub const COMMANDS: &[CommandEntry] = &[
                         mapq,
                         &out_prefix,
                         &sequencing,
+                        skip_plot,
+                        &rscript,
+                        stdout,
+                        stderr,
+                    )
+                },
+            )
+        },
+    },
+    CommandEntry {
+        name: "deletion_profile",
+        stream_stem: "deletion_profile",
+        prog: "deletion_profile.py",
+        build: |args: &MultiArgs| {
+            let mapq = args.mapq;
+            let out_prefix = args.out_prefix.clone();
+            // `None` cannot reach a worker: `rseqc_multi` rejects selecting
+            // this command without `--read-align-length`, so the fallback
+            // here is unreachable rather than a silent default. It exists
+            // only so the closure stays total.
+            let read_align_length = args.read_align_length.unwrap_or(0);
+            let read_num = args.read_num.unwrap_or(1_000_000);
+            let skip_plot = args.skip_plot;
+            let rscript = args.rscript.clone();
+            Box::new(
+                move |records: ChannelRecords,
+                      stdout: &mut dyn io::Write,
+                      stderr: &mut dyn io::Write| {
+                    run_deletion_profile(
+                        records,
+                        mapq,
+                        &out_prefix,
+                        read_align_length,
+                        read_num,
                         skip_plot,
                         &rscript,
                         stdout,

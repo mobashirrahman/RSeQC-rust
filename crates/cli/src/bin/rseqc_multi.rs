@@ -65,12 +65,24 @@ struct Args {
     #[arg(long = "reduce", default_value_t = 1)]
     reduce: u64,
 
-    /// Sequencing layout for `clipping_profile` (`SE` or `PE`, the only
-    /// values its standalone `--sequencing` accepts), forwarded to
-    /// `clipping_profile` only. Upstream requires the flag; the driver
-    /// defaults to `SE` so unattended full runs work.
+    /// Sequencing layout for `clipping_profile` and `insertion_profile`
+    /// (`SE` or `PE`, the only values their standalone `--sequencing`
+    /// accepts). Upstream requires the flag; the driver defaults to `SE`
+    /// so unattended full runs work.
     #[arg(short = 's', long = "sequencing", default_value = "SE")]
     sequencing: String,
+
+    /// Expected aligned read length for `deletion_profile` (`-l` there),
+    /// which filters reads on it. Required when that command is selected:
+    /// it has no sensible driver default, because a wrong length silently
+    /// changes which reads qualify.
+    #[arg(long = "read-align-length")]
+    read_align_length: Option<usize>,
+
+    /// Maximum qualifying reads for `deletion_profile` (`-n` there).
+    /// Optional; the command's own default applies when absent.
+    #[arg(long = "read-num")]
+    read_num: Option<u64>,
 }
 
 fn main() -> std::process::ExitCode {
@@ -120,6 +132,18 @@ fn run(args: &Args) -> std::io::Result<()> {
             "invalid --sequencing (expected SE or PE)",
         );
     }
+    // `deletion_profile` filters on the aligned read length, so there is no
+    // honest default to supply on its behalf: a wrong value would silently
+    // change which reads qualify and the command would still succeed.
+    if tokens.iter().any(|token| token == "deletion_profile")
+        && args.read_align_length.is_none()
+    {
+        rseqc_cli::usage_exit(
+            "rseqc_multi",
+            "--read-align-length is required when deletion_profile is selected \
+             (it filters reads on it)",
+        );
+    }
 
     let prefix = args.out_prefix.to_string_lossy().into_owned();
     let multi_args = MultiArgs {
@@ -130,6 +154,8 @@ fn run(args: &Args) -> std::io::Result<()> {
         nx: args.nx,
         reduce: args.reduce,
         sequencing: args.sequencing.clone(),
+        read_align_length: args.read_align_length,
+        read_num: args.read_num,
     };
 
     // The calling thread is the reader: open here so an unreadable input
