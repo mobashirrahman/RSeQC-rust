@@ -42,10 +42,15 @@
 //! already clip-trimmed storage-order data, then optionally reversed).
 
 use std::collections::HashMap;
+use std::fs::File;
 use std::io;
+use std::io::Write as _;
+use std::process::{Command, Stdio};
 
 use noodles_bam as bam;
 use noodles_sam::alignment::record::cigar::op::Kind as CigarOpKind;
+
+use crate::exec_resolve;
 
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
 pub struct QualityHistogram {
@@ -217,6 +222,103 @@ pub fn render_qual_r_script(hist: &QualityHistogram, shrink: u64, output_prefix:
     // Trailing newline: upstream's plain `print(...)` calls each add
     // their own trailing newline, including the final `dev.off()`.
     format!("{}\n", lines.join("\n"))
+}
+
+/// Refuses an output prefix whose parent directory does not exist, before
+/// any work. Mirrors `rseqc_cli::require_existing_output_parent` exactly
+/// (same `Path::parent` mapping, same message); kept local because the
+/// commands crate cannot depend on the CLI crate.
+fn require_output_parent(output_prefix: &str) -> io::Result<()> {
+    use std::path::Path;
+    let prefix = Path::new(output_prefix);
+    let parent = match prefix.parent() {
+        Some(p) if p.as_os_str().is_empty() => Path::new("."),
+        Some(p) => p,
+        None => Path::new("."),
+    };
+    if parent.is_dir() {
+        Ok(())
+    } else {
+        Err(io::Error::new(
+            io::ErrorKind::NotFound,
+            format!("output directory does not exist: {}", parent.display()),
+        ))
+    }
+}
+
+/// Runs the `read_quality.py` CLI body over an already-opened record stream
+/// (C1 multi-driver pattern).
+///
+/// This is exactly what the standalone binary's `run()` does -- same
+/// progress lines, same files with the same bytes, same Rscript contract,
+/// same error propagation -- except the record source is a
+/// caller-supplied iterator and stdout/stderr are caller-supplied sinks.
+/// The standalone binary delegates to this (passing the process streams);
+/// `rseqc_multi` passes one record broadcast plus per-command stream
+/// files. `compute_quality` and the renderer are untouched.
+///
+/// Transport note (same as `run_read_gc`/`run_read_nvc`): the standalone
+/// binary used to run Rscript with inherited stdio (`Command::status`);
+/// here the child is spawned piped and its captured stdout/stderr are
+/// copied to the command's sinks, so the bytes stay attributable under
+/// multi while remaining identical standalone.
+///
+/// The argument list is long on purpose and carries a targeted lint
+/// allowance: this is the C1 multi-driver pattern (one callable per
+/// command carrying its full CLI surface plus the two sinks), and
+/// bundling the flags into a struct would only hide them from the C2
+/// cards that copy this signature command by command.
+#[allow(clippy::too_many_arguments)]
+pub fn run_read_quality<I>(
+    records: I,
+    q_cut: u8,
+    out_prefix: &str,
+    reduce: u64,
+    skip_plot: bool,
+    rscript: &str,
+    stdout: &mut dyn io::Write,
+    stderr: &mut dyn io::Write,
+) -> io::Result<()>
+where
+    I: IntoIterator<Item = io::Result<bam::Record>>,
+{
+    // Same rule as the binary's `require_existing_output_parent_or_exit`
+    // (and upstream's `validate_args`), in `Result` form; see above.
+    require_output_parent(out_prefix)?;
+
+    // Upstream: `if self.bam_format: print("Read BAM file ... ", end=' ')`
+    // -- always the BAM branch in practice (htslib's `'rb'` open is
+    // lenient about actual content and succeeds for genuine plain-text
+    // SAM too). The literal's own trailing space plus `end=' '` gives
+    // two spaces before "Done".
+    write!(stderr, "Read BAM file ...  ")?;
+    let hist = compute_quality(records, q_cut)?;
+    writeln!(stderr, "Done")?;
+
+    let r_path = format!("{out_prefix}.qual.r");
+    File::create(&r_path)?.write_all(render_qual_r_script(&hist, reduce, out_prefix).as_bytes())?;
+
+    if !skip_plot {
+        let rscript_path = exec_resolve::which(rscript).ok_or_else(|| {
+            io::Error::new(
+                io::ErrorKind::NotFound,
+                format!("Rscript executable not found: {rscript}"),
+            )
+        })?;
+        let out = Command::new(&rscript_path)
+            .arg(&r_path)
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()?
+            .wait_with_output()?;
+        stdout.write_all(&out.stdout)?;
+        stderr.write_all(&out.stderr)?;
+        if !out.status.success() {
+            return Err(io::Error::other(format!("R plotting failed for {r_path}")));
+        }
+    }
+
+    Ok(())
 }
 
 #[cfg(test)]

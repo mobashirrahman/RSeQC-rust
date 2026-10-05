@@ -58,6 +58,12 @@ struct Args {
     /// forwarded to `read_NVC` only.
     #[arg(short = 'x', long = "nx")]
     nx: bool,
+
+    /// Ignore quality-score observations occurring fewer than this many
+    /// times, forwarded to `read_quality` only. Long-only: `-r` is
+    /// already the reference BED on this driver.
+    #[arg(long = "reduce", default_value_t = 1)]
+    reduce: u64,
 }
 
 fn main() -> std::process::ExitCode {
@@ -100,6 +106,7 @@ fn run(args: &Args) -> std::io::Result<()> {
         skip_plot: args.skip_plot,
         rscript: args.rscript.clone(),
         nx: args.nx,
+        reduce: args.reduce,
     };
 
     // The calling thread is the reader: open here so an unreadable input

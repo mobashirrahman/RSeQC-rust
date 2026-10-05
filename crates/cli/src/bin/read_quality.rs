@@ -7,13 +7,10 @@
 //! script, confirmed by reading the source: there is no other `open()`
 //! call in that function).
 
-use std::fs::File;
-use std::io::Write as _;
 use std::path::PathBuf;
-use std::process::Command;
 
 use clap::Parser;
-use rseqc_commands::read_quality::{compute_quality, render_qual_r_script};
+use rseqc_commands::read_quality::run_read_quality;
 
 #[derive(Parser)]
 #[command(
@@ -59,6 +56,13 @@ fn main() -> std::process::ExitCode {
 }
 
 fn run(args: &Args) -> std::io::Result<()> {
+    // C1 multi-driver pattern: the CLI body lives in
+    // `rseqc_commands::read_quality::run_read_quality` (same bytes, same
+    // files, same order) so `rseqc_multi` can drive it over a record
+    // broadcast with per-command stream files. The `_or_exit` parent check
+    // stays here so standalone exit 2 is unchanged; the shared body
+    // re-checks in `Result` form for workers.
+    //
     // Upstream's validate_args refuses an output prefix whose parent directory does
     // not exist, before any input is read. Omitting it here meant the whole
     // alignment was read and every metric computed, then discarded when the output
@@ -68,36 +72,16 @@ fn run(args: &Args) -> std::io::Result<()> {
     // forgotten by the next binary.
     rseqc_cli::require_existing_output_parent_or_exit("read_quality.py", &args.out_prefix);
 
-    // Upstream: `if self.bam_format: print("Read BAM file ... ", end=' ')
-    // else: print("Read SAM file ... ", end=' ')` -- `self.bam_format`
-    // comes from `pysam.Samfile(path, 'rb')` succeeding, which it does
-    // even for genuine plain-text SAM content (htslib auto-detects,
-    // ignoring the 'b' mode hint; confirmed via a live diff for
-    // bam_stat.py/read_NVC.py/read_GC.py, same underlying pysam.Samfile
-    // call here). The "Read SAM file" branch is practically dead code
-    // for any valid input. The literal's own trailing space plus
-    // `end=' '` gives two spaces before "Done".
-    eprint!("Read BAM file ...  ");
     let (_header, records) = rseqc_formats::open_alignments(&args.input_file)?;
-    let hist = compute_quality(records, args.mapq)?;
-    eprintln!("Done");
-
     let prefix = args.out_prefix.to_string_lossy().into_owned();
-    let r_path = format!("{prefix}.qual.r");
-    File::create(&r_path)?.write_all(render_qual_r_script(&hist, args.reduce, &prefix).as_bytes())?;
-
-    if !args.skip_plot {
-        let rscript_path = rseqc_commands::exec_resolve::which(&args.rscript).ok_or_else(|| {
-            std::io::Error::new(
-                std::io::ErrorKind::NotFound,
-                format!("Rscript executable not found: {}", args.rscript),
-            )
-        })?;
-        let status = Command::new(&rscript_path).arg(&r_path).status()?;
-        if !status.success() {
-            return Err(std::io::Error::other(format!("R plotting failed for {r_path}")));
-        }
-    }
-
-    Ok(())
+    run_read_quality(
+        records,
+        args.mapq,
+        &prefix,
+        args.reduce,
+        args.skip_plot,
+        &args.rscript,
+        &mut std::io::stdout(),
+        &mut std::io::stderr(),
+    )
 }

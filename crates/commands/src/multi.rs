@@ -64,6 +64,7 @@ use noodles_bam as bam;
 use crate::bam_stat::run_bam_stat;
 use crate::read_gc::run_read_gc;
 use crate::read_nvc::run_read_nvc;
+use crate::read_quality::run_read_quality;
 
 /// Records per reader batch (C1). Small enough to keep worker latency low,
 /// large enough that channel traffic is irrelevant next to decode cost.
@@ -123,9 +124,13 @@ pub struct MultiArgs {
     /// Include ambiguous nucleotides N and X in the NVC plot (`--nx`),
     /// forwarded to `read_NVC` only.
     pub nx: bool,
+    /// Ignore quality-score observations occurring fewer than this many
+    /// times (`--reduce`), forwarded to `read_quality` only. Long-only on
+    /// the driver: `-r` is already the reference BED there.
+    pub reduce: u64,
 }
 
-/// The pilot registry: `bam_stat`, `read_GC`, `read_NVC`. C2 appends here.
+/// The pilot registry: `bam_stat`, `read_GC`, `read_NVC`, `read_quality`. C2 appends here.
 pub const COMMANDS: &[CommandEntry] = &[
     CommandEntry {
         name: "bam_stat",
@@ -187,6 +192,34 @@ pub const COMMANDS: &[CommandEntry] = &[
                         records,
                         mapq,
                         &out_prefix,
+                        skip_plot,
+                        &rscript,
+                        stdout,
+                        stderr,
+                    )
+                },
+            )
+        },
+    },
+    CommandEntry {
+        name: "read_quality",
+        stream_stem: "read_quality",
+        prog: "read_quality.py",
+        build: |args: &MultiArgs| {
+            let mapq = args.mapq;
+            let out_prefix = args.out_prefix.clone();
+            let reduce = args.reduce;
+            let skip_plot = args.skip_plot;
+            let rscript = args.rscript.clone();
+            Box::new(
+                move |records: ChannelRecords,
+                      stdout: &mut dyn io::Write,
+                      stderr: &mut dyn io::Write| {
+                    run_read_quality(
+                        records,
+                        mapq,
+                        &out_prefix,
+                        reduce,
                         skip_plot,
                         &rscript,
                         stdout,

@@ -23,7 +23,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-COMMANDS = ("bam_stat", "read_GC", "read_NVC")
+COMMANDS = ("bam_stat", "read_GC", "read_NVC", "read_quality")
 
 
 def build_fixture(path: Path, n_reads: int = 300, seed: int = 7) -> None:
@@ -130,6 +130,15 @@ def main() -> int:
     if rc != 0:
         failures.append("solo read_NVC exit code")
 
+    # Standalone read_quality (R script only + streams; no data table).
+    rc, solo_rq_out, solo_rq_err = run(
+        [str(bin_dir / "read_quality"), "-i", str(bam), "-o", "out", "-q", q, "--skip-plot"],
+        solo_dir,
+    )
+    print(f"solo read_quality exit={rc}")
+    if rc != 0:
+        failures.append("solo read_quality exit code")
+
     # Through the driver, same flags, same relative prefix.
     rc, multi_own_out, multi_own_err = run(
         [
@@ -157,6 +166,8 @@ def main() -> int:
         ("read_GC.stderr", solo_gc_err, "out.read_GC.stderr"),
         ("read_NVC.stdout", solo_nvc_out, "out.read_NVC.stdout"),
         ("read_NVC.stderr", solo_nvc_err, "out.read_NVC.stderr"),
+        ("read_quality.stdout", solo_rq_out, "out.read_quality.stdout"),
+        ("read_quality.stderr", solo_rq_err, "out.read_quality.stderr"),
     ):
         stream_file = multi_dir / stream_name
         if not stream_file.exists():
@@ -170,7 +181,7 @@ def main() -> int:
         "files",
         solo_dir,
         multi_dir,
-        ["out.GC.xls", "out.GC_plot.r", "out.NVC.xls", "out.NVC_plot.r"],
+        ["out.GC.xls", "out.GC_plot.r", "out.NVC.xls", "out.NVC_plot.r", "out.qual.r"],
         failures,
     )
 
@@ -217,6 +228,53 @@ def main() -> int:
         nx_solo_dir,
         nx_multi_dir,
         ["outnx.NVC.xls", "outnx.NVC_plot.r"],
+        failures,
+    )
+
+    # --reduce forwarding: solo -r vs multi --reduce (long-only on the
+    # driver: -r is already the reference BED there), same relative prefix.
+    red_solo_dir = work / "reduce_solo"
+    red_multi_dir = work / "reduce_multi"
+    red_solo_dir.mkdir()
+    red_multi_dir.mkdir()
+    rc, red_solo_out, red_solo_err = run(
+        [str(bin_dir / "read_quality"), "-i", str(bam), "-o", "outred", "-q", q, "-r", "1000", "--skip-plot"],
+        red_solo_dir,
+    )
+    if rc != 0:
+        failures.append("reduce solo read_quality -r exit code")
+    rc, _, _ = run(
+        [str(bin_dir / "rseqc_multi"), "-i", str(bam), "-o", "outred",
+         "--run", "read_quality", "-q", q, "--reduce", "1000", "--skip-plot"],
+        red_multi_dir,
+    )
+    if rc != 0:
+        failures.append("reduce multi --reduce exit code")
+    check_equal(
+        "reduce read_quality.stdout",
+        red_solo_out,
+        (red_multi_dir / "outred.read_quality.stdout").read_bytes()
+        if (red_multi_dir / "outred.read_quality.stdout").exists()
+        else b"<MISSING>",
+        failures,
+    )
+    if not (red_multi_dir / "outred.read_quality.stdout").exists():
+        failures.append("reduce multi outred.read_quality.stdout missing")
+    check_equal(
+        "reduce read_quality.stderr",
+        red_solo_err,
+        (red_multi_dir / "outred.read_quality.stderr").read_bytes()
+        if (red_multi_dir / "outred.read_quality.stderr").exists()
+        else b"<MISSING>",
+        failures,
+    )
+    if not (red_multi_dir / "outred.read_quality.stderr").exists():
+        failures.append("reduce multi outred.read_quality.stderr missing")
+    check_files(
+        "reduce files",
+        red_solo_dir,
+        red_multi_dir,
+        ["outred.qual.r"],
         failures,
     )
 
