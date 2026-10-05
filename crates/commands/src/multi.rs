@@ -63,6 +63,7 @@ use noodles_bam as bam;
 
 use crate::bam_stat::run_bam_stat;
 use crate::clipping_profile::run_clipping_profile;
+use crate::insertion_profile::run_insertion_profile;
 use crate::read_gc::run_read_gc;
 use crate::read_nvc::run_read_nvc;
 use crate::read_quality::run_read_quality;
@@ -132,11 +133,12 @@ pub struct MultiArgs {
     /// Sequencing layout for `clipping_profile` (`SE` or `PE`, the only
     /// values its standalone `--sequencing` accepts). Upstream requires
     /// the flag; the driver defaults to `SE` so unattended full runs work.
+    /// Forwarded to `insertion_profile` too, which takes the same flag.
     pub sequencing: String,
 }
 
 /// The pilot registry: `bam_stat`, `read_GC`, `read_NVC`, `read_quality`,
-/// `clipping_profile`. C2 appends here.
+/// `clipping_profile`, `insertion_profile`. C2 appends here.
 pub const COMMANDS: &[CommandEntry] = &[
     CommandEntry {
         name: "bam_stat",
@@ -250,6 +252,34 @@ pub const COMMANDS: &[CommandEntry] = &[
                       stdout: &mut dyn io::Write,
                       stderr: &mut dyn io::Write| {
                     run_clipping_profile(
+                        records,
+                        mapq,
+                        &out_prefix,
+                        &sequencing,
+                        skip_plot,
+                        &rscript,
+                        stdout,
+                        stderr,
+                    )
+                },
+            )
+        },
+    },
+    CommandEntry {
+        name: "insertion_profile",
+        stream_stem: "insertion_profile",
+        prog: "insertion_profile.py",
+        build: |args: &MultiArgs| {
+            let mapq = args.mapq;
+            let out_prefix = args.out_prefix.clone();
+            let sequencing = args.sequencing.clone();
+            let skip_plot = args.skip_plot;
+            let rscript = args.rscript.clone();
+            Box::new(
+                move |records: ChannelRecords,
+                      stdout: &mut dyn io::Write,
+                      stderr: &mut dyn io::Write| {
+                    run_insertion_profile(
                         records,
                         mapq,
                         &out_prefix,

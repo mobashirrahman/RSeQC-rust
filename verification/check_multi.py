@@ -23,7 +23,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-COMMANDS = ("bam_stat", "read_GC", "read_NVC", "read_quality", "clipping_profile")
+COMMANDS = ("bam_stat", "read_GC", "read_NVC", "read_quality", "clipping_profile", "insertion_profile")
 
 
 def build_fixture(path: Path, n_reads: int = 300, seed: int = 7) -> None:
@@ -148,6 +148,15 @@ def main() -> int:
     if rc != 0:
         failures.append("solo clipping_profile exit code")
 
+    # Standalone insertion_profile SE (files + streams; driver defaults to SE).
+    rc, solo_ip_out, solo_ip_err = run(
+        [str(bin_dir / "insertion_profile"), "-i", str(bam), "-o", "out", "-s", "SE", "-q", q, "--skip-plot"],
+        solo_dir,
+    )
+    print(f"solo insertion_profile exit={rc}")
+    if rc != 0:
+        failures.append("solo insertion_profile exit code")
+
     # Through the driver, same flags, same relative prefix.
     rc, multi_own_out, multi_own_err = run(
         [
@@ -179,6 +188,8 @@ def main() -> int:
         ("read_quality.stderr", solo_rq_err, "out.read_quality.stderr"),
         ("clipping_profile.stdout", solo_cp_out, "out.clipping_profile.stdout"),
         ("clipping_profile.stderr", solo_cp_err, "out.clipping_profile.stderr"),
+        ("insertion_profile.stdout", solo_ip_out, "out.insertion_profile.stdout"),
+        ("insertion_profile.stderr", solo_ip_err, "out.insertion_profile.stderr"),
     ):
         stream_file = multi_dir / stream_name
         if not stream_file.exists():
@@ -193,7 +204,8 @@ def main() -> int:
         solo_dir,
         multi_dir,
         ["out.GC.xls", "out.GC_plot.r", "out.NVC.xls", "out.NVC_plot.r", "out.qual.r",
-         "out.clipping_profile.xls", "out.clipping_profile.r"],
+         "out.clipping_profile.xls", "out.clipping_profile.r",
+         "out.insertion_profile.xls", "out.insertion_profile.r"],
         failures,
     )
 

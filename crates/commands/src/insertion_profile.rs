@@ -14,7 +14,17 @@
 //! last-record-length quirk applies here too (inherited from the shared
 //! compute functions).
 
-use crate::clipping_profile::{PairedEndProfile, SingleEndProfile};
+use std::fs::File;
+use std::io;
+use std::io::Write as _;
+use std::process::{Command, Stdio};
+
+use noodles_bam as bam;
+
+use crate::clipping_profile::{
+    PairedEndProfile, SingleEndProfile, compute_paired_end, compute_single_end,
+};
+use crate::exec_resolve;
 
 fn fmt_float(n: u64) -> String {
     format!("{n}.0")
@@ -82,6 +92,137 @@ pdf(\"{out_prefix}.insertion_profile.R2.pdf\")\nread_pos=c({read_pos_csv})\nr2_i
         r2_strs.join(","),
         p.total_read2,
     )
+}
+
+/// Refuses an output prefix whose parent directory does not exist, before
+/// any work. Mirrors `rseqc_cli::require_existing_output_parent` exactly
+/// (same `Path::parent` mapping, same message); kept local because the
+/// commands crate cannot depend on the CLI crate.
+fn require_output_parent(output_prefix: &str) -> io::Result<()> {
+    use std::path::Path;
+    let prefix = Path::new(output_prefix);
+    let parent = match prefix.parent() {
+        Some(p) if p.as_os_str().is_empty() => Path::new("."),
+        Some(p) => p,
+        None => Path::new("."),
+    };
+    if parent.is_dir() {
+        Ok(())
+    } else {
+        Err(io::Error::new(
+            io::ErrorKind::NotFound,
+            format!("output directory does not exist: {}", parent.display()),
+        ))
+    }
+}
+
+/// Runs the `insertion_profile.py` CLI body over an already-opened record
+/// stream (C1 multi-driver pattern).
+///
+/// This is exactly what the standalone binary's `run()` does -- same
+/// progress lines (including the upstream `Totoal` typo), same files with
+/// the same bytes, same Rscript contract, same error propagation --
+/// except the record source is a caller-supplied iterator and
+/// stdout/stderr are caller-supplied sinks. The standalone binary
+/// delegates to this (passing the process streams); `rseqc_multi` passes
+/// one record broadcast plus per-command stream files. The shared compute
+/// functions and all four renderers are untouched.
+///
+/// `sequencing` is `"SE"` or `"PE"`, the only values the standalone
+/// binary's `--sequencing` accepts (clap enforces it there); anything else
+/// is an error, which keeps the driver's validation honest rather than
+/// silently picking a branch.
+///
+/// The clip character is `b'I'` (upstream's `type="I"`), distinguishing
+/// this from `clipping_profile`'s `b'S'` while sharing the aggregation.
+///
+/// The argument list is long on purpose and carries a targeted lint
+/// allowance: this is the C1 multi-driver pattern (one callable per
+/// command carrying its full CLI surface plus the two sinks), and
+/// bundling the flags into a struct would only hide them from the C2
+/// cards that copy this signature command by command.
+#[allow(clippy::too_many_arguments)]
+pub fn run_insertion_profile<I>(
+    records: I,
+    q_cut: u8,
+    out_prefix: &str,
+    sequencing: &str,
+    skip_plot: bool,
+    rscript: &str,
+    stdout: &mut dyn io::Write,
+    stderr: &mut dyn io::Write,
+) -> io::Result<()>
+where
+    I: IntoIterator<Item = io::Result<bam::Record>>,
+{
+    // Same rule as the binary's `require_existing_output_parent_or_exit`
+    // (and upstream's `validate_args`), in `Result` form; see above.
+    require_output_parent(out_prefix)?;
+
+    // Upstream: `if self.bam_format: print("Load BAM file ... ", end=' ')`
+    // -- always the BAM branch in practice; the literal's own trailing
+    // space plus `end=' '` gives two spaces before "Done".
+    write!(stderr, "Load BAM file ...  ")?;
+
+    let (table_text, r_script_text) = match sequencing {
+        "SE" => {
+            let profile = compute_single_end(records, q_cut, b'I')?;
+            writeln!(stderr, "Done")?;
+            // Upstream: `print("Totoal reads used: %d" % ...)` -- a
+            // literal upstream typo ("Totoal"), preserved exactly.
+            writeln!(stderr, "Totoal reads used: {}", profile.total_read)?;
+            (
+                render_single_table(&profile),
+                render_single_r_script(&profile, out_prefix),
+            )
+        }
+        "PE" => {
+            let profile = compute_paired_end(records, q_cut, b'I')?;
+            writeln!(stderr, "Done")?;
+            // Upstream prints these as TWO SEPARATE lines (also with
+            // the same "Totoal" typo), not one combined line.
+            writeln!(stderr, "Totoal read-1 used: {}", profile.total_read1)?;
+            writeln!(stderr, "Totoal read-2 used: {}", profile.total_read2)?;
+            (
+                render_paired_table(&profile),
+                render_paired_r_script(&profile, out_prefix),
+            )
+        }
+        other => {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                format!("invalid sequencing layout: {other} (expected SE or PE)"),
+            ));
+        }
+    };
+
+    let xls_path = format!("{out_prefix}.insertion_profile.xls");
+    File::create(&xls_path)?.write_all(table_text.as_bytes())?;
+
+    let r_path = format!("{out_prefix}.insertion_profile.r");
+    File::create(&r_path)?.write_all(r_script_text.as_bytes())?;
+
+    if !skip_plot {
+        let rscript_path = exec_resolve::which(rscript).ok_or_else(|| {
+            io::Error::new(
+                io::ErrorKind::NotFound,
+                format!("Rscript executable not found: {rscript}"),
+            )
+        })?;
+        let out = Command::new(&rscript_path)
+            .arg(&r_path)
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()?
+            .wait_with_output()?;
+        stdout.write_all(&out.stdout)?;
+        stderr.write_all(&out.stderr)?;
+        if !out.status.success() {
+            return Err(io::Error::other(format!("R plotting failed for {r_path}")));
+        }
+    }
+
+    Ok(())
 }
 
 #[cfg(test)]

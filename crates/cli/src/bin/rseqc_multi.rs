@@ -105,12 +105,15 @@ fn run(args: &Args) -> std::io::Result<()> {
         Ok(entries) => entries,
         Err(message) => rseqc_cli::usage_exit("rseqc_multi", &message),
     };
-    // `clipping_profile` is the only registered command whose standalone
-    // flag is restricted (clap `SE`/`PE`); validate here so a bad value
-    // stays a usage error (exit 2) instead of a worker failure.
-    if tokens.iter().any(|token| token == "clipping_profile")
-        && args.sequencing != "SE"
+    // `clipping_profile` and `insertion_profile` are the only registered
+    // commands whose standalone flag is restricted (clap `SE`/`PE`);
+    // validate here so a bad value stays a usage error (exit 2) instead
+    // of a worker failure.
+    if args.sequencing != "SE"
         && args.sequencing != "PE"
+        && tokens
+            .iter()
+            .any(|token| token == "clipping_profile" || token == "insertion_profile")
     {
         rseqc_cli::usage_exit(
             "rseqc_multi",
